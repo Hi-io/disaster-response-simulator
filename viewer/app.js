@@ -8,7 +8,25 @@ const escape = (s) =>
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
-const clock = (ms) => new Date(ms).toISOString().slice(11, 19);
+const clock = (ms) =>
+  [Math.floor(ms / 3600000), Math.floor(ms / 60000) % 60, Math.floor(ms / 1000) % 60]
+    .map((v) => String(v).padStart(2, '0'))
+    .join(':');
+const roadPoint = (points, t) => {
+  const lengths = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.z - points[i].z)),
+    total = lengths.reduce((a, b) => a + b, 0);
+  let distance = total * t;
+  for (let i = 0; i < lengths.length; i++)
+    if (distance <= lengths[i] || i === lengths.length - 1) {
+      const f = lengths[i] ? distance / lengths[i] : 0;
+      return {
+        x: points[i].x + (points[i + 1].x - points[i].x) * f,
+        z: points[i].z + (points[i + 1].z - points[i].z) * f,
+      };
+    } else distance -= lengths[i];
+  return points[0];
+};
+const timelineCache = new Map();
 const number = (n) => new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(n ?? 0);
 let snapshot,
   catalog,
@@ -254,14 +272,21 @@ function buildScene() {
     organizations = subgroup('organizations'),
     sectors = subgroup('sectors');
   const vertices = [],
-    damaged = [];
+    damaged = [],
+    bridges = [];
   for (const edge of map.edges) {
     if (edge.from > edge.to) continue;
     const a = position(edge.from),
       b = position(edge.to),
       known = obs?.edges[edge.id];
-    const target = (obs ? known?.open === false : !edge.open) ? damaged : vertices;
-    target.push(a.x, 1, a.z, b.x, 1, b.z);
+    const target = (obs ? known?.open === false : !edge.open)
+      ? damaged
+      : edge.bridge
+        ? bridges
+        : vertices;
+    const path = edge.points ?? [a, b];
+    for (let i = 0; i < path.length - 1; i++)
+      target.push(path[i].x, 1, path[i].z, path[i + 1].x, 1, path[i + 1].z);
   }
   const lines = (points, color, parent, opacity = 1) => {
     if (!points.length) return;
@@ -275,6 +300,44 @@ function buildScene() {
   };
   lines(vertices, '#c6d2e2', roads);
   lines(damaged, '#ce7a69', roads);
+  lines(bridges, '#6a84a9', roads);
+  if (map.river) {
+    const p = map.river.points,
+      verts = [];
+    for (let i = 0; i < p.length - 1; i++) {
+      const a = p[i],
+        b = p[i + 1],
+        d = map.river.widthM / 2;
+      verts.push(
+        a.x - d,
+        0,
+        a.z,
+        a.x + d,
+        0,
+        a.z,
+        b.x + d,
+        0,
+        b.z,
+        a.x - d,
+        0,
+        a.z,
+        b.x + d,
+        0,
+        b.z,
+        b.x - d,
+        0,
+        b.z,
+      );
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    mapGroup.add(
+      new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({ color: '#b8d4e8', side: THREE.DoubleSide }),
+      ),
+    );
+  }
   const boxes = new THREE.InstancedMesh(
     new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshStandardMaterial({ roughness: 1 }),
@@ -487,8 +550,9 @@ function updateVehicles() {
               (v.edgeEnd - v.edgeStart),
           ),
         );
-      x += (to.x - n.x) * t;
-      z += (to.z - n.z) * t;
+      const point = roadPoint(edge.points ?? [n, to], t);
+      x = point.x;
+      z = point.z;
       mesh.rotation.y = Math.atan2(to.x - n.x, to.z - n.z);
     }
     mesh.position.set(x, (snapshot.state.map.extentM / snapshot.manifest.config.grid) * 0.018, z);
@@ -578,6 +642,20 @@ function inspect() {
             `<div class="dependency">${escape(k)} · ${number(e.provisioned?.[k] ?? 0)} / ${number(v)}</div>`,
         )
         .join('');
+  if (!obs && selected.kind === 'building') {
+    const community = s.cohorts.filter((c) => c.sector === e.sector);
+    html +=
+      '<h2>Community outcomes · experimental</h2>' +
+      community
+        .map(
+          (c) =>
+            property('Alive / deceased', `${c.population} / ${c.deceased ?? 0}`) +
+            property('Injured', c.health?.injured ?? 0) +
+            property('Water deficit', `${number((c.health?.dehydrationMs ?? 0) / 3600000)} h`) +
+            property('Food deficit', `${number((c.health?.hungerMs ?? 0) / 3600000)} h`),
+        )
+        .join('');
+  }
   if (e.times)
     html +=
       '<h2>Operation milestones</h2>' +
@@ -599,9 +677,10 @@ function inspect() {
       property('Original source', p.private.original);
   }
   if (!obs) {
+    const history = timelineCache.get(selected.id) ?? snapshot.events;
     html +=
       '<h2>Timeline</h2>' +
-      snapshot.events
+      history
         .filter((ev) => ev.entity === selected.id || JSON.stringify(ev.data).includes(selected.id))
         .slice(-12)
         .reverse()
@@ -659,6 +738,21 @@ async function refresh() {
     $('app').hidden = false;
     if (!renderer) initialize3D();
     const changed = snapshot.runId !== lastRun;
+    if (changed) {
+      timelineCache.clear();
+      const previous = $('perspective').value;
+      $('perspective').innerHTML =
+        '<option value="truth">Observer · ground truth</option>' +
+        snapshot.state.map.organizations
+          .map((o) => `<option value="${o.id}">${escape(o.name)} · known state</option>`)
+          .join('');
+      $('perspective').value = snapshot.state.map.organizations.some((o) => o.id === previous)
+        ? previous
+        : 'truth';
+      $('actionOrg').innerHTML = snapshot.state.map.organizations
+        .map((o) => `<option value="${o.id}">${escape(o.name)}</option>`)
+        .join('');
+    }
     lastRun = snapshot.runId;
     $('clock').textContent = clock(snapshot.now);
     $('play').textContent = snapshot.playing ? 'Pause' : 'Play';
@@ -698,6 +792,25 @@ async function refresh() {
       : m.ledgerValid
         ? '✓ conserved'
         : 'Check failed';
+    const reports = knowledge
+      ? Object.values(knowledge.population ?? {}).flatMap((r) => r.communities)
+      : null;
+    $('fatalities').textContent = reports?.length
+      ? number(reports.reduce((n, c) => n + c.deceased, 0))
+      : knowledge
+        ? 'unknown'
+        : number(m.population.deceased);
+    $('injured').textContent = reports?.length
+      ? number(reports.reduce((n, c) => n + c.injured, 0))
+      : knowledge
+        ? 'unknown'
+        : number(m.population.injured);
+    $('waterExposure').textContent = knowledge
+      ? 'observer only'
+      : number(m.population.waterDeficitPersonHours);
+    $('foodExposure').textContent = knowledge
+      ? 'observer only'
+      : number(m.population.foodDeficitPersonHours);
     $('perspectiveLabel').textContent =
       $('perspective').value === 'truth' ? 'GROUND TRUTH' : 'KNOWN OBSERVATIONS';
     $('scenarioTitle').textContent =
@@ -743,7 +856,7 @@ async function refresh() {
         ['B', other],
       ])
         $(`compare${name}Metrics`).textContent =
-          `${clock(data.now)} · ${number(data.metrics.services.water?.served)} L served · ${number(data.metrics.services.water?.pending)} L pending`;
+          `${clock(data.now)} · ${number(data.metrics.services.water?.served)} L served · ${number(data.metrics.services.water?.pending)} L pending · ${number(data.metrics.population.deceased)} simulated fatalities`;
       $('comparisonStatus').textContent =
         `Paired initial map ${snapshot.state.map.hash.slice(0, 12)} · equal physical endowment · ${snapshot.now === other.now ? 'clocks synchronized' : 'clock catching up'}`;
     }
@@ -834,7 +947,6 @@ $('configForm').onsubmit = perform(() =>
     ),
   ),
 );
-const originalConfigSubmit = $('configForm').onsubmit;
 $('configForm').onsubmit = perform(async () => {
   const fields = [
     'seed',
@@ -875,6 +987,7 @@ $('advanceForm').onsubmit = perform(async () => {
 $('nextEntity').onclick = perform(() => api('/api/control', { nextRelevant: selected.id }));
 $('fullTimeline').onclick = perform(async () => {
   const rows = await api('/api/events?entity=' + encodeURIComponent(selected.id));
+  timelineCache.set(selected.id, rows.events);
   $('selection').innerHTML +=
     '<h2>Recorded history · ' +
     rows.total +

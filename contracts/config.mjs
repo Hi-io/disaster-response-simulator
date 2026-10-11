@@ -1,16 +1,16 @@
 import { clone, digest } from '../engine/determinism.mjs';
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 export const DEFAULT_CONFIG = {
   seed: 'response-lab-2026',
   scenario: 'S01',
   hazard: 'earthquake',
   variant: 'standard',
-  grid: 9,
-  extentKm: 8,
+  grid: 25,
+  extentKm: 160,
   organizations: 4,
-  durationMs: 6 * 3600_000,
+  durationMs: 48 * 3600_000,
   populationPerSector: 60,
-  backgroundTraffic: 24,
+  backgroundTraffic: 160,
   postsPerHour: 180,
   falseRate: 0.12,
   observationRate: 0.8,
@@ -30,7 +30,7 @@ export const DEFAULT_CONFIG = {
   funds: 5000,
   stockWater: 2400,
   reservedWater: 100,
-  policy: 'none',
+  policy: 'conventional',
   mode: 'interactive',
   clockLatency: 'modeled',
   split: 'development',
@@ -38,13 +38,32 @@ export const DEFAULT_CONFIG = {
   logMode: 'full',
   maxEvents: 2_000_000,
   maxPosts: 1_000_000,
-  topology: 'grid',
+  topology: 'regional',
+  bridgeCount: 3,
+  healthTickMs: 600000,
+  waterMlPerPersonDay: 3000,
+  foodKcalPerPersonDay: 2100,
+  initialWaterHours: 6,
+  initialFoodHours: 12,
+  waterCriticalHours: 30,
+  foodCriticalHours: 72,
+  injuryCriticalHours: 2,
+  exposureCriticalHours: 4,
+  waterFatalityBpPerHour: 150,
+  foodFatalityBpPerHour: 25,
+  injuryFatalityBpPerHour: 1000,
+  exposureFatalityBpPerHour: 600,
+  injuryFractionBp: 1500,
+  temperatureC: 24,
+  healthReports: true,
   authorshipMs: 1000,
   staffShiftMs: 28800000,
   staffRestMs: 3600000,
   vehicleFuelMl: 80000,
   fuelMlPerKm: 180,
   sourceRequestLimit: 1200,
+  modelLatencyMs: 5000,
+  modelCallLimit: 1000,
   subsystemSeeds: {},
 };
 const enums = {
@@ -59,6 +78,24 @@ const enums = {
   logMode: ['full', 'compact'],
 };
 const ranges = {
+  modelLatencyMs: [0, 3600000],
+  modelCallLimit: [1, 100000],
+  bridgeCount: [1, 8],
+  healthTickMs: [60000, 3600000],
+  waterMlPerPersonDay: [1, 100000],
+  foodKcalPerPersonDay: [1, 10000],
+  initialWaterHours: [0, 168],
+  initialFoodHours: [0, 168],
+  waterCriticalHours: [0, 168],
+  foodCriticalHours: [0, 168],
+  injuryCriticalHours: [0, 168],
+  exposureCriticalHours: [0, 168],
+  waterFatalityBpPerHour: [0, 10000],
+  foodFatalityBpPerHour: [0, 10000],
+  injuryFatalityBpPerHour: [0, 10000],
+  exposureFatalityBpPerHour: [0, 10000],
+  injuryFractionBp: [0, 10000],
+  temperatureC: [-40, 55],
   authorshipMs: [0, 3600000],
   staffShiftMs: [1000, 604800000],
   staffRestMs: [0, 86400000],
@@ -99,6 +136,13 @@ export function validateConfig(input = {}) {
   for (const key of Object.keys(input))
     if (!(key in DEFAULT_CONFIG)) throw new Error(`Unknown configuration field: ${key}`);
   const c = { ...clone(DEFAULT_CONFIG), ...input };
+  if (c.mode === 'live' && input.clockLatency === undefined) c.clockLatency = 'wall';
+  if (c.mode === 'live' && c.clockLatency !== 'wall')
+    throw new Error('Live integration requires a wall-clock latency policy');
+  if (input.scenario === 'S19' && input.organizations === undefined) c.organizations = 5;
+  if (typeof c.healthReports !== 'boolean') throw new Error('healthReports must be boolean');
+  if (c.organizations > c.grid * c.grid)
+    throw new Error('Not enough distinct sites for organizations');
   if (!['string', 'number'].includes(typeof c.seed) || String(c.seed).length > 128)
     throw new Error('Invalid seed');
   c.seed = String(c.seed);

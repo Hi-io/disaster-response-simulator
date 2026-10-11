@@ -14,7 +14,10 @@ import { installReference } from '../adapters/reference.mjs';
 import { installIngestion } from './ingestion.mjs';
 import { installFacilities } from './facilities.mjs';
 import { installLaboratory } from './laboratory.mjs';
+import { installPopulation } from './population.mjs';
+import { installModels } from './models.mjs';
 import { validateParameters } from '../contracts/parameters.mjs';
+import { validateIntervention } from '../contracts/interventions.mjs';
 import { configureScenario } from '../scenarios/catalog.mjs';
 import { evaluate } from '../evaluation/metrics.mjs';
 import { RecordArchive, recordsDigest, recordSnapshot } from './archive.mjs';
@@ -99,6 +102,8 @@ export class World {
     installCooperation(this);
     installFacilities(this);
     installLaboratory(this);
+    installPopulation(this);
+    installModels(this);
     installReference(this);
     installIngestion(this);
     configureScenario(this, { handlersOnly: true });
@@ -112,6 +117,7 @@ export class World {
         vehicles: {},
         edges: {},
         operations: {},
+        population: {},
         claims: [],
         lastContact: {},
       };
@@ -196,6 +202,7 @@ export class World {
     }
     configureScenario(this);
     this.initializeLaboratory();
+    this.initializePopulation();
     this.schedule(30_000, 'initial_report', { need: 'need-water-main' }, 1, 'initial-main');
     this.schedule(60_000, 'hazard_start', {}, 0, 'hazard-start');
     if (this.config.postsPerHour)
@@ -262,6 +269,7 @@ export class World {
     return e;
   }
   step() {
+    if (this.modelBarrier()) return null;
     if (!this.queue.peek()) return null;
     if (this.eventCount >= this.config.maxEvents)
       throw new SimError('EVENT_BUDGET', 'Event budget exhausted');
@@ -282,6 +290,14 @@ export class World {
     if (!Number.isSafeInteger(target) || target < this.now)
       throw new Error('Invalid advance target');
     let count = 0;
+    if (this.modelBarrier())
+      return {
+        now: this.now,
+        processed: 0,
+        reached: false,
+        blocked: 'model_result',
+        nextAt: this.queue.peek()?.at ?? null,
+      };
     while (this.queue.peek()?.at <= target && count < maxEvents) {
       this.step();
       count++;
@@ -344,6 +360,7 @@ export class World {
       ...clone(n),
     };
     this.state.needs.push(need);
+    this.activatePopulationNeed?.(need);
     this.record(
       'need_created',
       { type: need.type, quantity: need.quantity, building: need.building },
@@ -363,6 +380,7 @@ export class World {
   serveNeed(id, quantity) {
     const n = this.need(id);
     if (!n) throw new Error('Unknown need');
+    this.receivePopulationAid?.(n, quantity);
     this.updateNeed(id, { served: n.served + quantity });
     if (n.served >= n.quantity && n.completedAt === null) n.completedAt = this.now;
     this.record('service_delivered', { quantity, type: n.type, building: n.building }, id);
@@ -491,6 +509,7 @@ export class World {
     });
   }
   inject(type, data = {}) {
+    validateIntervention(this, type, data);
     if (!this.handlers.has(type)) throw new SimError('EVENT', 'Unknown event');
     if (!this.currentEvent)
       this.inputs.push({
@@ -581,9 +600,21 @@ export class World {
     for (const v of this.state.vehicles)
       if ((v.passengers ?? 0) < 0 || (v.passengers ?? 0) > (v.seats ?? Infinity))
         errors.push(`passengers:${v.id}`);
-    const people = this.state.cohorts.reduce((total, c) => total + c.population + c.inTransit, 0);
+    const people = this.state.cohorts.reduce(
+      (total, c) => total + c.population + c.inTransit + (c.deceased ?? 0),
+      0,
+    );
     if (people !== this.config.grid ** 2 * this.config.populationPerSector)
       errors.push('population_conservation');
+    for (const c of this.state.cohorts)
+      if (
+        c.population < 0 ||
+        c.inTransit < 0 ||
+        (c.deceased ?? 0) < 0 ||
+        !Number.isSafeInteger(c.population) ||
+        c.health?.injured > c.population
+      )
+        errors.push(`cohort:${c.id}`);
     for (const op of this.state.operations) {
       if (op.times?.arrived != null && op.times.dispatched == null) errors.push(`arrival:${op.id}`);
       if (
@@ -656,6 +687,7 @@ export class World {
         : [],
       claims: clone(this.state.claims.filter((p) => p.org === org)),
       patterns: clone(this.state.patterns.filter((p) => p.org === org)),
+      modelRequests: clone((this.state.modelRequests ?? []).filter((p) => p.org === org)),
       publicUpdates: clone(this.state.publicUpdates),
     };
   }

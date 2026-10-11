@@ -107,6 +107,7 @@ export function installCommunications(w) {
         w.state.messagePending--;
         m.pending = false;
       }
+      w.record('message_expired', { kind: m.payload.kind, to: m.to }, id);
       return;
     }
     m.state = 'delivered';
@@ -184,6 +185,11 @@ export function installCommunications(w) {
           version: n.version,
           at: p.observedAt,
         };
+    } else if (p.kind === 'population_observation') {
+      const value = p.snapshot,
+        old = w.state.observations[m.to].population[value.sector];
+      if (!old || value.observedAt >= old.observedAt)
+        w.state.observations[m.to].population[value.sector] = value;
     } else if (p.kind === 'share') {
       w.receiveShare(m.to, p);
     } else if (p.kind === 'verification') {

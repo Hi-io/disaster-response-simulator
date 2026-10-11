@@ -6,6 +6,11 @@ import { evaluate, quantile } from '../evaluation/metrics.mjs';
 import { route } from '../generators/map.mjs';
 import { INPUT_TYPES, validateObservation } from '../contracts/inputs.mjs';
 const config = {
+  policy: 'none',
+  topology: 'grid',
+  grid: 9,
+  extentKm: 8,
+  durationMs: 6 * 3600000,
   hazard: 'none',
   backgroundTraffic: 0,
   postsPerHour: 0,

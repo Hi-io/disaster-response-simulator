@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { World } from '../engine/world.mjs';
 const world = () =>
   new World({
+    policy: 'none',
+    topology: 'grid',
+    durationMs: 6 * 3600000,
     hazard: 'none',
     postsPerHour: 0,
     backgroundTraffic: 0,

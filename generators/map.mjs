@@ -1,4 +1,5 @@
 import { keyedRandom, integerDraw, digest } from '../engine/determinism.mjs';
+import { regionalRoads, riverX } from './region.mjs';
 
 export function generateMap(c) {
   const nodes = [],
@@ -15,18 +16,25 @@ export function generateMap(c) {
           x: Math.round(
             (x +
               (c.topology === 'regional' && x > 0 && x < c.grid - 1
-                ? (r('map', id, 'jitter_x') - 0.5) * 0.55
+                ? (r('map', id, 'jitter_x') - 0.5) * 1.7
                 : 0)) *
               step,
           ),
           z: Math.round(
             (z +
               (c.topology === 'regional' && z > 0 && z < c.grid - 1
-                ? (r('map', id, 'jitter_z') - 0.5) * 0.55
+                ? (r('map', id, 'jitter_z') - 0.5) * 1.7
                 : 0)) *
               step,
           ),
         };
+      if (c.topology === 'regional') {
+        const river = riverX(c.extentKm * 1000, position.z),
+          setback = c.extentKm * 1000 * 0.015;
+        if (Math.abs(position.x - river) < setback)
+          position.x = river + (position.x < river ? -setback : setback);
+        position.x = Math.round(position.x);
+      }
       nodes.push({ id, ...position });
       sectors.push({
         id: `s${z * c.grid + x}`,
@@ -55,7 +63,7 @@ export function generateMap(c) {
         x: position.x + step * 0.15,
         z: position.z + step * 0.14,
         height: integerDraw(c.seed, 'map', id, 'height', 8, 40),
-        width: Math.max(12, step * 0.12),
+        width: Math.max(12, Math.min(350, step * 0.12)),
         use:
           usage < 0.1
             ? 'school'
@@ -80,57 +88,81 @@ export function generateMap(c) {
         requiredPower: { powerKw: 10, connector: 'A' },
       });
     }
-  for (let z = 0; z < c.grid; z++)
-    for (let x = 0; x < c.grid; x++)
-      for (const [dx, dz] of [
-        [1, 0],
-        [0, 1],
-      ]) {
-        if (x + dx >= c.grid || z + dz >= c.grid) continue;
-        const from = `n${z * c.grid + x}`,
-          to = `n${(z + dz) * c.grid + x + dx}`,
-          key = `${from}-${to}`;
-        const arterial = x === Math.floor(c.grid / 2) || z === Math.floor(c.grid / 2);
-        for (const [a, b] of [
-          [from, to],
-          [to, from],
-        ])
-          edges.push({
-            id: `${a}:${b}`,
-            from: a,
-            to: b,
-            lengthM: Math.round(
-              Math.hypot(
-                nodes[Number(a.slice(1))].x - nodes[Number(b.slice(1))].x,
-                nodes[Number(a.slice(1))].z - nodes[Number(b.slice(1))].z,
+  if (c.topology === 'grid')
+    for (let z = 0; z < c.grid; z++)
+      for (let x = 0; x < c.grid; x++)
+        for (const [dx, dz] of [
+          [1, 0],
+          [0, 1],
+        ]) {
+          if (x + dx >= c.grid || z + dz >= c.grid) continue;
+          const from = `n${z * c.grid + x}`,
+            to = `n${(z + dz) * c.grid + x + dx}`,
+            key = `${from}-${to}`;
+          const arterial = x === Math.floor(c.grid / 2) || z === Math.floor(c.grid / 2);
+          for (const [a, b] of [
+            [from, to],
+            [to, from],
+          ])
+            edges.push({
+              id: `${a}:${b}`,
+              from: a,
+              to: b,
+              lengthM: Math.round(
+                Math.hypot(
+                  nodes[Number(a.slice(1))].x - nodes[Number(b.slice(1))].x,
+                  nodes[Number(a.slice(1))].z - nodes[Number(b.slice(1))].z,
+                ),
               ),
-            ),
-            speedMps: arterial ? 16 : 10,
-            capacity: arterial ? 8 : 3,
-            storage: arterial ? 14 : 6,
-            headwayMs: arterial ? 2500 : 7000,
-            maxWeight: arterial
-              ? 20000
-              : c.topology === 'regional' && r('map', key, 'narrow') < 0.15
-                ? 3700
-                : 5000,
-            slope: c.topology === 'regional' ? Math.round(r('map', key, 'slope') * 12) : 0,
-            roadClass: arterial ? 'arterial' : 'local',
-            open: true,
-            waterDepth: 0,
-            nextEntryAt: 0,
-            occupants: [],
-            waiting: [],
-            version: 1,
-            bridge: r('map', key, 'bridge') < 0.04,
-          });
-      }
+              speedMps: arterial ? 16 : 10,
+              capacity: arterial ? 8 : 3,
+              storage: arterial ? 14 : 6,
+              headwayMs: arterial ? 2500 : 7000,
+              maxWeight: arterial
+                ? 20000
+                : c.topology === 'regional' && r('map', key, 'narrow') < 0.15
+                  ? 3700
+                  : 5000,
+              slope: c.topology === 'regional' ? Math.round(r('map', key, 'slope') * 12) : 0,
+              roadClass: arterial ? 'arterial' : 'local',
+              open: true,
+              waterDepth: 0,
+              nextEntryAt: 0,
+              occupants: [],
+              waiting: [],
+              version: 1,
+              bridge: r('map', key, 'bridge') < 0.04,
+            });
+        }
+  const geography =
+    c.topology === 'regional'
+      ? regionalRoads(nodes, c, r)
+      : { edges: [], crossings: [], river: null };
+  edges.push(...geography.edges);
   const corner = [0, c.grid - 1, c.grid * (c.grid - 1), c.grid * c.grid - 1];
+  const orgNodes = new Set();
+  const orgNode = (i) => {
+    if (i < 4) {
+      orgNodes.add(`n${corner[i]}`);
+      return `n${corner[i]}`;
+    }
+    const x = (0.2 + (i % 3) * 0.3) * c.extentKm * 1000,
+      z = (0.22 + (Math.floor(i / 3) % 3) * 0.26) * c.extentKm * 1000;
+    const n = [...nodes]
+      .filter((n) => !orgNodes.has(n.id))
+      .sort(
+        (a, b) =>
+          Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z) ||
+          a.id.localeCompare(b.id, 'en'),
+      )[0];
+    orgNodes.add(n.id);
+    return n.id;
+  };
   const organizations = Array.from({ length: c.organizations }, (_, i) => ({
     id: `org${i}`,
     name:
       ['Local Response', 'Relief Team', 'Medical Team', 'Regional NGO'][i] ?? `Partner ${i + 1}`,
-    node: `n${corner[i % 4]}`,
+    node: orgNode(i),
     operators: c.operatorCount,
     reviewSlots: Array(c.operatorCount).fill(0),
     sharing: i === c.organizations - 1 ? 'partial' : 'public',
@@ -162,7 +194,10 @@ export function generateMap(c) {
     plantId: plant.id,
     extentM: c.extentKm * 1000,
     grid: c.grid,
-    hash: digest({ nodes, edges, buildings, organizations }),
+    topology: c.topology,
+    crossings: geography.crossings,
+    river: geography.river,
+    hash: digest({ nodes, edges, buildings, organizations, river: geography.river }),
   };
 }
 

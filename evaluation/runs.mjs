@@ -15,13 +15,20 @@ export function runWorld(config = {}, inputs = [], checkpoint = null) {
     w.advance(input.at);
     try {
       if (input.kind === 'intervention') w.inject(input.type, input.data);
+      else if (input.kind === 'model_start') w.startModelCall(input.actor, input.request);
+      else if (input.kind === 'model_finish') w.finishModelCall(input.actor, input.request);
       else if (input.kind === 'ingestion') w.acknowledge(input.actor, input.request);
       else w.act(input.actor, input.request);
     } catch (error) {
       if (!input.allowFailure) throw error;
     }
   }
-  while (!w.advance(w.config.durationMs, { maxEvents: 100000 }).reached) {}
+  while (!w.advance(w.config.durationMs, { maxEvents: 100000 }).reached) {
+    if (w.modelBarrier())
+      throw new Error(
+        'An external model result is pending; submit its recorded receipt before headless continuation',
+      );
+  }
   return { world: w, metrics: evaluate(w), wallMs: performance.now() - start, hash: w.stateHash() };
 }
 export function replay(checkpoint) {
@@ -36,11 +43,18 @@ export function replay(checkpoint) {
     w.now = input.at;
     try {
       if (input.kind === 'intervention') w.inject(input.type, input.data);
+      else if (input.kind === 'model_start') w.startModelCall(input.actor, input.request);
+      else if (input.kind === 'model_finish') w.finishModelCall(input.actor, input.request);
       else if (input.kind === 'ingestion') w.acknowledge(input.actor, input.request);
       else w.act(input.actor, input.request);
     } catch {}
   }
-  while (!w.advance(checkpoint.now, { maxEvents: 100000 }).reached) {}
+  while (!w.advance(checkpoint.now, { maxEvents: 100000 }).reached) {
+    if (w.modelBarrier()) {
+      if (w.now === checkpoint.now) break;
+      throw new Error('Replay has unresolved model barrier');
+    }
+  }
   const original = new World(checkpoint.manifest.config, checkpoint);
   const expected = original.stateHash();
   original.close();
@@ -105,15 +119,19 @@ export async function readJSON(file) {
 export function pairedComparison(rowsA, rowsB) {
   const key = (r) => JSON.stringify([r.seed, r.scenario, r.variant]);
   const b = new Map(rowsB.map((r) => [key(r), r]));
+  if (b.size !== rowsB.length || new Set(rowsA.map(key)).size !== rowsA.length)
+    throw new Error('Ambiguous paired rows: compare one policy per seed/scenario/variant');
   const pairs = rowsA.filter((r) => b.has(key(r))).map((a) => ({ a, b: b.get(key(a)) }));
   if (!pairs.length) throw new Error('No paired seeds/scenarios');
+  const comparable = (c) => {
+    const { policy, mode, logMode, ...rest } = c;
+    return digest(rest);
+  };
+  for (const { a, b } of pairs)
+    if (a.config && b.config && comparable(a.config) !== comparable(b.config))
+      throw new Error('Paired worlds have different initial parameters, resources or budgets');
   const measures = ['served', 'pending', 'overprovided', 'uncoveredUnitMs', 'onTime'];
-  const water = {};
-  for (const name of measures) {
-    const differences = pairs.map(
-      ({ a, b }) =>
-        (b.metrics.services.water?.[name] ?? 0) - (a.metrics.services.water?.[name] ?? 0),
-    );
+  const summarize = (differences) => {
     const mean = differences.reduce((s, x) => s + x, 0) / differences.length;
     const resamples = Array.from(
       { length: 1000 },
@@ -130,17 +148,56 @@ export function pairedComparison(rowsA, rowsB) {
           0,
         ) / differences.length,
     ).sort((a, b) => a - b);
-    water[name] = {
+    return {
       differenceBminusA: mean,
       interval95: [resamples[25], resamples[974]],
       pairedSeeds: differences.length,
     };
-  }
+  };
+  const types = [
+    ...new Set(
+      pairs.flatMap(({ a, b }) => [
+        ...Object.keys(a.metrics.services),
+        ...Object.keys(b.metrics.services),
+      ]),
+    ),
+  ];
+  const services = Object.fromEntries(
+    types.map((type) => [
+      type,
+      Object.fromEntries(
+        measures.map((name) => [
+          name,
+          summarize(
+            pairs.map(
+              ({ a, b }) =>
+                (b.metrics.services[type]?.[name] ?? 0) - (a.metrics.services[type]?.[name] ?? 0),
+            ),
+          ),
+        ]),
+      ),
+    ]),
+  );
+  const population = Object.fromEntries(
+    ['deceased', 'alive', 'waterDeficitPersonHours', 'foodDeficitPersonHours'].map((name) => [
+      name,
+      summarize(
+        pairs.map(
+          ({ a, b }) => (b.metrics.population?.[name] ?? 0) - (a.metrics.population?.[name] ?? 0),
+        ),
+      ),
+    ]),
+  );
   return {
     pairedEpisodes: pairs.length,
     unpairedA: rowsA.length - pairs.length,
     unpairedB: rowsB.length - pairs.length,
-    water,
+    water: services.water ?? {},
+    services,
+    population,
+    comparability: pairs.every(({ a, b }) => a.config && b.config)
+      ? 'matched manifest parameters'
+      : 'unverified: configuration missing from legacy rows',
     note: 'Units are preserved. Positive values are not uniformly beneficial. This is a simulated paired bootstrap, not evidence of lives saved.',
   };
 }

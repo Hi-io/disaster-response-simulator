@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import { World } from '../engine/world.mjs';
 import { PRESETS } from '../content/presets.mjs';
 const config = {
+  policy: 'none',
+  topology: 'grid',
+  grid: 9,
+  extentKm: 8,
+  durationMs: 6 * 3600000,
   hazard: 'none',
   postsPerHour: 0,
   backgroundTraffic: 0,

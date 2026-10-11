@@ -30,6 +30,29 @@ export class SourceClient {
   queries() {
     return this.request('/api/actor/queries');
   }
+  inbox() {
+    return this.request('/api/actor/inbox');
+  }
+  startModelCall(model) {
+    return this.request('/api/actor/model/start', { method: 'POST', body: { model } });
+  }
+  async finishModelCall(id, usage) {
+    const result = await this.request('/api/actor/model/finish', {
+        method: 'POST',
+        body: { id, ...usage },
+      }),
+      end = Date.now() + 120000;
+    while (true) {
+      const state = await this.state(),
+        job = state.modelRequests.find((r) => r.id === id);
+      if (job && ['available', 'failed'].includes(job.state)) return job;
+      if (Date.now() > end)
+        throw new Error(
+          'Model result has not reached its simulated availability; check the clock and other pending calls',
+        );
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
   action(type, params, idempotencyKey, expectedVersion) {
     return this.request('/api/actor/action', {
       method: 'POST',
@@ -45,6 +68,10 @@ export class SourceClient {
     const result = await this.request(
       '/api/feed?' + new URLSearchParams({ q, cursor, limit, since }),
     );
+    if (!Array.isArray(result.posts))
+      throw new Error(
+        'Source schema mismatch: expected version 1 posts. Update the connector explicitly.',
+      );
     for (const post of result.posts) await this.ingest(post, 'downloaded');
     return result;
   }

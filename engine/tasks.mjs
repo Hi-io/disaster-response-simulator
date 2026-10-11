@@ -102,7 +102,7 @@ export function installTasks(w) {
       i.state = 'timeout';
       return;
     }
-    if (!v || available(r) < 1) {
+    if (i.method !== 'clarification' && (!v || available(r) < 1)) {
       w.schedule(
         w.now + 30000,
         'field_prepare',
@@ -175,6 +175,11 @@ export function installTasks(w) {
           sector,
           channel: i.method === 'radio' ? 'radio' : 'internet',
         });
+      for (const c of w.healthForSector(sector)) w.advancePopulation(c, w.now);
+      w.send({ kind: 'population_observation', snapshot: w.populationSnapshot(sector) }, i.org, {
+        sector,
+        channel: i.method === 'radio' ? 'radio' : 'internet',
+      });
     }
     if (observed && i.target === 'need') {
       const n = w.need(i.entity);
@@ -189,6 +194,11 @@ export function installTasks(w) {
         unit: n.unit,
         version: n.version,
       };
+      for (const c of w.healthForSector(sector)) w.advancePopulation(c, w.now);
+      w.send({ kind: 'population_observation', snapshot: w.populationSnapshot(sector) }, i.org, {
+        sector,
+        channel: i.method === 'radio' ? 'radio' : 'internet',
+      });
     }
     if (observed && i.target === 'road') {
       const e = w.edge(i.entity);
@@ -401,6 +411,7 @@ export function installTasks(w) {
       v.state = 'idle';
       return;
     }
+    task.health = w.takePopulationGroup(cohort, task.quantity);
     cohort.population -= task.quantity;
     cohort.inTransit += task.quantity;
     task.cohort = cohort.id;
@@ -428,13 +439,15 @@ export function installTasks(w) {
     to.occupancy += v.passengers;
     n.inTransit -= t.quantity;
     const original = w.state.cohorts.find((c) => c.id === t.cohort);
-    original.inTransit -= t.quantity;
-    original.moved += t.quantity;
+    original.inTransit -= v.passengers;
+    original.moved += v.passengers;
     w.state.cohorts.push({
       id: `relocated-${t.id}`,
       node: to.node,
       sector: to.sector,
-      population: t.quantity,
+      population: v.passengers,
+      deceased: 0,
+      health: { ...clone(t.health), unsheltered: false, integratedAt: w.now },
       inTransit: 0,
       moved: 0,
       mobility: original.mobility,

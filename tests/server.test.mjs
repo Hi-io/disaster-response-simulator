@@ -7,6 +7,10 @@ test('source server is scrapeable but cannot expose observer truth or accept una
     sourcePort: 0,
     persistCredentials: false,
     config: {
+      policy: 'none',
+      grid: 9,
+      extentKm: 8,
+      topology: 'grid',
       hazard: 'none',
       postsPerHour: 0,
       backgroundTraffic: 0,

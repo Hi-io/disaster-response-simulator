@@ -74,15 +74,21 @@
             <label>Scenario<select id="scenario"></select></label
             ><label>Seed<input id="seed" value="response-lab-2026" /></label>
             <div class="formRow">
-              <label>Map grid<input id="grid" type="number" min="3" max="100" value="9" /></label
+              <label
+                >Settlement density<input
+                  id="grid"
+                  type="number"
+                  min="3"
+                  max="100"
+                  value="25" /></label
               ><label
-                >Extent · km<input id="extentKm" type="number" min="1" max="200" value="8"
+                >Extent · km<input id="extentKm" type="number" min="1" max="200" value="160"
               /></label>
             </div>
             <label
               >Topology<select id="topology">
-                <option value="grid">Verifiable grid</option>
-                <option value="regional">Regional districts</option>
+                <option value="regional">Irregular region · scarce bridges</option>
+                <option value="grid">Small grid · unit experiments</option>
               </select></label
             >
             <details>
@@ -201,6 +207,18 @@
             <div><span>Active operations</span><strong id="operations">—</strong></div>
             <div><span>Integrity</span><strong id="integrity">—</strong></div>
           </div>
+          <div class="summary healthSummary">
+            <div><span>Simulated fatalities</span><strong id="fatalities">—</strong></div>
+            <div><span>Injured · remaining</span><strong id="injured">—</strong></div>
+            <div>
+              <span>Water deficit · person-hours</span><strong id="waterExposure">—</strong>
+            </div>
+            <div><span>Food deficit · person-hours</span><strong id="foodExposure">—</strong></div>
+          </div>
+          <p class="healthNote">
+            Experimental population model · adjustable assumptions, not clinical predictions.
+            Organization views show only received observations.
+          </p>
         </section>
         <section class="inspector">
           <span class="eyebrow">SELECTED ENTITY</span>

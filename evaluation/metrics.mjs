@@ -56,6 +56,7 @@ export function evaluate(world) {
   return {
     simulatedMs: world.now,
     services,
+    population: world.populationMetrics(),
     perCommunity,
     latency,
     posts: world.state.posts.length,
@@ -70,6 +71,19 @@ export function evaluate(world) {
     events: world.eventCount,
     modelCalls: world.state.modelCalls ?? 0,
     modelWallMs: world.state.modelWallMs ?? 0,
+    modelUsage: {
+      promptTokens: (world.state.modelRequests ?? []).reduce(
+        (n, r) => n + (r.promptTokens ?? 0),
+        0,
+      ),
+      outputTokens: (world.state.modelRequests ?? []).reduce(
+        (n, r) => n + (r.outputTokens ?? 0),
+        0,
+      ),
+      pending: (world.state.modelRequests ?? []).filter((r) => r.state === 'waiting').length,
+      failed: (world.state.modelRequests ?? []).filter((r) => r.failed).length,
+      providerCost: null,
+    },
     invalidActions: world.state.invalidActions,
     ledgerValid: world.invariants().length === 0,
     source: {
@@ -91,6 +105,16 @@ export function evaluate(world) {
       loansOverdue: world.state.transfers?.filter((t) => t.state === 'overdue').length ?? 0,
     },
     physical: {
+      closedCrossings: (world.state.map.crossings ?? []).filter((b) =>
+        b.edges.some((id) => !world.edge(id).open),
+      ).length,
+      trafficQueue: world.state.map.edges.reduce((n, e) => n + e.waiting.length, 0),
+      overprovidedByType: Object.fromEntries(
+        Object.entries(services).map(([type, row]) => [
+          type,
+          { quantity: row.overprovided, unit: row.unit },
+        ]),
+      ),
       distanceM: world.state.vehicles.reduce((s, v) => s + (v.distanceM ?? 0), 0),
       fuelMl: world.state.vehicles.reduce((s, v) => s + v.fuelUsed, 0),
       arrivedNotReceived: world.state.operations.filter(

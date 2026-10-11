@@ -4,6 +4,11 @@ import { World } from '../engine/world.mjs';
 import { createLabServers } from '../sources/server.mjs';
 import { replay } from '../evaluation/runs.mjs';
 const config = {
+  policy: 'none',
+  topology: 'grid',
+  grid: 9,
+  extentKm: 8,
+  durationMs: 6 * 3600000,
   scenario: 'S23',
   hazard: 'none',
   grid: 3,

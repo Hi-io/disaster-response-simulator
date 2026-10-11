@@ -1,3 +1,4 @@
+import { riverX } from './region.mjs';
 export function installHazards(w) {
   w.on('hazard_start', () => {
     if (w.config.hazard === 'none') return;
@@ -30,6 +31,16 @@ export function installHazards(w) {
       w.schedule(w.now + 60000, 'flood_level', { generation: 0, depth: 0.45 }, 0, 'flood-0');
     if (w.config.hazard === 'earthquake')
       w.schedule(w.now + 2700000, 'aftershock', {}, 0, 'aftershock');
+    if (['earthquake', 'compound'].includes(w.config.hazard))
+      for (const crossing of w.state.map.crossings ?? [])
+        if (w.random('hazard', crossing.id, 'damage') < 0.45)
+          w.schedule(
+            w.now,
+            'road_change',
+            { edge: crossing.edges[0], open: false, reason: 'bridge_damage' },
+            0,
+            `quake-${crossing.id}`,
+          );
     w.schedule(
       w.now + 600000,
       'lab_intervention',
@@ -50,6 +61,7 @@ export function installHazards(w) {
     b.assessed = false;
     b.version++;
     const sector = w.sector(b.sector);
+    w.damagePopulation(sector.id, severity, cause);
     sector.energy = severity < 3;
     if (severity >= 2) sector.coverage = 0;
     const needId = `need-${id}-water`;
@@ -120,6 +132,19 @@ export function installHazards(w) {
   w.on('road_change', ({ edge: id, open, depth, reason }) => {
     const e = w.edge(id);
     if (!e) return;
+    if (e.crossing)
+      for (const other of w.state.map.edges.filter(
+        (x) => x.corridor === e.corridor && x.id !== id,
+      )) {
+        other.open = open ?? other.open;
+        other.waterDepth = depth ?? other.waterDepth;
+        other.version++;
+        w.record(
+          'road_changed',
+          { open: other.open, depth: other.waterDepth, reason, crossing: e.crossing },
+          other.id,
+        );
+      }
     e.open = open ?? e.open;
     e.waterDepth = depth ?? e.waterDepth;
     e.version++;
@@ -183,7 +208,7 @@ export function installHazards(w) {
       );
   });
   w.on('flood_level', ({ generation, depth }) => {
-    const strip = w.state.map.extentM * 0.18;
+    const strip = w.state.map.extentM * 0.035;
     w.state.hazards ??= [];
     w.state.hazards.push({
       id: `flood-${generation}`,
@@ -195,7 +220,10 @@ export function installHazards(w) {
       at: w.now,
     });
     for (const e of w.state.map.edges)
-      if (Math.abs(w.node(e.from).x - w.state.map.extentM * 0.5) < strip)
+      if (
+        e.bridge ||
+        Math.abs(w.node(e.from).x - riverX(w.state.map.extentM, w.node(e.from).z)) < strip
+      )
         w.schedule(
           w.now,
           'road_change',

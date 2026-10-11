@@ -50,17 +50,24 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
     shelter = w.building(w.state.map.shelterId),
     org0 = w.organization('org0');
   const road = w.state.map.edges[Math.floor(w.state.map.edges.length / 2)];
-  const extraNeed = (index, silent = false) => {
-    const b = w.state.map.buildings[Math.min(w.state.map.buildings.length - 1, index)];
+  const extraNeed = (index, silent = false, type = 'water') => {
+    const b = w.state.map.buildings[index % w.state.map.buildings.length];
     return w.addNeed({
       id: `need-case-${index}`,
       building: b.id,
-      type: 'water',
-      quantity: 200,
-      unit: 'L',
+      type,
+      quantity: type === 'water' ? 200 : type === 'food' ? 100 : type === 'shelter' ? 50 : 20,
+      unit:
+        type === 'water'
+          ? 'L'
+          : type === 'food'
+            ? 'portion'
+            : type === 'shelter'
+              ? 'place'
+              : 'unit',
       population: 100,
       deadline: 3600000,
-      priority: 8,
+      priority: 3 + (index % 8),
       silent,
     });
   };
@@ -132,13 +139,17 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
       w.record('donation_received', { org: p.org, amount: p.amount });
     }
   });
-  w.on('scenario_signal', (p) =>
-    w.generateSignal(p.family, {
+  w.on('scenario_signal', (p) => {
+    const original = p.original
+      ? w.state.posts.find((x) => x.private.original === p.original)
+      : null;
+    return w.generateSignal(p.family, {
       ...p,
       building: p.building ?? w.state.map.shelterId,
+      references: p.references ?? (original ? [original.public.id] : []),
       causeEvent: `scenario-${w.config.scenario}-${w.now}`,
-    }),
-  );
+    });
+  });
   w.on('existing_return', ({ vehicle: id }) => {
     const v = w.vehicle(id);
     if (v?.state === 'working') {
@@ -248,13 +259,15 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
             text: 'Forwarded: Los Sauces needs 600 litres.',
             false: false,
             original: 'single-source',
+            author: `copy-${i}`,
           },
           1,
           `copy-${i}`,
         );
       break;
     case 'S09':
-      for (let i = 1; i < Math.min(101, w.state.map.buildings.length); i++) extraNeed(i);
+      for (let i = 1; i <= 100; i++)
+        extraNeed(i, false, ['water', 'food', 'shelter', 'blankets', 'rescue'][i % 5]);
       break;
     case 'S10':
       w.schedule(
@@ -364,8 +377,8 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
     case 'S20':
       w.schedule(
         120000,
-        'intervention',
-        { type: 'donate', org: 'org0', amount: 200 },
+        'lab_intervention',
+        { kind: 'donation', org: 'org0', amount: 200, delayMs: 600000 },
         1,
         'donation',
       );

@@ -7,6 +7,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 const config = {
+  policy: 'none',
+  topology: 'grid',
+  grid: 9,
+  extentKm: 8,
+  durationMs: 6 * 3600000,
   hazard: 'none',
   scenario: 'S23',
   grid: 3,

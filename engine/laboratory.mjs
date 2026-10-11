@@ -61,6 +61,7 @@ export function installLaboratory(w) {
     'team',
     'integrations',
     'forecasts',
+    'population',
   ];
   w.onAction('query', (a, p, request) => {
     if (p.target === 'sources') return previousQuery(a, { ...p, org: a.org }, request);
@@ -77,10 +78,14 @@ export function installLaboratory(w) {
     w.state.queryCount++;
     w.state.toolCost++;
     let result;
+    if (p.target === 'population') result = clone(w.state.observations[a.org].population);
     if (p.target === 'personnel')
       result = w.state.personnel
         .filter((x) => x.org === a.org)
-        .map((x) => ({ ...x, onShift: w.now < x.shiftEnd }));
+        .map((x) => ({
+          ...x,
+          onShift: w.now % (w.config.staffShiftMs + w.config.staffRestMs) < w.config.staffShiftMs,
+        }));
     if (p.target === 'communication')
       result = {
         lastContact: clone(w.state.observations[a.org].lastContact),
@@ -311,6 +316,24 @@ export function installLaboratory(w) {
         r.version++;
         w.record('resource_lost', { id: r.id, condition: r.condition });
       }
+    } else if (p.kind === 'refuel') {
+      const v = w.vehicle(p.vehicle),
+        r = w.resource(`r-${v?.owner}-fuel`);
+      check(v && r, 'NOT_FOUND', 'Vehicle and fuel stock required');
+      check(
+        v.node === r.node && !v.edge && !v.load,
+        'LOCATION',
+        'Refuel at base with unloaded vehicle',
+      );
+      check(available(r) >= p.litres, 'FUEL', 'Insufficient unreserved fuel');
+      r.quantity -= p.litres;
+      r.consumed += p.litres;
+      r.version++;
+      v.fuel += p.litres * 1000;
+      v.version++;
+      if (v.state === 'failed' && !v.operation) v.state = 'idle';
+      w.observeResource(v.owner, r);
+      w.record('vehicle_refuelled', { litres: p.litres }, v.id);
     } else if (p.kind === 'driver_relay') {
       const v = w.vehicle(p.vehicle);
       check(v, 'NOT_FOUND', 'Vehicle not found');

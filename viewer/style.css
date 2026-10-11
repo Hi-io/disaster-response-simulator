@@ -643,3 +643,17 @@ pre {
 [hidden] {
   display: none !important;
 }
+.healthSummary {
+  border-top: 1px solid #dfe5ef;
+  background: #f7f8fc;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.healthSummary strong {
+  color: #ac635b;
+}
+.healthNote {
+  font-size: 11px;
+  color: #657286;
+  margin: 8px 18px 16px;
+  line-height: 1.5;
+}
