@@ -14,6 +14,7 @@ import {
 import { MotionBuffer } from './motion.js';
 import { FlowLane, MapNotices, iconHTML, applyIcons } from './flow.js';
 import { serviceRows, selectionPoint, trackingStep } from './display.js';
+import { mapTheme } from './theme.js';
 
 const $ = (id) => document.getElementById(id);
 const escape = (s) =>
@@ -73,7 +74,7 @@ let nodeIndex = new Map(),
   operationIndex = new Map();
 const mapNotices = new MapNotices($('mapNotices'), locateNotice, projectNotice);
 applyIcons();
-const orgColors = ['#617ad0', '#9276be', '#639aaa', '#bf9469', '#7b9d82'];
+const orgColors = mapTheme.organizations;
 let snapshotReceivedAt = performance.now();
 let lastAnimationTime = performance.now();
 let renderer,
@@ -329,7 +330,7 @@ function renderMeasurements() {
 
 function initialize3D() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color('#eff3f8');
+  scene.background = new THREE.Color(mapTheme.background);
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   $('canvas').append(renderer.domElement);
@@ -343,8 +344,8 @@ function initialize3D() {
   controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
   controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
   controls.addEventListener('start', releaseTracking);
-  scene.add(new THREE.HemisphereLight('#ffffff', '#8291ae', 2.5));
-  const sun = new THREE.DirectionalLight('#ffffff', 3);
+  scene.add(new THREE.HemisphereLight(mapTheme.light, mapTheme.ground, 1.6));
+  const sun = new THREE.DirectionalLight(mapTheme.light, 2);
   sun.position.set(-10, 25, 10);
   scene.add(sun);
   const resize = () => {
@@ -483,7 +484,7 @@ function buildScene() {
   };
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(map.extentM * 1.08, map.extentM * 1.08),
-    new THREE.MeshStandardMaterial({ color: '#e9eef5', roughness: 1 }),
+    new THREE.MeshBasicMaterial({ color: mapTheme.ground }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(map.extentM / 2, -1, map.extentM / 2);
@@ -524,9 +525,9 @@ function buildScene() {
     );
     parent.add(o);
   };
-  lines(vertices, '#c6d2e2', roads);
-  lines(damaged, '#ce7a69', roads);
-  lines(bridges, '#6a84a9', roads);
+  lines(vertices, mapTheme.road, roads);
+  lines(damaged, mapTheme.coral, roads);
+  lines(bridges, mapTheme.blue, roads);
   const trafficPositions = [];
   const trafficRoadIds = [];
   for (const edge of map.edges) {
@@ -583,7 +584,7 @@ function buildScene() {
     mapGroup.add(
       new THREE.Mesh(
         geo,
-        new THREE.MeshBasicMaterial({ color: '#b8d4e8', side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({ color: mapTheme.river, side: THREE.DoubleSide }),
       ),
     );
   }
@@ -598,17 +599,17 @@ function buildScene() {
     const visible = obs ? obs.buildings[b.id] : b;
     const base =
       b.use === 'depot'
-        ? '#8d9bc8'
+        ? mapTheme.buildings.depot
         : b.use === 'shelter'
-          ? '#aaa1ca'
+          ? mapTheme.buildings.shelter
           : b.use === 'plant'
-            ? '#8fafba'
-            : '#c8d0df';
+            ? mapTheme.buildings.plant
+            : mapTheme.buildings.ordinary;
     const color =
       visible?.state === 'operating'
-        ? '#7ba99b'
+        ? mapTheme.buildings.operating
         : visible?.damage >= 1 || visible?.state === 'damaged'
-          ? '#d49988'
+          ? mapTheme.buildings.damaged
           : base;
     const h = (b.height * scale) / 150;
     matrix.compose(
@@ -634,9 +635,9 @@ function buildScene() {
   const rings = new THREE.InstancedMesh(
     new THREE.RingGeometry(0.07, 0.09, 24),
     new THREE.MeshBasicMaterial({
-      color: '#dc8d78',
+      color: mapTheme.coral,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.8,
       side: THREE.DoubleSide,
     }),
     visibleNeeds.length,
@@ -663,7 +664,7 @@ function buildScene() {
   sectors.add(
     new THREE.Points(
       pointsGeometry,
-      new THREE.PointsMaterial({ color: '#7f91b9', size: 5, sizeAttenuation: false }),
+      new THREE.PointsMaterial({ color: mapTheme.slate, size: 5, sizeAttenuation: false }),
     ),
   );
   sectors.visible = false;
@@ -698,7 +699,7 @@ function buildScene() {
     const lines = new THREE.LineSegments(
       geo,
       new THREE.LineDashedMaterial({
-        color: '#a08bd0',
+        color: mapTheme.violet,
         dashSize: scale * 0.1,
         gapSize: scale * 0.07,
         transparent: true,
@@ -722,7 +723,7 @@ function buildScene() {
     new THREE.Points(
       bodies,
       new THREE.PointsMaterial({
-        color: '#a3b0c7',
+        color: mapTheme.slate,
         size: 4,
         sizeAttenuation: false,
         map: getDotTexture(),
@@ -736,7 +737,7 @@ function buildScene() {
       const dot = new THREE.Mesh(
         new THREE.CircleGeometry(scale * 0.18, 20),
         new THREE.MeshBasicMaterial({
-          color: '#8391ab',
+          color: mapTheme.slate,
           transparent: true,
           opacity: 0.25,
           side: THREE.DoubleSide,
@@ -753,7 +754,7 @@ function buildScene() {
       const disk = new THREE.Mesh(
         new THREE.CircleGeometry(h.radius ?? scale, 40),
         new THREE.MeshBasicMaterial({
-          color: h.kind === 'flood' ? '#8eb7d6' : '#e59a76',
+          color: h.kind === 'flood' ? mapTheme.blue : mapTheme.coral,
           transparent: true,
           opacity: 0.2,
           side: THREE.DoubleSide,
@@ -779,7 +780,7 @@ function buildScene() {
         for (let i = 0; i < path.length - 1; i++)
           ps.push(path[i].x, 5, path[i].z, path[i + 1].x, 5, path[i + 1].z);
       }
-      lines(ps, '#7c88c9', routes, 0.45);
+      lines(ps, mapTheme.violet, routes, 0.6);
     }
   }
   vehicleIds = [...vehicleMeshes.keys()];
@@ -838,13 +839,7 @@ function updateTraffic() {
     obs = snapshot.state.observations[$('perspective').value];
   const edges = new Map(snapshot.state.map.edges.map((e) => [e.id, e]));
   const directions = new Map(snapshot.state.map.edges.map((e) => [`${e.from}:${e.to}`, e]));
-  const colors = {
-    clear: '#78aa96',
-    slow: '#d5ae5c',
-    heavy: '#cc7b6b',
-    closed: '#aa665d',
-    unknown: '#c6d2e2',
-  };
+  const colors = mapTheme.traffic;
   const attribute = trafficLines.geometry.attributes.color;
   trafficLines.userData.edges.forEach((id, i) => {
     const edge = edges.get(id),
@@ -877,12 +872,12 @@ function updateVehicles(now = performance.now()) {
     const operation = truth ? operationIndex.get(v.operation) : null;
     const color = new THREE.Color(
       v.background
-        ? '#9aa7b9'
+        ? mapTheme.slate
         : ['blocked', 'failed', 'spillback'].includes(state)
-          ? '#d99c57'
+          ? mapTheme.amber
           : operation?.type === 'evacuation'
-            ? '#9677c9'
-            : '#5a7ad5',
+            ? mapTheme.violet
+            : mapTheme.blue,
     );
     vehiclePoints.geometry.attributes.position.setXYZ(mesh.index, p.x, height, p.z);
     vehiclePoints.geometry.attributes.color.setXYZ(mesh.index, color.r, color.g, color.b);

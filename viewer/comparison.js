@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { pointAlong } from './geometry.js';
+import { mapTheme } from './theme.js';
 const views = [];
 let ready = false,
   active = false,
@@ -12,8 +13,11 @@ function initialize() {
     renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     el.append(renderer.domElement);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#eff3f8');
-    scene.add(new THREE.HemisphereLight('#ffffff', '#a0aac3', 3));
+    scene.background = new THREE.Color(mapTheme.background);
+    scene.add(new THREE.HemisphereLight(mapTheme.light, mapTheme.ground, 1.6));
+    const sun = new THREE.DirectionalLight(mapTheme.light, 2);
+    sun.position.set(-10, 25, 10);
+    scene.add(sun);
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000000),
       controls = new OrbitControls(camera, renderer.domElement);
     controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
@@ -82,7 +86,13 @@ function draw(v, s) {
     mesh.setMatrixAt(i, matrix);
     mesh.setColorAt(
       i,
-      new THREE.Color(b.state === 'operating' ? '#79a89c' : b.damage ? '#d79582' : '#c7d1e0'),
+      new THREE.Color(
+        b.state === 'operating'
+          ? mapTheme.buildings.operating
+          : b.damage
+            ? mapTheme.buildings.damaged
+            : mapTheme.buildings.ordinary,
+      ),
     );
   }
   group.add(mesh);
@@ -99,9 +109,9 @@ function draw(v, s) {
       target.push(path[i].x, 1, path[i].z, path[i + 1].x, 1, path[i + 1].z);
   }
   for (const [vertices, color] of [
-    [points, '#bdcadc'],
-    [closed, '#ce7a69'],
-    [bridges, '#6a84a9'],
+    [points, mapTheme.road],
+    [closed, mapTheme.coral],
+    [bridges, mapTheme.blue],
   ]) {
     const lines = new THREE.BufferGeometry();
     lines.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
@@ -140,7 +150,7 @@ function draw(v, s) {
     group.add(
       new THREE.Mesh(
         geo,
-        new THREE.MeshBasicMaterial({ color: '#b8d4e8', side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({ color: mapTheme.river, side: THREE.DoubleSide }),
       ),
     );
   }
@@ -148,7 +158,7 @@ function draw(v, s) {
     const b = map.buildings.find((b) => b.id === n.building),
       ring = new THREE.Mesh(
         new THREE.RingGeometry(scale * 0.08, scale * 0.11, 16),
-        new THREE.MeshBasicMaterial({ color: '#dc8d78', side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({ color: mapTheme.coral, side: THREE.DoubleSide }),
       );
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(b.x, 2, b.z);
@@ -159,7 +169,7 @@ function draw(v, s) {
     if (!node) continue;
     const box = new THREE.Mesh(
       new THREE.BoxGeometry(scale * 0.035, scale * 0.03, scale * 0.055),
-      new THREE.MeshStandardMaterial({ color: truck.background ? '#b0bac9' : '#5e7fc7' }),
+      new THREE.MeshStandardMaterial({ color: truck.background ? mapTheme.slate : mapTheme.blue }),
     );
     let x = node.x,
       z = node.z;
