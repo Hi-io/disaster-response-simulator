@@ -1,4 +1,5 @@
 import { route } from '../generators/map.mjs';
+import { pointAlong } from '../viewer/geometry.js';
 
 export function installTraffic(w) {
   w.startTrip = (v, destination, operation = null) => {
@@ -230,6 +231,6 @@ export function installTraffic(w) {
     const e = w.edge(v.edge),
       to = w.node(e.to),
       f = Math.max(0, Math.min(1, (w.now - v.edgeStart) / (v.edgeEnd - v.edgeStart)));
-    return { x: n.x + (to.x - n.x) * f, z: n.z + (to.z - n.z) * f };
+    return pointAlong(e.points ?? [n, to], f);
   };
 }

@@ -2,12 +2,14 @@
   "seed": "regional-development",
   "scenario": "S19",
   "grid": 35,
-  "extentKm": 80,
-  "organizations": 4,
+  "extentKm": 160,
+  "topology": "regional",
+  "organizations": 5,
   "hazard": "compound",
   "postsPerHour": 10000,
   "backgroundTraffic": 120,
   "durationMs": 14400000,
   "mode": "headless",
+  "logMode": "compact",
   "maxEvents": 5000000
 }

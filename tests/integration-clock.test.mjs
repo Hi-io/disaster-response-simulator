@@ -108,3 +108,44 @@ test('malformed interventions cannot partially mutate the world', () => {
     assert.throws(() => w.inject(type, data));
   assert.equal(w.stateHash(), before);
 });
+
+test('an invalid world configuration preserves the active archive and live runs reject accelerated wall time', async (t) => {
+  const lab = await createLabServers({
+    config: { ...config, logMode: 'compact', mode: 'live' },
+    observerPort: 0,
+    sourcePort: 0,
+    persistCredentials: false,
+  });
+  t.after(() => lab.close());
+  const base = `http://127.0.0.1:${lab.observerPort}`;
+  const headers = {
+    Authorization: `Bearer ${lab.observerKey}`,
+    'Content-Type': 'application/json',
+  };
+  const initial = await (await fetch(base + '/api/state', { headers })).json();
+  assert.equal(initial.rate, 1);
+  assert.equal(initial.sourceUrl, `http://127.0.0.1:${lab.sourcePort}`);
+  const invalid = await fetch(base + '/api/config', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ grid: -1 }),
+  });
+  assert.ok(invalid.status >= 400);
+  lab.world.advance(10000);
+  assert.ok(lab.world.log.length > 0);
+  const speed = await fetch(base + '/api/control', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ rate: 1000 }),
+  });
+  assert.equal(speed.status, 400);
+  assert.equal((await speed.json()).error, 'LIVE_RATE');
+});
+
+test('an omitted external duration defaults to zero without corrupting measurement totals', () => {
+  const w = new World(config),
+    r = w.startModelCall(actor, { model: 'outside' });
+  w.finishModelCall(actor, { id: r.id });
+  assert.equal(w.state.modelWallMs, 0);
+  assert.equal(replay(w.checkpoint()).matches, true);
+});

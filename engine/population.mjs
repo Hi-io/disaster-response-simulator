@@ -229,23 +229,87 @@ export function installPopulation(w) {
     sector,
     observedAt: w.now,
     model: 'experimental-v1',
-    communities: w.healthForSector(sector).map((c) => ({
-      id: c.id,
-      alive: c.population,
-      deceased: c.deceased,
-      injured: c.health?.injured ?? 0,
-      dehydrationHours: (c.health?.dehydrationMs ?? 0) / HOUR,
-      hungerHours: (c.health?.hungerMs ?? 0) / HOUR,
-      exposureHours: (c.health?.exposureMs ?? 0) / HOUR,
-      waterRemainingL: (c.health?.waterMl ?? 0) / 1000,
-      version: c.health?.version ?? 1,
-    })),
+    communities: w.state.cohorts
+      .filter((c) => c.sector === sector)
+      .map((c) => ({
+        id: c.id,
+        alive: c.population,
+        deceased: c.deceased,
+        injured: c.health?.injured ?? 0,
+        dehydrationHours: (c.health?.dehydrationMs ?? 0) / HOUR,
+        hungerHours: (c.health?.hungerMs ?? 0) / HOUR,
+        exposureHours: (c.health?.exposureMs ?? 0) / HOUR,
+        waterRemainingL: (c.health?.waterMl ?? 0) / 1000,
+        version: c.health?.version ?? 1,
+      })),
   });
   w.initializePopulation = () => {
     for (const c of w.state.cohorts) ensure(c);
     for (const n of w.state.needs) w.activatePopulationNeed(n);
     w.schedule(w.now + w.config.healthTickMs, 'population_tick', {}, 0, 'population-initial');
+    if (w.config.recurringNeeds)
+      w.schedule(
+        w.now + w.config.resupplyReviewHours * HOUR,
+        'population_resupply',
+        {},
+        1,
+        'resupply-initial',
+      );
   };
+  w.on('population_resupply', () => {
+    for (const sector of w.state.map.sectors) {
+      const cohorts = w.healthForSector(sector.id).filter((c) => c.health?.affected);
+      if (!cohorts.length) continue;
+      const population = cohorts.reduce((n, c) => n + c.population, 0);
+      const building = w.state.map.buildings.find((b) => b.sector === sector.id);
+      for (const type of ['water', 'food']) {
+        if (!cohorts.some((c) => c.health[`${type}Disrupted`])) continue;
+        if (
+          w.state.needs.some(
+            (n) =>
+              w.building(n.building)?.sector === sector.id &&
+              n.type === type &&
+              n.served < n.quantity,
+          )
+        )
+          continue;
+        const stock = cohorts.reduce(
+          (n, c) => n + c.health[type === 'water' ? 'waterMl' : 'foodKcal'],
+          0,
+        );
+        const rate =
+          type === 'water' ? w.config.waterMlPerPersonDay : w.config.foodKcalPerPersonDay;
+        // A fresh request is generated only if supplies cannot last to the next review.
+        if (stock > (population * rate * w.config.resupplyReviewHours) / 24) continue;
+        const target = (population * rate * w.config.resupplyHorizonHours) / 24;
+        const n = w.addNeed({
+          id: w.nextId(`recurring-${type}`),
+          building: building.id,
+          type,
+          quantity: Math.max(1, Math.ceil((target - stock) / (type === 'water' ? 1000 : 700))),
+          unit: type === 'water' ? 'L' : 'portion',
+          population,
+          recurring: true,
+          priority: type === 'water' ? 7 : 5,
+          deadline: w.now + w.config.resupplyReviewHours * HOUR,
+          silent:
+            w.random('population', sector.id, `resupply-report-${type}-${w.now}`) >=
+            w.config.observationRate,
+        });
+        if (!n.silent)
+          w.generateSignal('P01', {
+            sector: sector.id,
+            building: building.id,
+            need: n.id,
+            text: `${w.sector(sector.id).name}: ${population} people need another ${n.quantity} ${n.unit} of ${type}. Earlier supplies are being used up. Please verify.`,
+            causeEvent: n.id,
+          });
+      }
+    }
+    const next = w.now + w.config.resupplyReviewHours * HOUR;
+    if (next <= w.config.durationMs)
+      w.schedule(next, 'population_resupply', {}, 1, `resupply-${next}`);
+  });
   w.on('population_tick', () => {
     for (const c of w.state.cohorts) {
       w.advancePopulation(c, w.now);
@@ -321,8 +385,20 @@ export function installPopulation(w) {
       exposureHours: (c.health?.exposureMs ?? 0) / HOUR,
       waterDeficitPersonHours: (c.health?.waterDeficitPersonMs ?? 0) / HOUR,
       foodDeficitPersonHours: (c.health?.foodDeficitPersonMs ?? 0) / HOUR,
+      exposurePersonHours: (c.health?.exposurePersonMs ?? 0) / HOUR,
+      untreatedInjuryPersonHours: (c.health?.injuryPersonMs ?? 0) / HOUR,
       deathsByCause: clone(c.health?.deathsByCause ?? {}),
     }));
+    for (const t of w.state.evacuations ?? []) {
+      if (!t.health || ['completed', 'failed', 'cancelled'].includes(t.state)) continue;
+      const row = rows.find((r) => r.id === t.cohort);
+      if (!row) continue;
+      row.injured += t.health.injured;
+      row.waterDeficitPersonHours += t.health.waterDeficitPersonMs / HOUR;
+      row.foodDeficitPersonHours += t.health.foodDeficitPersonMs / HOUR;
+      row.exposurePersonHours += t.health.exposurePersonMs / HOUR;
+      row.untreatedInjuryPersonHours += t.health.injuryPersonMs / HOUR;
+    }
     return {
       model: 'experimental-v1',
       clinicallyValidated: false,
@@ -331,6 +407,8 @@ export function installPopulation(w) {
       injured: rows.reduce((s, c) => s + c.injured, 0),
       waterDeficitPersonHours: rows.reduce((s, c) => s + c.waterDeficitPersonHours, 0),
       foodDeficitPersonHours: rows.reduce((s, c) => s + c.foodDeficitPersonHours, 0),
+      exposurePersonHours: rows.reduce((s, c) => s + c.exposurePersonHours, 0),
+      untreatedInjuryPersonHours: rows.reduce((s, c) => s + c.untreatedInjuryPersonHours, 0),
       communities: rows,
     };
   };

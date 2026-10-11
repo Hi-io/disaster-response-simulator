@@ -56,6 +56,9 @@ export const DEFAULT_CONFIG = {
   injuryFractionBp: 1500,
   temperatureC: 24,
   healthReports: true,
+  recurringNeeds: true,
+  resupplyReviewHours: 6,
+  resupplyHorizonHours: 24,
   authorshipMs: 1000,
   staffShiftMs: 28800000,
   staffRestMs: 3600000,
@@ -78,6 +81,8 @@ const enums = {
   logMode: ['full', 'compact'],
 };
 const ranges = {
+  resupplyReviewHours: [1, 168],
+  resupplyHorizonHours: [1, 168],
   modelLatencyMs: [0, 3600000],
   modelCallLimit: [1, 100000],
   bridgeCount: [1, 8],
@@ -141,6 +146,7 @@ export function validateConfig(input = {}) {
     throw new Error('Live integration requires a wall-clock latency policy');
   if (input.scenario === 'S19' && input.organizations === undefined) c.organizations = 5;
   if (typeof c.healthReports !== 'boolean') throw new Error('healthReports must be boolean');
+  if (typeof c.recurringNeeds !== 'boolean') throw new Error('recurringNeeds must be boolean');
   if (c.organizations > c.grid * c.grid)
     throw new Error('Not enough distinct sites for organizations');
   if (!['string', 'number'].includes(typeof c.seed) || String(c.seed).length > 128)

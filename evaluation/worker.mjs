@@ -15,7 +15,9 @@ try {
   w = new World(workerData.config);
   let nextProgress = 0;
   while (!cancelled && w.now < w.config.durationMs) {
-    w.advance(w.config.durationMs, { maxEvents: 10000 });
+    const progress = w.advance(w.config.durationMs, { maxEvents: 10000 });
+    if (progress.blocked)
+      throw new Error('Batch run cannot continue without the external computation result');
     if (performance.now() - start > workerData.maxWallMs) {
       cancelled = true;
       break;

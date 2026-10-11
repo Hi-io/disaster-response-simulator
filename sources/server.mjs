@@ -55,7 +55,7 @@ export async function createLabServers({
   let world = new World(config),
     comparison = null,
     playing = false,
-    rate = 10,
+    rate = world.config.mode === 'live' ? 1 : 10,
     previous = performance.now(),
     effective = 0;
   actorKeys ??= Object.fromEntries(
@@ -85,7 +85,12 @@ export async function createLabServers({
         maxEvents: 2500,
       });
       effective = wall ? (world.now - before) / wall : 0;
-      if (comparison) while (!comparison.advance(world.now, { maxEvents: 100000 }).reached) {}
+      if (comparison) {
+        let progress;
+        do {
+          progress = comparison.advance(world.now, { maxEvents: 100000 });
+        } while (!progress.reached && !progress.blocked);
+      }
       if (world.now >= world.config.durationMs) playing = false;
     } catch (e) {
       playing = false;
@@ -145,7 +150,7 @@ export async function createLabServers({
                   now: comparison.now,
                 }
               : null,
-            sourceUrl: `http://127.0.0.1:${sourcePort}`,
+            sourceUrl: `http://127.0.0.1:${sources.address().port}`,
           });
         if (url.pathname === '/api/catalog')
           return json(res, 200, { scenarios: SCENARIOS, presetCount: PRESETS.length });
@@ -154,17 +159,24 @@ export async function createLabServers({
             ? await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000)
             : {};
         if (url.pathname === '/api/config') {
+          const replacement = new World(b);
           world.close();
           comparison?.close();
           comparison = null;
-          world = new World(b);
+          world = replacement;
           ensureActorKeys();
+          rate = world.config.mode === 'live' ? 1 : 10;
           playing = false;
           return json(res, 200, { runId: world.runId });
         }
         if (url.pathname === '/api/control') {
           if (b.rate !== undefined) {
             if (![1, 10, 100, 1000].includes(b.rate)) throw new SimError('RATE', 'Invalid speed');
+            if (world.config.mode === 'live' && b.rate !== 1)
+              throw new SimError(
+                'LIVE_RATE',
+                'Live external-platform evaluation uses wall time at ×1',
+              );
             rate = b.rate;
           }
           if (b.play !== undefined) playing = !!b.play;
@@ -183,7 +195,12 @@ export async function createLabServers({
             if (next) world.advance(next.at);
             else throw new SimError('EVENT', 'No queued event for this entity');
           }
-          if (comparison) while (!comparison.advance(world.now, { maxEvents: 100000 }).reached) {}
+          if (comparison) {
+            let progress;
+            do {
+              progress = comparison.advance(world.now, { maxEvents: 100000 });
+            } while (!progress.reached && !progress.blocked);
+          }
           return json(res, 200, { playing, rate, now: world.now });
         }
         if (url.pathname === '/api/action') {
@@ -228,8 +245,13 @@ export async function createLabServers({
         if (url.pathname === '/api/compare')
           return json(res, 200, comparison ? comparison.observer({ limit: 100 }) : null);
         if (url.pathname === '/api/restore') {
-          world = new World(b.manifest.config, b);
+          const replacement = new World(b.manifest.config, b);
+          world.close();
+          comparison?.close();
+          comparison = null;
+          world = replacement;
           ensureActorKeys();
+          rate = world.config.mode === 'live' ? 1 : 10;
           playing = false;
           return json(res, 200, { restored: true, runId: world.runId });
         }
@@ -249,7 +271,10 @@ export async function createLabServers({
           });
         }
         if (url.pathname === '/api/credentials')
-          return json(res, 200, { actors: actorKeys, sourceUrl: `http://127.0.0.1:${sourcePort}` });
+          return json(res, 200, {
+            actors: actorKeys,
+            sourceUrl: `http://127.0.0.1:${sources.address().port}`,
+          });
         throw new SimError('NOT_FOUND', 'Endpoint not found', 404);
       }
       let file =
@@ -283,7 +308,12 @@ export async function createLabServers({
   const sources = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
-      const actorMutation = ['/api/actor/action', '/api/actor/ingestion'];
+      const actorMutation = [
+        '/api/actor/action',
+        '/api/actor/ingestion',
+        '/api/actor/model/start',
+        '/api/actor/model/finish',
+      ];
       if (req.method !== (actorMutation.includes(url.pathname) ? 'POST' : 'GET'))
         throw new SimError('METHOD', 'Method not allowed', 405);
       const requestKey =
@@ -322,6 +352,14 @@ export async function createLabServers({
         if (url.pathname === '/api/actor/state') return json(res, 200, world.actorView(actor.org));
         if (url.pathname === '/api/actor/action')
           return json(res, 200, world.act(actor, await body(req)));
+        if (url.pathname === '/api/actor/model/start')
+          return json(res, 200, world.startModelCall(actor, await body(req)));
+        if (url.pathname === '/api/actor/model/finish') {
+          const result = world.finishModelCall(actor, await body(req));
+          if (world.config.clockLatency === 'modeled' && !world.modelBarrier())
+            world.advance(result.availableAt, { maxEvents: 100000 });
+          return json(res, 200, { ...result, now: world.now });
+        }
         if (url.pathname === '/api/actor/queries')
           return json(res, 200, {
             queries: (world.state.queries ?? []).filter((q) => q.org === actor.org).slice(-200),

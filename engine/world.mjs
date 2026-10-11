@@ -187,7 +187,7 @@ export class World {
       type: 'water',
       quantity: 600,
       unit: 'L',
-      population: 300,
+      population: this.sector(b.sector).population,
       deadline: 3 * 3600000,
       priority: 10,
     });

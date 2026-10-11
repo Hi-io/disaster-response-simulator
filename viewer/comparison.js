@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { pointAlong } from './geometry.js';
 const views = [];
 let ready = false,
   active = false,
@@ -85,15 +86,64 @@ function draw(v, s) {
     );
   }
   group.add(mesh);
-  const points = [];
+  const points = [],
+    closed = [],
+    bridges = [];
   for (const e of map.edges) {
+    if (e.from > e.to) continue;
     const a = nodes.get(e.from),
       b = nodes.get(e.to);
-    points.push(a.x, 1, a.z, b.x, 1, b.z);
+    const target = !e.open ? closed : e.bridge ? bridges : points;
+    const path = e.points ?? [a, b];
+    for (let i = 0; i < path.length - 1; i++)
+      target.push(path[i].x, 1, path[i].z, path[i + 1].x, 1, path[i + 1].z);
   }
-  const lines = new THREE.BufferGeometry();
-  lines.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-  group.add(new THREE.LineSegments(lines, new THREE.LineBasicMaterial({ color: '#bdcadc' })));
+  for (const [vertices, color] of [
+    [points, '#bdcadc'],
+    [closed, '#ce7a69'],
+    [bridges, '#6a84a9'],
+  ]) {
+    const lines = new THREE.BufferGeometry();
+    lines.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    group.add(new THREE.LineSegments(lines, new THREE.LineBasicMaterial({ color })));
+  }
+  if (map.river) {
+    const vertices = [],
+      p = map.river.points,
+      d = map.river.widthM / 2;
+    for (let i = 0; i < p.length - 1; i++) {
+      const a = p[i],
+        b = p[i + 1];
+      vertices.push(
+        a.x - d,
+        0,
+        a.z,
+        a.x + d,
+        0,
+        a.z,
+        b.x + d,
+        0,
+        b.z,
+        a.x - d,
+        0,
+        a.z,
+        b.x + d,
+        0,
+        b.z,
+        b.x - d,
+        0,
+        b.z,
+      );
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    group.add(
+      new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({ color: '#b8d4e8', side: THREE.DoubleSide }),
+      ),
+    );
+  }
   for (const n of s.state.needs.filter((n) => n.served < n.quantity)) {
     const b = map.buildings.find((b) => b.id === n.building),
       ring = new THREE.Mesh(
@@ -117,8 +167,9 @@ function draw(v, s) {
       const e = map.edges.find((e) => e.id === truck.edge),
         to = nodes.get(e.to),
         t = Math.min(1, Math.max(0, (s.now - truck.edgeStart) / (truck.edgeEnd - truck.edgeStart)));
-      x += (to.x - x) * t;
-      z += (to.z - z) * t;
+      const p = pointAlong(e.points ?? [node, to], t);
+      x = p.x;
+      z = p.z;
     }
     box.position.set(x, scale * 0.02, z);
     group.add(box);

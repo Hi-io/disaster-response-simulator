@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { World } from '../engine/world.mjs';
 import { route } from '../generators/map.mjs';
 import { replay } from '../evaluation/runs.mjs';
+import { pointAlong } from '../viewer/geometry.js';
 
 const quiet = {
   hazard: 'none',
@@ -12,13 +13,14 @@ const quiet = {
   packetLoss: 0,
 };
 const small = { ...quiet, topology: 'grid', grid: 5, extentKm: 1, populationPerSector: 100 };
+let actionKey = 0;
 const act = (w, type, params, org = 'org0') =>
   w.act(
     { id: 'owner-' + org, org, role: 'commander' },
     {
       type,
       params,
-      idempotencyKey: `${type}-${(w.state.counters.test = (w.state.counters.test ?? 0) + 1)}`,
+      idempotencyKey: `${type}-${++actionKey}`,
     },
   );
 
@@ -187,5 +189,80 @@ test('health, geography, interventions and checkpoint continuation reproduce exa
   assert.equal(w.stateHash(), restored.stateHash());
   const result = replay(w.checkpoint());
   assert.equal(result.matches, true);
+  assert.deepEqual(w.invariants(), []);
+});
+
+test('a crew repairs both directions of a scarce crossing after physical work', () => {
+  const w = new World({ ...quiet, grid: 12, extentKm: 100, setupMs: 1000 });
+  const crossing = w.state.map.crossings[1];
+  w.inject('road_change', { edge: crossing.edges[0], open: false, reason: 'bridge_damage' });
+  const v = w.vehicle('v-org0-0');
+  v.node = crossing.from;
+  const t = act(w, 'repair', { edge: crossing.edges[0], engineering: true });
+  assert.ok(crossing.edges.every((id) => !w.edge(id).open));
+  w.advance(10000);
+  assert.equal(w.state.repairs.find((r) => r.id === t.id).state, 'completed');
+  assert.ok(crossing.edges.every((id) => w.edge(id).open));
+  assert.deepEqual(w.invariants(), []);
+});
+
+test('the engine and both observers use the curved road instead of cutting across terrain', () => {
+  const w = new World({ ...quiet, grid: 12, extentKm: 100 });
+  const e = w.state.map.edges.find((e) => !e.bridge && e.points?.length === 3);
+  const v = w.vehicle('v-org0-0');
+  Object.assign(v, { node: e.from, edge: e.id, edgeStart: 0, edgeEnd: 1000 });
+  w.now = 500;
+  const point = w.vehiclePosition(v);
+  assert.deepEqual(point, pointAlong(e.points, 0.5));
+  const a = w.node(e.from),
+    b = w.node(e.to);
+  assert.ok(Math.hypot(point.x - (a.x + b.x) / 2, point.z - (a.z + b.z) / 2) > 1);
+});
+
+test('a fulfilled water request can recur as supplies are consumed, without becoming instant actor knowledge', () => {
+  const w = new World({
+    ...small,
+    initialWaterHours: 0,
+    waterMlPerPersonDay: 30000,
+    waterFatalityBpPerHour: 0,
+    injuryFatalityBpPerHour: 0,
+  });
+  const n = w.need('need-water-main');
+  for (const org of ['org0', 'org2'])
+    act(
+      w,
+      'dispatch',
+      {
+        resource: `r-${org}-water`,
+        vehicle: `v-${org}-0`,
+        need: n.id,
+        quantity: 300,
+      },
+      org,
+    );
+  w.advance(1800000);
+  assert.equal(n.served, n.quantity);
+  w.advance(6 * 3600000);
+  const recurring = w.state.needs.find((need) => need.recurring && need.type === 'water');
+  assert.ok(recurring);
+  assert.ok(recurring.quantity > 0);
+  assert.equal(w.actorView('org0').known.needs[recurring.id], undefined);
+  assert.equal(replay(w.checkpoint()).matches, true);
+  assert.deepEqual(w.invariants(), []);
+});
+
+test('a community with no survivors remains represented in received population observations', () => {
+  const w = new World({
+    ...small,
+    initialWaterHours: 0,
+    waterCriticalHours: 0,
+    waterFatalityBpPerHour: 10000,
+  });
+  w.advance(48 * 3600000);
+  const sector = w.building(w.need('need-water-main').building).sector;
+  const records = w.populationSnapshot(sector).communities;
+  assert.equal(records.length, 1);
+  assert.equal(records[0].alive, 0);
+  assert.equal(records[0].deceased, 100);
   assert.deepEqual(w.invariants(), []);
 });

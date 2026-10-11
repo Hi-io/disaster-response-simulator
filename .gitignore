@@ -40,3 +40,15 @@ codex*.md
 *.code-workspace
 .vscode/
 .idea/
+.github/copilot-instructions.md
+**/.github/copilot-instructions.md
+.windsurf/
+**/.windsurf/
+.cursorrules
+.windsurfrules
+**/.cursorrules
+**/.windsurfrules
+**/codex*.json
+**/codex*.toml
+**/codex*.md
+**/AGENTS.override.md

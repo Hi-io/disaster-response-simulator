@@ -65,7 +65,7 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
             : type === 'shelter'
               ? 'place'
               : 'unit',
-      population: 100,
+      population: w.sector(b.sector).population,
       deadline: 3600000,
       priority: 3 + (index % 8),
       silent,

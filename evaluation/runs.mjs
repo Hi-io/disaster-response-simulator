@@ -179,7 +179,15 @@ export function pairedComparison(rowsA, rowsB) {
     ]),
   );
   const population = Object.fromEntries(
-    ['deceased', 'alive', 'waterDeficitPersonHours', 'foodDeficitPersonHours'].map((name) => [
+    [
+      'deceased',
+      'alive',
+      'injured',
+      'waterDeficitPersonHours',
+      'foodDeficitPersonHours',
+      'exposurePersonHours',
+      'untreatedInjuryPersonHours',
+    ].map((name) => [
       name,
       summarize(
         pairs.map(

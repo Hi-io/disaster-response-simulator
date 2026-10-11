@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { renderComparison, stopComparison } from './comparison.js';
+import { pointAlong as roadPoint } from './geometry.js';
 
 const $ = (id) => document.getElementById(id);
 const escape = (s) =>
@@ -12,20 +13,6 @@ const clock = (ms) =>
   [Math.floor(ms / 3600000), Math.floor(ms / 60000) % 60, Math.floor(ms / 1000) % 60]
     .map((v) => String(v).padStart(2, '0'))
     .join(':');
-const roadPoint = (points, t) => {
-  const lengths = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.z - points[i].z)),
-    total = lengths.reduce((a, b) => a + b, 0);
-  let distance = total * t;
-  for (let i = 0; i < lengths.length; i++)
-    if (distance <= lengths[i] || i === lengths.length - 1) {
-      const f = lengths[i] ? distance / lengths[i] : 0;
-      return {
-        x: points[i].x + (points[i + 1].x - points[i].x) * f,
-        z: points[i].z + (points[i + 1].z - points[i].z) * f,
-      };
-    } else distance -= lengths[i];
-  return points[0];
-};
 const timelineCache = new Map();
 const number = (n) => new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(n ?? 0);
 let snapshot,

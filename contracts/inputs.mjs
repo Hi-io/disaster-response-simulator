@@ -31,7 +31,7 @@ export const INPUT_TYPES = Object.fromEntries(
 );
 export const UNITS = {
   water: 'L',
-  food: 'unit',
+  food: 'portion',
   blankets: 'unit',
   energy: 'unit',
   staff: 'person',

@@ -71,13 +71,13 @@ export function installModels(w) {
       w.config.clockLatency === 'wall'
         ? w.now
         : Math.max(w.now, r.requestedAt + w.config.modelLatencyMs);
-    r.wallMs = p.wallMs;
+    r.wallMs = p.wallMs ?? 0;
     r.promptTokens = p.promptTokens ?? 0;
     r.outputTokens = p.outputTokens ?? 0;
     r.failed = !!p.failed;
     r.state = 'scheduled';
     w.state.modelCalls++;
-    w.state.modelWallMs += p.wallMs;
+    w.state.modelWallMs += r.wallMs;
     w.schedule(r.availableAt, 'model_result', { id: r.id }, 2, r.id);
     return clone(r);
   };

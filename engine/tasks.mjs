@@ -317,9 +317,14 @@ export function installTasks(w) {
       t.failure = 'hazard_still_active';
     } else {
       t.state = 'completed';
-      e.open = true;
-      e.version++;
-      w.reportRoad(e, t.org);
+      const repaired = e.crossing
+        ? w.state.map.edges.filter((other) => other.crossing === e.crossing)
+        : [e];
+      for (const other of repaired) {
+        other.open = true;
+        other.version++;
+        w.reportRoad(other, t.org);
+      }
       w.record('repair_completed', { edge: e.id }, id);
     }
     w.releaseStaff(t.staff);

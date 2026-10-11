@@ -128,6 +128,26 @@ try {
       ),
     ].join('\n');
     await writeFile(path.join(output, 'communities.csv'), csv);
+    const health = evaluate(w).population;
+    const populationCsv = [
+      'cohort,sector,alive,in_transit,deceased,injured,water_deficit_person_hours,food_deficit_person_hours,exposure_person_hours,untreated_injury_person_hours',
+      ...health.communities.map((c) =>
+        [
+          c.id,
+          c.sector,
+          c.population,
+          c.inTransit,
+          c.deceased,
+          c.injured,
+          c.waterDeficitPersonHours,
+          c.foodDeficitPersonHours,
+          c.exposurePersonHours,
+          c.untreatedInjuryPersonHours,
+        ].join(','),
+      ),
+    ].join('\n');
+    await writeFile(path.join(output, 'population.csv'), populationCsv);
+    w.close();
     out({ directory: output, runId: w.runId, rows: w.state.needs.length });
   } else throw new Error(`Unknown command: ${command}`);
 } catch (error) {
