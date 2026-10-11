@@ -1,6 +1,7 @@
 node_modules/
 runs/
 private/
+.local/
 qa/
 coverage/
 test-results/

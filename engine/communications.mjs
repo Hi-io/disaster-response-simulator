@@ -23,8 +23,8 @@ export function installCommunications(w){
     m.state='delivered';m.times.delivered=w.now;w.record('message_delivered',{kind:m.payload.kind,to:m.to,target:m.target},id);
     const p=m.payload;
     if(p.kind==='post')w.publishPost(p.post);
-    else if(p.kind==='telemetry'){const v=w.vehicle(p.vehicle);if(v){v.lastGPS={node:p.node,at:p.observedAt};w.state.observations[m.to].vehicles[v.id]=w.vehicleView(v);}}
-    else if(p.kind==='road'){const e=w.edge(p.edge);if(e)w.state.observations[m.to].edges[e.id]={open:p.open,waterDepth:p.waterDepth,version:p.version,at:p.observedAt};}
+    else if(p.kind==='telemetry'){const v=w.vehicle(p.vehicle);if(v&&p.observedAt>=v.lastGPS.at){v.lastGPS={node:p.node,at:p.observedAt};w.state.observations[m.to].vehicles[v.id]=w.vehicleView(v);}}
+    else if(p.kind==='road'){const e=w.edge(p.edge),old=w.state.observations[m.to]?.edges[p.edge];if(e&&(!old||p.version>old.version||p.version===old.version&&p.observedAt>=old.at))w.state.observations[m.to].edges[e.id]={open:p.open,waterDepth:p.waterDepth,version:p.version,at:p.observedAt};}
     else if(p.kind==='command'){const op=w.state.operations.find(o=>o.id===p.operation);if(op&&!['failed','cancelled'].includes(op.state)){op.times.orderReceived=w.now;w.schedule(w.now+w.config.loadMs,'load',{operation:op.id},4,`load-${op.id}`);}}
     else if(p.kind==='reroute'){const v=w.vehicle(p.vehicle);if(v){v.pendingDestination=p.destination;v.order={type:'reroute',receivedAt:w.now};if(!v.edge){v.state='en_route';w.schedule(w.now,'vehicle_enter',{vehicle:v.id},3,`reroute-enter-${v.id}-${w.now}`);}w.record('reroute_received',{destination:p.destination},v.id);}}
     else if(p.kind==='cancel'){const v=w.vehicle(p.vehicle);if(v){v.pendingCancel=true;if(!v.edge){v.state='cancelled';delete v.pendingCancel;}w.record('cancel_received',{},v.id);}}
