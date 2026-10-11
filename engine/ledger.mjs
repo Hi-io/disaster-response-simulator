@@ -55,7 +55,13 @@ export function createResource(id, owner, node, type, quantity, floor = 0, extra
     consumed: 0,
     lost: 0,
     transferred: 0,
-    unit: type === 'water' ? 'L' : 'unit',
+    unit: ['water', 'fuel', 'raw_water'].includes(type)
+      ? 'L'
+      : type === 'staff'
+        ? 'person'
+        : type === 'food'
+          ? 'portion'
+          : 'unit',
     version: 1,
     public: true,
     ...extra,

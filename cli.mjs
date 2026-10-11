@@ -4,6 +4,7 @@ import { evaluate } from './evaluation/metrics.mjs';
 import { runWorld, saveRun, readJSON, replay, pairedComparison } from './evaluation/runs.mjs';
 import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { batch } from './evaluation/batch.mjs';
 const [command = 'help', ...args] = process.argv.slice(2),
   opts = {};
 for (let i = 0; i < args.length; i++) {
@@ -49,25 +50,42 @@ try {
       rows = [],
       seeds = String(opts.seeds ?? '1,2,3').split(','),
       policies = String(opts.policies ?? 'conventional,rules,investigation,federated').split(',');
-    for (const seed of seeds)
-      for (const policy of policies) {
-        const result = runWorld({ ...config, seed, policy, mode: 'headless' });
-        const directory = path.join(output, `${seed.replace(/[^a-zA-Z0-9_-]/g, '_')}-${policy}`);
-        await saveRun(result, directory);
-        const row = {
-          seed,
-          scenario: config.scenario,
-          variant: config.variant,
-          policy,
-          hash: result.hash,
-          wallMs: result.wallMs,
-          metrics: result.metrics,
-        };
-        rows.push(row);
-        console.error(
-          `${rows.length}/${seeds.length * policies.length} ${seed} ${policy}: ${result.world.eventCount} events`,
-        );
-      }
+    const controller = new AbortController();
+    process.once('SIGINT', () => controller.abort());
+    const results = await batch(
+      seeds.flatMap((seed) =>
+        policies.map((policy) => ({ ...config, seed, policy, mode: 'headless' })),
+      ),
+      {
+        directory: output,
+        workers: Number(opts.workers ?? 2),
+        memoryMb: Number(opts.memoryMb ?? 512),
+        maxWallMs: Number(opts.maxWallMs ?? 600000),
+        resume: !!opts.resume,
+        signal: controller.signal,
+        onProgress: (p) => {
+          if (p.type === 'episode')
+            console.error(
+              `${p.index + 1}/${p.total}: ${p.result.config.seed} ${p.result.config.policy}`,
+            );
+        },
+      },
+    );
+    for (const result of results) {
+      const { seed, policy } = result.config;
+      const row = {
+        seed,
+        scenario: config.scenario,
+        variant: config.variant,
+        policy,
+        hash: result.hash,
+        wallMs: result.wallMs,
+        metrics: result.metrics,
+        config: result.config,
+        cancelled: result.cancelled ?? false,
+      };
+      rows.push(row);
+    }
     await writeFile(path.join(output, 'batch.json'), JSON.stringify(rows, null, 2));
     out({ file: path.join(output, 'batch.json'), episodes: rows.length });
   } else if (command === 'replay') {

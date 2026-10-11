@@ -279,7 +279,7 @@ export function installCooperation(w) {
     previousUnload(p);
     if (op.transfer && op.state === 'completed') {
       const t = w.state.transfers.find((t) => t.id === op.transfer),
-        r = w.resource(`stock-${op.destination}-${op.resourceType}`);
+        r = w.resource(op.destinationStock);
       r.owner = t.to;
       r.loanOf = t.loan ? t.id : null;
       w.observeResource(t.to, r);

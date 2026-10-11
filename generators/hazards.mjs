@@ -1,7 +1,9 @@
 export function installHazards(w) {
   w.on('hazard_start', () => {
     if (w.config.hazard === 'none') return;
-    const candidates = w.state.map.buildings.filter((b) => b.use === 'residential');
+    const candidates = ['earthquake', 'compound'].includes(w.config.hazard)
+      ? w.state.map.buildings.filter((b) => b.use === 'residential')
+      : [];
     for (const b of candidates)
       if (w.random('hazard', b.id, 'initial') < 0.13) {
         w.schedule(
@@ -28,6 +30,17 @@ export function installHazards(w) {
       w.schedule(w.now + 60000, 'flood_level', { generation: 0, depth: 0.45 }, 0, 'flood-0');
     if (w.config.hazard === 'earthquake')
       w.schedule(w.now + 2700000, 'aftershock', {}, 0, 'aftershock');
+    w.schedule(
+      w.now + 600000,
+      'lab_intervention',
+      {
+        kind: 'bulletin',
+        text: `Regional response bulletin: ${w.config.hazard} reported. Access and building safety require current local assessment.`,
+        observedAt: w.now,
+      },
+      2,
+      'official-disaster-bulletin',
+    );
   });
   w.on('damage', ({ building: id, severity, cause }) => {
     const b = w.building(id);
@@ -50,7 +63,7 @@ export function installHazards(w) {
         population: sector.population,
         deadline: w.now + 4 * 3600000,
         priority: severity + 3,
-        silent: w.random('population', id, 'silent') > 0.8,
+        silent: w.random('population', id, 'silent') > w.config.observationRate,
       });
     const refugeNeed = `need-${id}-shelter`;
     if (!w.need(refugeNeed))
@@ -70,7 +83,10 @@ export function installHazards(w) {
       sector: sector.id,
       quantity: sector.population,
       type: 'video',
-      text: `A building has fallen near ${id}. Families are outside.`,
+      text:
+        severity >= 3
+          ? `A building has fallen near ${id}. Families are outside.`
+          : `Visible damage near ${id}. Families are outside; safety needs assessment.`,
       causeEvent: `damage-${id}-${w.now}`,
     });
     w.schedule(w.now + 120000, 'initial_report', { need: needId }, 1, `need-report-${id}-${w.now}`);

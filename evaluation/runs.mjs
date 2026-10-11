@@ -1,9 +1,12 @@
 import { World } from '../engine/world.mjs';
 import { evaluate } from './metrics.mjs';
 import { clone, digest, keyedRandom } from '../engine/determinism.mjs';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, copyFile } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync, createGzip } from 'node:zlib';
 
 export function runWorld(config = {}, inputs = [], checkpoint = null) {
   const start = performance.now(),
@@ -38,14 +41,9 @@ export function replay(checkpoint) {
     } catch {}
   }
   while (!w.advance(checkpoint.now, { maxEvents: 100000 }).reached) {}
-  const expected = digest({
-    manifest: checkpoint.manifest,
-    now: checkpoint.now,
-    state: checkpoint.state,
-    queue: checkpoint.queue,
-    log: checkpoint.log,
-    inputs: checkpoint.inputs ?? [],
-  });
+  const original = new World(checkpoint.manifest.config, checkpoint);
+  const expected = original.stateHash();
+  original.close();
   return { world: w, expected, actual: w.stateHash(), matches: w.stateHash() === expected };
 }
 export async function saveRun(result, directory) {
@@ -63,13 +61,29 @@ export async function saveRun(result, directory) {
   };
   for (const [name, data] of Object.entries(artifacts))
     await writeFile(path.join(directory, `${name}.json`), JSON.stringify(data, null, 2));
+  const cp = w.checkpoint();
+  for (const [name, record] of [
+    ['posts', cp.state.posts],
+    ['messages', cp.state.messages],
+    ['events', cp.log],
+  ])
+    if (record.archive) {
+      const file = `${name}.sqlite`;
+      await copyFile(record.file, path.join(directory, file));
+      record.file = file;
+    }
   await writeFile(
     path.join(directory, 'checkpoint.json.gz'),
-    gzipSync(JSON.stringify(w.checkpoint()), { level: 3 }),
+    gzipSync(JSON.stringify(cp), { level: 3 }),
   );
-  await writeFile(
-    path.join(directory, 'events.ndjson.gz'),
-    gzipSync(w.log.map((e) => JSON.stringify(e)).join('\n') + '\n', { level: 3 }),
+  await pipeline(
+    Readable.from(
+      (function* () {
+        for (const event of w.log) yield JSON.stringify(event) + '\n';
+      })(),
+    ),
+    createGzip({ level: 3 }),
+    createWriteStream(path.join(directory, 'events.ndjson.gz')),
   );
   return {
     directory,
@@ -82,7 +96,11 @@ export async function saveRun(result, directory) {
 }
 export async function readJSON(file) {
   const bytes = await readFile(file);
-  return JSON.parse(file.endsWith('.gz') ? gunzipSync(bytes).toString() : bytes.toString());
+  const result = JSON.parse(file.endsWith('.gz') ? gunzipSync(bytes).toString() : bytes.toString());
+  for (const record of [result.state?.posts, result.state?.messages, result.log])
+    if (record?.archive && !path.isAbsolute(record.file))
+      record.file = path.resolve(path.dirname(file), record.file);
+  return result;
 }
 export function pairedComparison(rowsA, rowsB) {
   const key = (r) => JSON.stringify([r.seed, r.scenario, r.variant]);

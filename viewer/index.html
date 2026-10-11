@@ -65,6 +65,7 @@
         ><label class="fileButton"
           >Restore<input id="restore" type="file" accept=".json" hidden /></label
         ><button id="metricsExport">Export results</button>
+        <button id="openComparison">Compare A / B</button>
       </section>
       <div class="workspace">
         <aside>
@@ -78,6 +79,22 @@
                 >Extent · km<input id="extentKm" type="number" min="1" max="200" value="8"
               /></label>
             </div>
+            <label
+              >Topology<select id="topology">
+                <option value="grid">Verifiable grid</option>
+                <option value="regional">Regional districts</option>
+              </select></label
+            >
+            <details>
+              <summary>Advanced configuration</summary>
+              <label
+                >Override parameters · JSON<textarea id="advancedConfig" rows="5">{}</textarea>
+              </label>
+              <p class="muted">
+                All validated parameters are available here: duration, organizations, network,
+                staff, source quotas, storage and subsystem seeds.
+              </p>
+            </details>
             <label
               >Disaster<select id="hazard">
                 <option value="earthquake">Earthquake</option>
@@ -139,11 +156,24 @@
             ><label><input type="checkbox" data-layer="hazards" checked /> Hazard exposure</label
             ><label><input type="checkbox" data-layer="network" /> Communication coverage</label
             ><label><input type="checkbox" data-layer="routes" checked /> Active trips</label>
+            <label><input type="checkbox" data-layer="people" /> Community cohorts</label>
+            <label
+              ><input type="checkbox" data-layer="organizations" checked /> Organizations &
+              exchange</label
+            >
           </div>
           <button id="home">Fit region</button
           ><label
             >Find entity<input id="find" placeholder="building, vehicle or operation ID"
           /></label>
+          <form id="advanceForm">
+            <label
+              >Advance to · HH:MM:SS<input
+                id="advanceTime"
+                value="01:00:00"
+                pattern="[0-9]+:[0-9]{2}:[0-9]{2}" /></label
+            ><button>Advance world</button>
+          </form>
           <hr />
           <button id="toggleCommand">Actions & interventions</button>
         </aside>
@@ -157,6 +187,7 @@
           </div>
           <div id="canvas"></div>
           <div id="labels"></div>
+          <span id="renderStats" class="renderStats"></span>
           <div class="mapLegend">
             <span><i class="coral"></i> Unmet need / damage</span
             ><span><i class="mint"></i> Service operating</span
@@ -178,6 +209,8 @@
             Choose a building or vehicle. Its state, dependencies and timeline appear here.
           </p>
           <button id="follow" hidden>Follow vehicle</button>
+          <button id="nextEntity" hidden>Next event for this entity</button>
+          <button id="fullTimeline" hidden>Load complete history</button>
           <div id="selection"></div>
         </section>
       </div>
@@ -233,6 +266,9 @@
               <option value="scenario_signal">Synthetic report</option>
               <option value="fire_front">Fire exposure</option>
               <option value="flood_level">Flood level</option>
+              <option value="lab_intervention">
+                Team note / bulletin / donor / source / receiver
+              </option>
             </select></label
           ><label
             >Intervention parameters<textarea id="injectParams" rows="4">
@@ -240,6 +276,52 @@
           ><button>Inject and record</button>
         </form>
         <pre id="actionResult" role="status"></pre>
+      </dialog>
+      <dialog id="comparisonDialog" class="comparisonDialog">
+        <button id="closeComparison" class="close" aria-label="Close comparison">×</button
+        ><span class="eyebrow">SAME WORLD · SAME RESOURCES · SAME SIMULATED CLOCK</span>
+        <h2>Compare consequences, not animations.</h2>
+        <form id="comparisonForm" class="comparisonForm">
+          <label
+            >Policy A<select id="policyA">
+              <option>conventional</option>
+              <option>rules</option>
+              <option>extraction</option>
+              <option>general</option>
+              <option>investigation</option>
+              <option>federated</option>
+            </select></label
+          ><label
+            >Policy B<select id="policyB">
+              <option>federated</option>
+              <option>investigation</option>
+              <option>general</option>
+              <option>extraction</option>
+              <option>rules</option>
+              <option>conventional</option>
+            </select></label
+          ><button>Start paired experiment</button
+          ><button type="button" id="comparePlay">Play / pause</button>
+        </form>
+        <p class="muted">
+          These are scripted reference controllers. Gemini results require connecting the real
+          adapter. Pan or zoom either map; cameras stay synchronized.
+        </p>
+        <div class="comparisonGrid">
+          <section>
+            <h3 id="compareATitle">A</h3>
+            <div id="compareA" class="comparisonCanvas"></div>
+            <p id="compareAMetrics"></p>
+          </section>
+          <section>
+            <h3 id="compareBTitle">B</h3>
+            <div id="compareB" class="comparisonCanvas"></div>
+            <p id="compareBMetrics"></p>
+          </section>
+        </div>
+        <p id="comparisonStatus" class="muted">
+          Generate a pair to inspect the same need in two independent worlds.
+        </p>
       </dialog>
       <div id="toast" role="status"></div>
     </main>

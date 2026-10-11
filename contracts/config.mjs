@@ -38,8 +38,17 @@ export const DEFAULT_CONFIG = {
   logMode: 'full',
   maxEvents: 2_000_000,
   maxPosts: 1_000_000,
+  topology: 'grid',
+  authorshipMs: 1000,
+  staffShiftMs: 28800000,
+  staffRestMs: 3600000,
+  vehicleFuelMl: 80000,
+  fuelMlPerKm: 180,
+  sourceRequestLimit: 1200,
+  subsystemSeeds: {},
 };
 const enums = {
+  topology: ['grid', 'regional'],
   hazard: ['earthquake', 'wildfire', 'flood', 'compound', 'none'],
   variant: ['standard', 'adverse', 'infeasible'],
   policy: ['none', 'conventional', 'rules', 'extraction', 'general', 'investigation', 'federated'],
@@ -50,6 +59,12 @@ const enums = {
   logMode: ['full', 'compact'],
 };
 const ranges = {
+  authorshipMs: [0, 3600000],
+  staffShiftMs: [1000, 604800000],
+  staffRestMs: [0, 86400000],
+  vehicleFuelMl: [0, 1000000],
+  fuelMlPerKm: [1, 5000],
+  sourceRequestLimit: [1, 1000000],
   grid: [3, 100],
   extentKm: [1, 200],
   organizations: [1, 12],
@@ -87,6 +102,16 @@ export function validateConfig(input = {}) {
   if (!['string', 'number'].includes(typeof c.seed) || String(c.seed).length > 128)
     throw new Error('Invalid seed');
   c.seed = String(c.seed);
+  if (!c.subsystemSeeds || typeof c.subsystemSeeds !== 'object' || Array.isArray(c.subsystemSeeds))
+    throw new Error('Subsystem seeds must be an object');
+  for (const [stream, seed] of Object.entries(c.subsystemSeeds)) {
+    if (
+      !/^[a-z_]{1,40}$/.test(stream) ||
+      !['string', 'number'].includes(typeof seed) ||
+      String(seed).length > 128
+    )
+      throw new Error('Invalid subsystem seed');
+  }
   if (!/^S(0[1-9]|1[0-9]|2[0-4])$/.test(c.scenario)) throw new Error('Unknown scenario');
   for (const [k, allowed] of Object.entries(enums))
     if (!allowed.includes(c[k])) throw new Error(`Invalid ${k}`);
@@ -129,7 +154,7 @@ export const CONFIG_SCHEMA = {
               minimum: ranges[key][0],
               maximum: ranges[key][1],
             }
-          : { type: typeof value },
+          : { type: key === 'subsystemSeeds' ? 'object' : typeof value },
     ]),
   ),
 };

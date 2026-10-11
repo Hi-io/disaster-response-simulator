@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { renderComparison, stopComparison } from './comparison.js';
 
 const $ = (id) => document.getElementById(id);
 const escape = (s) =>
@@ -21,7 +22,17 @@ let rayTargets = [],
   pickMap = new Map(),
   vehicleMeshes = new Map(),
   busy = false;
-const layers = { needs: true, roads: true, hazards: true, network: false, routes: true };
+const layers = {
+  needs: true,
+  roads: true,
+  hazards: true,
+  network: false,
+  routes: true,
+  people: false,
+  organizations: true,
+};
+const orgColors = ['#617ad0', '#9276be', '#639aaa', '#bf9469', '#7b9d82'];
+let snapshotReceivedAt = performance.now();
 let renderer,
   scene,
   camera,
@@ -163,6 +174,8 @@ function initialize3D() {
     frames++;
     if (now - lastFrame > 1500) {
       renderer.domElement.dataset.fps = `${Math.round((frames * 1000) / (now - lastFrame))}`;
+      $('renderStats').textContent =
+        `${renderer.domElement.dataset.fps} FPS · ${renderer.info.render.calls} draw calls`;
       frames = 0;
       lastFrame = now;
     }
@@ -178,6 +191,16 @@ function initialize3D() {
     }
     const zoomedOut = camera.zoom < 0.55;
     if (layerGroups.buildings) layerGroups.buildings.visible = !zoomedOut;
+    if (layerGroups.sectors) layerGroups.sectors.visible = zoomedOut;
+    for (const label of $('labels').children) {
+      const n = position(label.dataset.node);
+      if (!n) continue;
+      const projected = new THREE.Vector3(n.x, extent * 0.02, n.z).project(camera);
+      label.style.left = `${(projected.x + 1) * 50}%`;
+      label.style.top = `${(-projected.y + 1) * 50}%`;
+      label.hidden =
+        Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1 || !layers.organizations;
+    }
     controls.update();
     renderer.render(scene, camera);
   };
@@ -226,7 +249,10 @@ function buildScene() {
     hazards = subgroup('hazards'),
     needs = subgroup('needs'),
     network = subgroup('network'),
-    routes = subgroup('routes');
+    routes = subgroup('routes'),
+    people = subgroup('people'),
+    organizations = subgroup('organizations'),
+    sectors = subgroup('sectors');
   const vertices = [],
     damaged = [];
   for (const edge of map.edges) {
@@ -276,7 +302,11 @@ function buildScene() {
     matrix.compose(
       new THREE.Vector3(b.x, h / 2, b.z),
       quaternion,
-      new THREE.Vector3(b.width, h, b.width),
+      new THREE.Vector3(
+        obs && !visible ? 0 : b.width,
+        obs && !visible ? 0 : h,
+        obs && !visible ? 0 : b.width,
+      ),
     );
     boxes.setMatrixAt(i, matrix);
     boxes.setColorAt(i, new THREE.Color(color));
@@ -286,8 +316,8 @@ function buildScene() {
   if (boxes.instanceColor) boxes.instanceColor.needsUpdate = true;
   buildings.add(boxes);
   rayTargets.push(boxes);
-  for (const n of snapshot.state.needs) {
-    if (n.served >= n.quantity || (obs && !obs.needs[n.id])) continue;
+  for (const n of obs ? Object.values(obs.needs) : snapshot.state.needs) {
+    if (n.served >= n.quantity) continue;
     const b = map.buildings.find((b) => b.id === n.building);
     if (!b) continue;
     const ring = new THREE.Mesh(
@@ -305,6 +335,76 @@ function buildScene() {
     needs.add(ring);
     rayTargets.push(ring);
   }
+  const positions = [];
+  for (const b of map.buildings) if (!obs || obs.buildings[b.id]) positions.push(b.x, 3, b.z);
+  const pointsGeometry = new THREE.BufferGeometry();
+  pointsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  sectors.add(
+    new THREE.Points(
+      pointsGeometry,
+      new THREE.PointsMaterial({ color: '#7f91b9', size: 5, sizeAttenuation: false }),
+    ),
+  );
+  sectors.visible = false;
+  $('labels').innerHTML = map.organizations
+    .map(
+      (o, i) =>
+        `<button class="mapLabel" data-node="${o.node}" data-org="${o.id}" style="border-left-color:${orgColors[i % orgColors.length]}">${escape(o.name)}${o.usesPlatform ? '' : ' · external partner'}</button>`,
+    )
+    .join('');
+  for (const [i, o] of map.organizations.entries()) {
+    const n = position(o.node),
+      marker = new THREE.Mesh(
+        new THREE.CylinderGeometry(scale * 0.055, scale * 0.055, scale * 0.08, 6),
+        new THREE.MeshStandardMaterial({ color: orgColors[i % orgColors.length] }),
+      );
+    marker.position.set(n.x, scale * 0.04, n.z);
+    marker.userData.entity = { kind: 'organization', id: o.id };
+    organizations.add(marker);
+    rayTargets.push(marker);
+  }
+  const exchanges = [];
+  for (const event of snapshot.state.sharingEvents ?? []) {
+    if (obs && event.to !== $('perspective').value && event.from !== $('perspective').value)
+      continue;
+    const a = position(map.organizations.find((o) => o.id === event.from)?.node),
+      b = position(map.organizations.find((o) => o.id === event.to)?.node);
+    if (a && b) exchanges.push(a.x, scale * 0.04, a.z, b.x, scale * 0.04, b.z);
+  }
+  if (exchanges.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(exchanges, 3));
+    const lines = new THREE.LineSegments(
+      geo,
+      new THREE.LineDashedMaterial({
+        color: '#a08bd0',
+        dashSize: scale * 0.1,
+        gapSize: scale * 0.07,
+        transparent: true,
+        opacity: 0.35,
+      }),
+    );
+    lines.computeLineDistances();
+    organizations.add(lines);
+  }
+  const cohorts = (obs ? [] : snapshot.state.cohorts.filter((c) => c.population > 0)).slice(0, 500);
+  const bodies = new THREE.InstancedMesh(
+    new THREE.SphereGeometry(1, 6, 4),
+    new THREE.MeshStandardMaterial({ color: '#a3b0c7' }),
+    cohorts.length * 3,
+  );
+  cohorts.forEach((c, i) => {
+    const n = position(c.node);
+    for (let j = 0; j < 3; j++) {
+      matrix.compose(
+        new THREE.Vector3(n.x + scale * (0.14 + j * 0.025), scale * 0.017, n.z - scale * 0.1),
+        quaternion,
+        new THREE.Vector3(scale * 0.01, scale * 0.017, scale * 0.01),
+      );
+      bodies.setMatrixAt(i * 3 + j, matrix);
+    }
+  });
+  people.add(bodies);
   for (const s of map.sectors) {
     if (!obs && s.coverage === 0) {
       const dot = new THREE.Mesh(
@@ -347,7 +447,7 @@ function buildScene() {
     vehicleGroup.add(mesh);
     rayTargets.push(mesh);
     vehicleMeshes.set(v.id, mesh);
-    if (layers.routes && v.route?.length && !v.background && (!obs || v.owner === perspective)) {
+    if (layers.routes && v.route?.length && !v.background && !obs) {
       const ps = [];
       for (const eid of v.route) {
         const e = map.edges.find((e) => e.id === eid),
@@ -375,7 +475,18 @@ function updateVehicles() {
     if (truth && v.edge) {
       const edge = snapshot.state.map.edges.find((e) => e.id === v.edge),
         to = position(edge.to),
-        t = Math.max(0, Math.min(1, (snapshot.now - v.edgeStart) / (v.edgeEnd - v.edgeStart)));
+        t = Math.max(
+          0,
+          Math.min(
+            1,
+            (snapshot.now +
+              (snapshot.playing
+                ? (performance.now() - snapshotReceivedAt) * snapshot.effectiveRate
+                : 0) -
+              v.edgeStart) /
+              (v.edgeEnd - v.edgeStart),
+          ),
+        );
       x += (to.x - n.x) * t;
       z += (to.z - n.z) * t;
       mesh.rotation.y = Math.atan2(to.x - n.x, to.z - n.z);
@@ -401,15 +512,25 @@ function inspect() {
   if (selected.kind === 'need')
     e = obs ? obs.needs[selected.id] : s.needs.find((x) => x.id === selected.id);
   if (selected.kind === 'operation')
-    e = s.operations.find(
-      (x) => x.id === selected.id && (!obs || x.org === $('perspective').value),
-    );
-  if (selected.kind === 'post') e = s.posts.find((x) => x.public.id === selected.id)?.public;
+    e = obs ? obs.operations[selected.id] : s.operations.find((x) => x.id === selected.id);
+  if (selected.kind === 'organization') e = s.map.organizations.find((x) => x.id === selected.id);
+  if (selected.kind === 'post') {
+    const p = s.posts.find((x) => x.public.id === selected.id);
+    e =
+      p &&
+      (!obs ||
+        p.private.audience === 'public' ||
+        p.private.audience.includes($('perspective').value))
+        ? p.public
+        : null;
+  }
   $('selectionTitle').textContent = selected.id;
   $('selectionHint').textContent = e
     ? `${selected.kind} · ${obs ? 'Known observation' : 'Ground truth'}`
     : 'No observation available to this organization.';
   $('follow').hidden = selected.kind !== 'vehicle';
+  $('nextEntity').hidden = false;
+  $('fullTimeline').hidden = !!obs;
   $('follow').textContent = following ? 'Stop following' : 'Follow vehicle';
   if (!e) {
     $('selection').innerHTML = '';
@@ -432,6 +553,12 @@ function inspect() {
           'damage',
           'load',
           'fuel',
+          'fuelUnit',
+          'passengers',
+          'eta',
+          'name',
+          'sharing',
+          'usesPlatform',
           'node',
           'at',
           'version',
@@ -451,6 +578,26 @@ function inspect() {
             `<div class="dependency">${escape(k)} · ${number(e.provisioned?.[k] ?? 0)} / ${number(v)}</div>`,
         )
         .join('');
+  if (e.times)
+    html +=
+      '<h2>Operation milestones</h2>' +
+      Object.entries(e.times)
+        .map(([stage, at]) => property(stage, clock(at)))
+        .join('');
+  if (selected.kind === 'vehicle' && !obs && e.operation) {
+    const op = s.operations.find((o) => o.id === e.operation);
+    if (op)
+      html += `<button class="inspectOperation" data-operation="${op.id}">Inspect ${escape(op.id)} →</button>`;
+  }
+  if (selected.kind === 'post' && !obs) {
+    const p = s.posts.find((x) => x.public.id === selected.id);
+    html +=
+      '<h2>Observer provenance</h2>' +
+      property('Truth category', p.private.truthCategory) +
+      property('Causal event', p.private.causeEvent) +
+      property('Physical location', p.private.actualLocation) +
+      property('Original source', p.private.original);
+  }
   if (!obs) {
     html +=
       '<h2>Timeline</h2>' +
@@ -483,7 +630,13 @@ function showStreams() {
       )
     : '<p class="empty">Ground truth is hidden in this perspective.</p>';
   $('communication').innerHTML = cards(
-    s.posts.filter((p) => p.public.publishedAt !== null),
+    s.posts.filter(
+      (p) =>
+        p.public.publishedAt !== null &&
+        (truth ||
+          p.private.audience === 'public' ||
+          p.private.audience.includes($('perspective').value)),
+    ),
     (p) =>
       `<div class="feedCard ${truth && p.private.false ? 'false' : ''}" data-kind="post" data-id="${p.public.id}"><small><span>${escape(p.public.authorName)} · ${escape(p.public.format)}</span><span>${clock(p.public.publishedAt)}</span></small><p>${escape(p.public.text)}</p>${p.public.attachments.map((a) => `<div class="media">${a.kind === 'video' ? '▶' : a.kind === 'audio' ? '◖' : '▧'} ${escape(a.kind)} · ${escape(a.description)}</div>`).join('')}${truth && p.private.false ? '<p>Observer label · inaccurate / misleading</p>' : ''}</div>`,
   );
@@ -493,7 +646,7 @@ function showStreams() {
       `<div class="feedCard" data-kind="post" data-id="${r.id}"><small><span>${escape(r.org)} · ${escape(r.stage)}</span><span>${clock(r.at)}</span></small><p>${escape(r.reason ?? r.id)}</p></div>`,
   );
   $('feedCount').textContent =
-    `${number(s.posts.length)} signals created · showing up to 80 per column`;
+    `${number(snapshot.totals.posts)} signals created · ${number(snapshot.metrics.eventCounts.post_published)} published · ${number(snapshot.totals.ingestion)} receipts · window: 80 per column`;
 }
 let previousSceneHash;
 async function refresh() {
@@ -501,6 +654,7 @@ async function refresh() {
   busy = true;
   try {
     snapshot = await api('/api/state');
+    snapshotReceivedAt = performance.now();
     $('login').hidden = true;
     $('app').hidden = false;
     if (!renderer) initialize3D();
@@ -513,15 +667,37 @@ async function refresh() {
     $('sourceLink').href = snapshot.sourceUrl + '/feed';
     $('effective').textContent = `${number(snapshot.effectiveRate)}× effective`;
     const m = snapshot.metrics;
-    $('pendingWater').textContent = number(m.services.water?.pending) + ' L';
-    $('servedWater').textContent = number(m.services.water?.served) + ' L';
-    $('signals').textContent = `${number(m.posts)} / ${number(m.ingested)}`;
+    const knowledge =
+      $('perspective').value === 'truth'
+        ? null
+        : snapshot.state.observations[$('perspective').value];
+    const knownWater = knowledge
+      ? Object.values(knowledge.needs).filter((n) => n.type === 'water')
+      : null;
+    $('pendingWater').textContent =
+      number(
+        knownWater
+          ? knownWater.reduce((t, n) => t + Math.max(0, n.quantity - n.served), 0)
+          : m.services.water?.pending,
+      ) + ' L';
+    $('servedWater').textContent =
+      number(
+        knownWater
+          ? knownWater.reduce((t, n) => t + Math.min(n.quantity, n.served), 0)
+          : m.services.water?.served,
+      ) + ' L';
+    $('signals').textContent =
+      `${number(m.source.published)} / ${number(m.information.downloaded)}`;
     $('operations').textContent = number(
-      snapshot.state.operations.filter(
+      (knowledge ? Object.values(knowledge.operations) : snapshot.state.operations).filter(
         (o) => !['completed', 'failed', 'cancelled'].includes(o.state),
       ).length,
     );
-    $('integrity').textContent = m.ledgerValid ? '✓ conserved' : 'Check failed';
+    $('integrity').textContent = knowledge
+      ? 'known state'
+      : m.ledgerValid
+        ? '✓ conserved'
+        : 'Check failed';
     $('perspectiveLabel').textContent =
       $('perspective').value === 'truth' ? 'GROUND TRUTH' : 'KNOWN OBSERVATIONS';
     $('scenarioTitle').textContent =
@@ -551,11 +727,26 @@ async function refresh() {
         'postsPerHour',
         'backgroundTraffic',
         'policy',
+        'topology',
       ])
         $(k).value = snapshot.manifest.config[k];
     }
     inspect();
     showStreams();
+    if ($('comparisonDialog').open && snapshot.comparison) {
+      const other = await api('/api/compare');
+      renderComparison(snapshot, other);
+      $('compareATitle').textContent = 'A · ' + snapshot.manifest.config.policy;
+      $('compareBTitle').textContent = 'B · ' + other.manifest.config.policy;
+      for (const [name, data] of [
+        ['A', snapshot],
+        ['B', other],
+      ])
+        $(`compare${name}Metrics`).textContent =
+          `${clock(data.now)} · ${number(data.metrics.services.water?.served)} L served · ${number(data.metrics.services.water?.pending)} L pending`;
+      $('comparisonStatus').textContent =
+        `Paired initial map ${snapshot.state.map.hash.slice(0, 12)} · equal physical endowment · ${snapshot.now === other.now ? 'clocks synchronized' : 'clock catching up'}`;
+    }
   } catch (e) {
     if (!snapshot) {
       $('login').hidden = false;
@@ -633,6 +824,7 @@ $('configForm').onsubmit = perform(() =>
         'postsPerHour',
         'backgroundTraffic',
         'policy',
+        'topology',
       ].map((k) => [
         k,
         ['grid', 'extentKm', 'postsPerHour', 'backgroundTraffic'].includes(k)
@@ -642,6 +834,95 @@ $('configForm').onsubmit = perform(() =>
     ),
   ),
 );
+const originalConfigSubmit = $('configForm').onsubmit;
+$('configForm').onsubmit = perform(async () => {
+  const fields = [
+    'seed',
+    'scenario',
+    'grid',
+    'extentKm',
+    'hazard',
+    'variant',
+    'postsPerHour',
+    'backgroundTraffic',
+    'policy',
+    'topology',
+  ];
+  const overrides = JSON.parse($('advancedConfig').value);
+  await api('/api/config', {
+    ...Object.fromEntries(
+      fields.map((k) => [
+        k,
+        ['grid', 'extentKm', 'postsPerHour', 'backgroundTraffic'].includes(k)
+          ? Number($(k).value)
+          : $(k).value,
+      ]),
+    ),
+    ...overrides,
+  });
+});
+$('advanceForm').onsubmit = perform(async () => {
+  const parts = $('advanceTime').value.split(':').map(Number);
+  if (
+    parts.length !== 3 ||
+    parts.some((n) => !Number.isFinite(n)) ||
+    parts[1] > 59 ||
+    parts[2] > 59
+  )
+    throw new Error('Use HH:MM:SS');
+  await api('/api/control', { advanceTo: ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000 });
+});
+$('nextEntity').onclick = perform(() => api('/api/control', { nextRelevant: selected.id }));
+$('fullTimeline').onclick = perform(async () => {
+  const rows = await api('/api/events?entity=' + encodeURIComponent(selected.id));
+  $('selection').innerHTML +=
+    '<h2>Recorded history · ' +
+    rows.total +
+    ' events</h2>' +
+    rows.events
+      .map(
+        (e) =>
+          `<div class="timelineEntry">${clock(e.at)} · ${escape(e.type)}<br>${escape(JSON.stringify(e.data))}</div>`,
+      )
+      .join('');
+});
+$('selection').onclick = (e) => {
+  const op = e.target.closest('[data-operation]');
+  if (op) select({ kind: 'operation', id: op.dataset.operation });
+};
+$('labels').onclick = (e) => {
+  const org = e.target.closest('[data-org]');
+  if (org) select({ kind: 'organization', id: org.dataset.org });
+};
+$('openComparison').onclick = () => {
+  $('comparisonDialog').showModal();
+};
+$('closeComparison').onclick = () => {
+  $('comparisonDialog').close();
+  stopComparison();
+};
+$('comparisonForm').onsubmit = perform(() =>
+  api('/api/comparison', { policyA: $('policyA').value, policyB: $('policyB').value }),
+);
+$('comparePlay').onclick = perform(() => api('/api/control', { play: !snapshot.playing }));
+for (const id of ['pendingWater', 'servedWater', 'signals', 'operations', 'integrity'])
+  $(id).parentElement.onclick = () => {
+    const rules = {
+      pendingWater:
+        'Pending water = demand minus effective service. Proposals and arrivals do not reduce this number.',
+      servedWater:
+        'Counts water delivered as service, capped at each need. Excess supply is reported separately.',
+      signals:
+        'Published reports / distinct versioned download receipts. Download is not understanding.',
+      operations: 'Authorized operations outside completed, cancelled and failed states.',
+      integrity:
+        'Checks stock conservation, exclusive reservations, finite seats, population and milestone order.',
+    };
+    $('selectionTitle').textContent = 'How this metric is calculated';
+    $('selectionHint').textContent = rules[id];
+    $('selection').innerHTML =
+      '<p class="muted">Export results for per-community values, uncertainty and event counts. No value estimates lives saved.</p>';
+  };
 $('scenario').onchange = () =>
   ($('scenarioDescription').textContent =
     catalog.scenarios.find((s) => s.id === $('scenario').value)?.description ?? '');

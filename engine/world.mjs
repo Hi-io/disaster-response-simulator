@@ -13,9 +13,11 @@ import { installCooperation } from './cooperation.mjs';
 import { installReference } from '../adapters/reference.mjs';
 import { installIngestion } from './ingestion.mjs';
 import { installFacilities } from './facilities.mjs';
+import { installLaboratory } from './laboratory.mjs';
 import { validateParameters } from '../contracts/parameters.mjs';
 import { configureScenario } from '../scenarios/catalog.mjs';
 import { evaluate } from '../evaluation/metrics.mjs';
+import { RecordArchive, recordsDigest, recordSnapshot } from './archive.mjs';
 
 export class World {
   constructor(input = {}, snapshot = null) {
@@ -61,6 +63,7 @@ export class World {
       toolQuota: {},
       knownRouteVersion: 0,
       actorMoves: [],
+      statistics: { counts: {}, reviewMs: 0, firstSignalAt: {} },
     };
     this.state.cohorts = this.state.map.sectors.map((s) => ({
       id: `community-${s.id}`,
@@ -73,6 +76,11 @@ export class World {
       language: this.random('population', s.id, 'language') < 0.4 ? 'es' : 'en',
       reportProbability: this.config.observationRate,
     }));
+    if (this.config.logMode === 'compact' && !snapshot) {
+      this.log = new RecordArchive('events');
+      this.state.posts = new RecordArchive('posts');
+      this.state.messages = new RecordArchive('messages');
+    }
     this.indices = new Map();
     this.install();
     if (snapshot) {
@@ -90,6 +98,7 @@ export class World {
     installTasks(this);
     installCooperation(this);
     installFacilities(this);
+    installLaboratory(this);
     installReference(this);
     installIngestion(this);
     configureScenario(this, { handlersOnly: true });
@@ -140,10 +149,12 @@ export class World {
           weightKg: 3500,
           speedMps: 12,
           maxWaterDepth: 0.3,
-          fuel: 10000,
+          fuel: this.config.vehicleFuelMl,
+          fuelUnit: 'mL',
+          fuelMlPerKm: this.config.fuelMlPerKm,
           fuelUsed: 0,
           driver: `driver-${org.id}-${j}`,
-          shiftEnd: this.config.durationMs,
+          shiftEnd: Math.min(this.config.durationMs, this.config.staffShiftMs),
           public: true,
           state: 'idle',
           route: [],
@@ -184,6 +195,7 @@ export class World {
         };
     }
     configureScenario(this);
+    this.initializeLaboratory();
     this.schedule(30_000, 'initial_report', { need: 'need-water-main' }, 1, 'initial-main');
     this.schedule(60_000, 'hazard_start', {}, 0, 'hazard-start');
     if (this.config.postsPerHour)
@@ -209,7 +221,13 @@ export class World {
     return `${kind}-${n}`;
   }
   random(stream, entity, event, index = 0) {
-    return keyedRandom(this.config.seed, stream, entity, event, index);
+    return keyedRandom(
+      this.config.subsystemSeeds[stream] ?? this.config.seed,
+      stream,
+      entity,
+      event,
+      index,
+    );
   }
   publicId(kind, key) {
     return opaqueId(this.config.seed, kind, key);
@@ -229,6 +247,15 @@ export class World {
     return event;
   }
   record(type, data = {}, entity = null) {
+    const stats = this.state.statistics;
+    stats.counts[type] = (stats.counts[type] ?? 0) + 1;
+    if (type === 'review_completed') stats.reviewMs += data.reviewMs ?? 0;
+    if (type === 'signal_created' && data.false) stats.falseSignals = (stats.falseSignals ?? 0) + 1;
+    if (type === 'post_published') {
+      const post = this.post(data.id);
+      if (post?.private.need && stats.firstSignalAt[post.private.need] === undefined)
+        stats.firstSignalAt[post.private.need] = this.now;
+    }
     const e = { index: this.eventCount, at: this.now, type, entity, data: clone(data) };
     this.log.push(e);
     this.logSink?.(e);
@@ -264,6 +291,7 @@ export class World {
     return { now: this.now, processed: count, reached, nextAt: this.queue.peek()?.at ?? null };
   }
   lookup(key, list, id) {
+    if (list instanceof RecordArchive) return list.get(id);
     let index = this.indices.get(key);
     if (!index || index.list !== list || index.length > list.length) {
       index = { list, length: 0, map: new Map() };
@@ -452,9 +480,13 @@ export class World {
       now: this.now,
       seq: this.seq,
       eventCount: this.eventCount,
-      state: this.state,
+      state: {
+        ...this.state,
+        posts: recordSnapshot(this.state.posts),
+        messages: recordSnapshot(this.state.messages),
+      },
       queue: this.queue.toJSON(),
-      log: this.log,
+      log: recordSnapshot(this.log),
       inputs: this.inputs,
     });
   }
@@ -472,6 +504,20 @@ export class World {
     this.advance(this.now);
   }
   restore(snapshot) {
+    if (
+      !snapshot ||
+      !snapshot.manifest ||
+      !snapshot.state ||
+      !Array.isArray(snapshot.queue) ||
+      !(Array.isArray(snapshot.log) || snapshot.log.archive) ||
+      !Number.isSafeInteger(snapshot.now) ||
+      snapshot.now < 0 ||
+      !Number.isSafeInteger(snapshot.eventCount) ||
+      snapshot.queue.some(
+        (e) => !Number.isSafeInteger(e.at) || e.at < snapshot.now || !this.handlers.has(e.type),
+      )
+    )
+      throw new Error('Invalid checkpoint structure or scheduled event');
     if (snapshot.manifest.engineVersion !== VERSION)
       throw new Error('Checkpoint engine version mismatch');
     if (digest(snapshot.manifest.config) !== digest(this.config))
@@ -482,18 +528,31 @@ export class World {
     this.seq = snapshot.seq;
     this.eventCount = snapshot.eventCount;
     this.state = clone(snapshot.state);
+    if (snapshot.state.posts.archive)
+      this.state.posts = new RecordArchive('posts', snapshot.state.posts);
+    if (snapshot.state.messages.archive)
+      this.state.messages = new RecordArchive('messages', snapshot.state.messages);
     this.queue = new EventQueue(clone(snapshot.queue));
-    this.log = clone(snapshot.log);
+    this.log = snapshot.log.archive
+      ? new RecordArchive('events', snapshot.log)
+      : clone(snapshot.log);
     this.inputs = clone(snapshot.inputs ?? []);
     this.indices.clear();
+    const errors = this.invariants();
+    if (errors.length)
+      throw new Error('Checkpoint violates world invariants: ' + errors.join(', '));
   }
   stateHash() {
     return digest({
       manifest: this.manifest,
       now: this.now,
-      state: this.state,
+      state: {
+        ...this.state,
+        posts: recordsDigest(this.state.posts),
+        messages: recordsDigest(this.state.messages),
+      },
       queue: this.queue.toJSON(),
-      log: this.log,
+      log: recordsDigest(this.log),
       inputs: this.inputs,
     });
   }
@@ -535,6 +594,10 @@ export class World {
         errors.push(`service:${op.id}`);
     }
     return errors;
+  }
+  close() {
+    for (const store of [this.log, this.state.posts, this.state.messages])
+      if (store instanceof RecordArchive) store.close();
   }
   observer({ limit = 200, includeHash = false } = {}) {
     const view = {

@@ -86,7 +86,8 @@ export function installFacilities(w) {
     }
     b.state = 'operating';
     b.openAt = w.now;
-    b.generatorFuel = 120;
+    b.generatorFuel ??= 120;
+    b.generatorFuelUnit = 'runtime_minute';
     b.productionRemainder = 0;
     w.record('facility_operating', { building: id, capacity: b.capacity });
     if (b.use === 'plant') {
@@ -160,9 +161,9 @@ export function installFacilities(w) {
     if (op?.state === 'completed' && op.building && !op.need) {
       const b = w.building(op.building),
         source = w.resource(op.resource),
-        dest = w.resource(`stock-${op.destination}-${op.resourceType}`);
+        dest = w.resource(op.destinationStock);
       if (source?.compatibility) dest.compatibility = clone(source.compatibility);
-      if (op.resourceType === 'fuel') b.generatorFuel = (b.generatorFuel ?? 0) + op.received;
+      if (op.resourceType === 'fuel') b.generatorFuel = (b.generatorFuel ?? 0) + op.received * 5;
     }
   });
 }

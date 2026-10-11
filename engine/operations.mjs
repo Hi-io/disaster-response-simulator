@@ -27,15 +27,11 @@ const writable = (w, a, id) => {
 };
 export function installActions(w) {
   const known = (a) => w.state.observations[a.org];
-  const accessiblePost = (id) =>
-    w.state.posts.find(
-      (p) =>
-        p.public.id === id && p.public.publishedAt !== null && p.indexAt <= w.now && !p.deleted,
-    );
+  const accessiblePost = (id, org) => w.sourceVisible(w.post(id), org);
   w.onAction('record_claim', (a, p) => {
     check(typeof p.text === 'string' && p.text.length < 20000, 'TEXT', 'Provide text');
     for (const id of p.references ?? [])
-      check(accessiblePost(id), 'SOURCE', 'Source not accessible');
+      check(accessiblePost(id, a.org), 'SOURCE', 'Source not accessible');
     const record = {
       id: w.nextId('claim'),
       org: a.org,
@@ -52,13 +48,21 @@ export function installActions(w) {
     const claim = w.state.claims.find((x) => x.id === p.claim && x.org === a.org);
     check(claim, 'NOT_FOUND', 'Claim not found');
     check(Array.isArray(p.references), 'REFERENCES', 'References required');
-    for (const id of p.references) check(accessiblePost(id), 'SOURCE', 'Source not accessible');
+    for (const id of p.references)
+      check(accessiblePost(id, a.org), 'SOURCE', 'Source not accessible');
+    const relation = p.relation ?? 'same_incident';
+    check(
+      ['same_incident', 'independent', 'contradiction', 'separate'].includes(relation),
+      'RELATION',
+      'Unknown report relationship',
+    );
     claim.references = [...new Set([...claim.references, ...p.references])];
+    claim.relation = relation;
     claim.version++;
     return clone(claim);
   });
   w.onAction('flag_report', (a, p) => {
-    check(accessiblePost(p.post), 'SOURCE', 'Source not accessible');
+    check(accessiblePost(p.post, a.org), 'SOURCE', 'Source not accessible');
     check(
       ['suspected', 'old', 'contradicted', 'unverified', 'confirmed'].includes(p.state),
       'STATE',
@@ -604,20 +608,19 @@ export function installActions(w) {
       w.record('unloading_blocked', { reason: 'unsafe_destination' }, op.id);
       return;
     }
-    let destination = w.resource(`stock-${op.destination}-${op.resourceType}`);
+    const owner = op.recipientOrg ?? (b && !op.need ? (b.ownerOrg ?? 'org0') : op.org);
+    let stockId = `stock-${op.destination}-${op.resourceType}`;
+    if (w.resource(stockId)?.owner && w.resource(stockId).owner !== owner) stockId += `-${owner}`;
+    let destination = w.resource(stockId);
     if (!destination) {
-      destination = createResource(
-        `stock-${op.destination}-${op.resourceType}`,
-        op.org,
-        op.destination,
-        op.resourceType,
-        0,
-      );
+      destination = createResource(stockId, owner, op.destination, op.resourceType, 0);
       w.state.resources.push(destination);
     }
     destination.quantity += v.load;
     destination.received += v.load;
     destination.version++;
+    destination.compatibility = clone(w.resource(op.resource).compatibility);
+    op.destinationStock = destination.id;
     op.received = v.load;
     op.times.received = w.now;
     op.state = 'received';

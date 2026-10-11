@@ -12,12 +12,7 @@ export function installIngestion(w) {
         request: clone(p),
       });
     const post = w.post(p.id);
-    check(
-      post && post.public.publishedAt !== null && post.indexAt <= w.now && !post.deleted,
-      'SOURCE',
-      'Post is not accessible',
-      404,
-    );
+    check(w.sourceVisible(post, actor.org), 'SOURCE', 'Post is not accessible', 404);
     const version = p.version ?? post.public.version;
     const content =
       version === post.public.version

@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { World } from '../engine/world.mjs';
 import { SCENARIOS } from '../scenarios/catalog.mjs';
 import { PRESETS } from '../content/presets.mjs';
-import { SimError } from '../contracts/actions.mjs';
+import { SimError, ACTION_SCHEMA } from '../contracts/actions.mjs';
+import { INPUT_TYPES, OBSERVATION_SCHEMA } from '../contracts/inputs.mjs';
+import { CONFIG_SCHEMA } from '../contracts/config.mjs';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const esc = (s) =>
   String(s ?? '').replace(
@@ -26,11 +28,11 @@ const equal = (a, b) =>
   typeof b === 'string' &&
   a.length === b.length &&
   timingSafeEqual(Buffer.from(a), Buffer.from(b));
-async function body(req) {
+async function body(req, limit = 2000000) {
   let text = '';
   for await (const chunk of req) {
     text += chunk;
-    if (text.length > 2_000_000) throw new SimError('BODY_LIMIT', 'Request too large', 413);
+    if (text.length > limit) throw new SimError('BODY_LIMIT', 'Request too large', 413);
   }
   try {
     return text ? JSON.parse(text) : {};
@@ -51,6 +53,7 @@ export async function createLabServers({
   persistCredentials = true,
 } = {}) {
   let world = new World(config),
+    comparison = null,
     playing = false,
     rate = 10,
     previous = performance.now(),
@@ -61,6 +64,16 @@ export async function createLabServers({
       { id: `external-${o.id}`, org: o.id, role: 'agent' },
     ]),
   );
+  const ensureActorKeys = () => {
+    for (const o of world.state.map.organizations)
+      if (!Object.values(actorKeys).some((a) => a.org === o.id))
+        actorKeys[randomBytes(24).toString('hex')] = {
+          id: `external-${o.id}`,
+          org: o.id,
+          role: 'agent',
+        };
+  };
+  const sourceRequests = new Map();
   const tick = setInterval(() => {
     const now = performance.now(),
       wall = now - previous;
@@ -72,6 +85,7 @@ export async function createLabServers({
         maxEvents: 2500,
       });
       effective = wall ? (world.now - before) / wall : 0;
+      if (comparison) while (!comparison.advance(world.now, { maxEvents: 100000 }).reached) {}
       if (world.now >= world.config.durationMs) playing = false;
     } catch (e) {
       playing = false;
@@ -106,6 +120,17 @@ export async function createLabServers({
       }
       if (url.pathname.startsWith('/api/')) {
         authorizeObserver(req);
+        const reads = [
+          '/api/state',
+          '/api/catalog',
+          '/api/checkpoint',
+          '/api/metrics',
+          '/api/credentials',
+          '/api/events',
+          '/api/compare',
+        ];
+        if (req.method !== (reads.includes(url.pathname) ? 'GET' : 'POST'))
+          throw new SimError('METHOD', 'Method not allowed', 405);
         if (req.method === 'POST') requireSameOrigin(req);
         if (url.pathname === '/api/state')
           return json(res, 200, {
@@ -113,13 +138,27 @@ export async function createLabServers({
             playing,
             rate,
             effectiveRate: effective,
+            comparison: comparison
+              ? {
+                  policyA: world.config.policy,
+                  policyB: comparison.config.policy,
+                  now: comparison.now,
+                }
+              : null,
             sourceUrl: `http://127.0.0.1:${sourcePort}`,
           });
         if (url.pathname === '/api/catalog')
           return json(res, 200, { scenarios: SCENARIOS, presetCount: PRESETS.length });
-        const b = req.method === 'POST' ? await body(req) : {};
+        const b =
+          req.method === 'POST'
+            ? await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000)
+            : {};
         if (url.pathname === '/api/config') {
+          world.close();
+          comparison?.close();
+          comparison = null;
           world = new World(b);
+          ensureActorKeys();
           playing = false;
           return json(res, 200, { runId: world.runId });
         }
@@ -137,6 +176,14 @@ export async function createLabServers({
             playing = false;
             world.advance(b.advanceTo);
           }
+          if (b.nextRelevant) {
+            const next = world.queue
+              .toJSON()
+              .find((e) => JSON.stringify(e.data).includes(String(b.nextRelevant)));
+            if (next) world.advance(next.at);
+            else throw new SimError('EVENT', 'No queued event for this entity');
+          }
+          if (comparison) while (!comparison.advance(world.now, { maxEvents: 100000 }).reached) {}
           return json(res, 200, { playing, rate, now: world.now });
         }
         if (url.pathname === '/api/action') {
@@ -156,6 +203,7 @@ export async function createLabServers({
               'scenario_signal',
               'fire_front',
               'flood_level',
+              'lab_intervention',
             ].includes(b.type)
           )
             throw new SimError('EVENT', 'Event type not allowed');
@@ -163,12 +211,43 @@ export async function createLabServers({
           return json(res, 200, { injected: true });
         }
         if (url.pathname === '/api/checkpoint') return json(res, 200, world.checkpoint());
+        if (url.pathname === '/api/comparison') {
+          const base = { ...world.config, policy: b.policyA ?? 'conventional' };
+          const a = new World(base),
+            other = new World({ ...base, policy: b.policyB ?? 'federated' });
+          if (a.state.map.hash !== other.state.map.hash)
+            throw new SimError('PAIR', 'Initial worlds differ');
+          world.close();
+          comparison?.close();
+          world = a;
+          comparison = other;
+          playing = false;
+          ensureActorKeys();
+          return json(res, 200, { paired: true, initialMapHash: a.state.map.hash });
+        }
+        if (url.pathname === '/api/compare')
+          return json(res, 200, comparison ? comparison.observer({ limit: 100 }) : null);
         if (url.pathname === '/api/restore') {
           world = new World(b.manifest.config, b);
+          ensureActorKeys();
           playing = false;
           return json(res, 200, { restored: true, runId: world.runId });
         }
         if (url.pathname === '/api/metrics') return json(res, 200, world.observer().metrics);
+        if (url.pathname === '/api/events') {
+          const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0));
+          const entity = url.searchParams.get('entity');
+          const rows = entity
+            ? world.log.filter(
+                (e) => e.entity === entity || Object.values(e.data ?? {}).includes(entity),
+              )
+            : world.log;
+          return json(res, 200, {
+            events: rows.slice(offset, offset + 200),
+            total: rows.length,
+            next: offset + 200 < rows.length ? offset + 200 : null,
+          });
+        }
         if (url.pathname === '/api/credentials')
           return json(res, 200, { actors: actorKeys, sourceUrl: `http://127.0.0.1:${sourcePort}` });
         throw new SimError('NOT_FOUND', 'Endpoint not found', 404);
@@ -204,7 +283,25 @@ export async function createLabServers({
   const sources = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
-      let params = Object.fromEntries(url.searchParams);
+      const actorMutation = ['/api/actor/action', '/api/actor/ingestion'];
+      if (req.method !== (actorMutation.includes(url.pathname) ? 'POST' : 'GET'))
+        throw new SimError('METHOD', 'Method not allowed', 405);
+      const requestKey =
+        (req.headers.authorization ?? req.socket.remoteAddress) +
+        '-' +
+        Math.floor(Date.now() / 60000);
+      const count = (sourceRequests.get(requestKey) ?? 0) + 1;
+      sourceRequests.set(requestKey, count);
+      if (sourceRequests.size > 10000) sourceRequests.clear();
+      if (count > world.config.sourceRequestLimit) {
+        res.setHeader('Retry-After', '60');
+        throw new SimError('RATE_LIMIT', 'Source request limit exceeded', 429);
+      }
+      let params = Object.fromEntries(
+        [...url.searchParams].filter(([k]) =>
+          ['q', 'cursor', 'limit', 'since', 'author', 'location'].includes(k),
+        ),
+      );
       for (const k of ['cursor', 'limit', 'since'])
         if (k in params) {
           params[k] = Number(params[k]);
@@ -215,12 +312,19 @@ export async function createLabServers({
         const key = req.headers.authorization?.replace(/^Bearer /, ''),
           actor = Object.hasOwn(actorKeys, key) ? actorKeys[key] : null;
         if (!actor) throw new SimError('AUTHENTICATION', 'Actor key required', 401);
+        if (
+          !world.organization(actor.org) ||
+          world.state.integrations.revokedOrgs.includes(actor.org)
+        )
+          throw new SimError('ACCESS_REVOKED', 'Actor access has been revoked', 403);
+        if (url.pathname === '/api/actor/inbox')
+          return json(res, 200, world.publicFeed({ ...params, org: actor.org, audience: 'team' }));
         if (url.pathname === '/api/actor/state') return json(res, 200, world.actorView(actor.org));
         if (url.pathname === '/api/actor/action')
           return json(res, 200, world.act(actor, await body(req)));
         if (url.pathname === '/api/actor/queries')
           return json(res, 200, {
-            queries: (world.state.queries ?? []).filter((q) => q.org === actor.org),
+            queries: (world.state.queries ?? []).filter((q) => q.org === actor.org).slice(-200),
           });
         if (url.pathname === '/api/actor/ingestion')
           return json(res, 200, world.acknowledge(actor, await body(req)));
@@ -228,6 +332,20 @@ export async function createLabServers({
       }
       if (url.pathname.startsWith('/api/observer') || url.pathname.startsWith('/api/state'))
         throw new SimError('NOT_FOUND', 'Not found', 404);
+      if (url.pathname === '/api/contracts')
+        return json(res, 200, {
+          action: ACTION_SCHEMA,
+          observation: OBSERVATION_SCHEMA,
+          inputs: INPUT_TYPES,
+          config: CONFIG_SCHEMA,
+        });
+      if (!world.state.integrations.sourceAvailable)
+        throw new SimError('SOURCE_UNAVAILABLE', 'Source is temporarily unavailable', 503);
+      if (url.pathname === '/api/feed' && world.state.integrations.schemaVersion !== 1)
+        return json(res, 200, {
+          schemaVersion: world.state.integrations.schemaVersion,
+          items: world.publicFeed(params).posts,
+        });
       if (url.pathname === '/api/feed') return json(res, 200, world.publicFeed(params));
       if (url.pathname === '/public') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -263,14 +381,8 @@ export async function createLabServers({
       }
       if (url.pathname.startsWith('/posts/')) {
         const id = url.pathname.slice(7),
-          post = world.state.posts.find(
-            (p) =>
-              p.public.id === id &&
-              p.public.publishedAt !== null &&
-              p.indexAt <= world.now &&
-              !p.deleted,
-          );
-        if (!post) throw new SimError('NOT_FOUND', 'Post not found', 404);
+          post = world.post(id);
+        if (!world.sourceVisible(post)) throw new SimError('NOT_FOUND', 'Post not found', 404);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(sourceHTML('Community report', [post.public]));
       }
@@ -321,6 +433,8 @@ export async function createLabServers({
     sourcePort: actualSource,
     async close() {
       clearInterval(tick);
+      world.close();
+      comparison?.close();
       await Promise.all([
         new Promise((r) => observer.close(r)),
         new Promise((r) => sources.close(r)),

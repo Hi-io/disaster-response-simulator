@@ -584,7 +584,17 @@ export function installTasks(w) {
     const op = operation(w, p.operation ?? v.operation);
     if (!op || terminal(op)) return;
     if (op.type === 'evacuation') {
-      check(!v.passengers, 'PASSENGERS', 'Occupied evacuation requires a safe reroute');
+      if (v.passengers) {
+        op.state = 'dispatched';
+        op.cancelRejectedAt = w.now;
+        w.record(
+          'cancellation_rejected',
+          { reason: 'occupied_evacuation_requires_safe_reroute' },
+          op.id,
+        );
+        w.reportOperation(op);
+        return;
+      }
       const t = w.state.evacuations.find((t) => t.id === op.evacuation);
       w.building(t.to).reservedPlaces -= t.quantity;
       w.need(t.need).inTransit -= t.quantity;
@@ -601,6 +611,10 @@ export function installTasks(w) {
       w.releaseStaff(t.staff);
     }
     const c = w.state.commitments.find((c) => c.id === op.commitment);
+    if (op.unloadingSlot) {
+      w.building(op.building).unloading--;
+      op.unloadingSlot = false;
+    }
     if (c && ['reserved', 'confirmed'].includes(c.state)) {
       release(w.resource(c.resource), c.quantity);
       c.state = 'released';

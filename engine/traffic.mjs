@@ -87,7 +87,11 @@ export function installTraffic(w) {
       return;
     }
     const e = w.edge(v.route[v.routeIndex]);
-    if (!e?.open || e.waterDepth > v.maxWaterDepth || v.weightKg > e.maxWeight) {
+    const grossWeight =
+      v.weightKg +
+      (v.load ?? 0) * (v.resourceType === 'energy' ? 150 : 1) +
+      (v.passengers ?? 0) * 75;
+    if (!e?.open || e.waterDepth > v.maxWaterDepth || grossWeight > e.maxWeight) {
       v.state = 'blocked';
       const op = w.state.operations.find((o) => o.id === v.operation);
       if (op) {
@@ -98,7 +102,8 @@ export function installTraffic(w) {
       w.reportRoad?.(e, v.owner);
       return;
     }
-    if (w.now >= v.shiftEnd || v.fuel < Math.ceil(e.lengthM / 500)) {
+    const fuelCost = Math.ceil((e.lengthM * (v.fuelMlPerKm ?? 180)) / 1000);
+    if (w.now >= v.shiftEnd || v.fuel < fuelCost) {
       v.state = 'failed';
       const op = w.state.operations.find((o) => o.id === v.operation);
       if (op) {
@@ -106,6 +111,7 @@ export function installTraffic(w) {
         op.failure = 'fuel_or_shift';
       }
       w.record('trip_failed', { reason: 'fuel_or_shift' }, v.id);
+      if (op) w.reportOperation(op);
       return;
     }
     if (e.occupants.length >= e.storage || w.now < e.nextEntryAt) {
@@ -158,8 +164,10 @@ export function installTraffic(w) {
     e.occupants = e.occupants.filter((x) => x !== id);
     v.node = e.to;
     v.routeIndex++;
-    v.fuel -= Math.ceil(e.lengthM / 500);
-    v.fuelUsed += Math.ceil(e.lengthM / 500);
+    const fuelCost = Math.ceil((e.lengthM * (v.fuelMlPerKm ?? 180)) / 1000);
+    v.fuel -= fuelCost;
+    v.fuelUsed += fuelCost;
+    v.distanceM = (v.distanceM ?? 0) + e.lengthM;
     v.edge = null;
     v.edgeStart = null;
     v.edgeEnd = null;

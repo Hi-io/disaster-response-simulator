@@ -6,17 +6,35 @@ export function generateMap(c) {
     buildings = [],
     sectors = [],
     step = (c.extentKm * 1000) / (c.grid - 1);
-  const r = (stream, id, event) => keyedRandom(c.seed, stream, id, event);
+  const r = (stream, id, event) =>
+    keyedRandom(c.subsystemSeeds?.[stream] ?? c.seed, stream, id, event);
   for (let z = 0; z < c.grid; z++)
     for (let x = 0; x < c.grid; x++) {
       const id = `n${z * c.grid + x}`,
-        position = { x: Math.round(x * step), z: Math.round(z * step) };
+        position = {
+          x: Math.round(
+            (x +
+              (c.topology === 'regional' && x > 0 && x < c.grid - 1
+                ? (r('map', id, 'jitter_x') - 0.5) * 0.55
+                : 0)) *
+              step,
+          ),
+          z: Math.round(
+            (z +
+              (c.topology === 'regional' && z > 0 && z < c.grid - 1
+                ? (r('map', id, 'jitter_z') - 0.5) * 0.55
+                : 0)) *
+              step,
+          ),
+        };
       nodes.push({ id, ...position });
       sectors.push({
         id: `s${z * c.grid + x}`,
         node: id,
         ...position,
         name: `${['North', 'East', 'South', 'West'][Math.floor(r('map', id, 'name') * 4)]} ${['Ridge', 'Valley', 'Crossing', 'Hill'][Math.floor(r('map', id, 'alias') * 4)]}`,
+        locality: `district-${Math.floor(z / Math.max(1, Math.floor(c.grid / 4)))}-${Math.floor(x / Math.max(1, Math.floor(c.grid / 4)))}`,
+        jurisdiction: `org${Math.min(c.organizations - 1, (x < c.grid / 2 ? 0 : 1) + (z < c.grid / 2 ? 0 : 2))}`,
         terrain:
           r('map', id, 'terrain') < 0.2
             ? 'forest'
@@ -81,12 +99,23 @@ export function generateMap(c) {
             id: `${a}:${b}`,
             from: a,
             to: b,
-            lengthM: Math.round(step),
+            lengthM: Math.round(
+              Math.hypot(
+                nodes[Number(a.slice(1))].x - nodes[Number(b.slice(1))].x,
+                nodes[Number(a.slice(1))].z - nodes[Number(b.slice(1))].z,
+              ),
+            ),
             speedMps: arterial ? 16 : 10,
             capacity: arterial ? 8 : 3,
             storage: arterial ? 14 : 6,
             headwayMs: arterial ? 2500 : 7000,
-            maxWeight: arterial ? 20000 : 5000,
+            maxWeight: arterial
+              ? 20000
+              : c.topology === 'regional' && r('map', key, 'narrow') < 0.15
+                ? 3700
+                : 5000,
+            slope: c.topology === 'regional' ? Math.round(r('map', key, 'slope') * 12) : 0,
+            roadClass: arterial ? 'arterial' : 'local',
             open: true,
             waterDepth: 0,
             nextEntryAt: 0,
@@ -191,7 +220,10 @@ export function route(map, from, to, vehicle, knownEdges = null) {
       const view = knownEdges ? (knownEdges[edge.id] ?? { open: true, waterDepth: 0 }) : edge;
       if (
         !view.open ||
-        vehicle.weightKg > edge.maxWeight ||
+        vehicle.weightKg +
+          (vehicle.load ?? 0) * (vehicle.resourceType === 'energy' ? 150 : 1) +
+          (vehicle.passengers ?? 0) * 75 >
+          edge.maxWeight ||
         view.waterDepth > (vehicle.maxWaterDepth ?? 0.3)
       )
         continue;

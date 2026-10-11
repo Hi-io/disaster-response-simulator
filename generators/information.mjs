@@ -2,7 +2,13 @@ import { choosePreset, FAMILY_IDS } from '../content/presets.mjs';
 
 export function installInformation(w) {
   w.generateSignal = (family, ctx = {}) => {
-    if (w.state.posts.length >= w.config.maxPosts) return null;
+    if (w.state.posts.length >= w.config.maxPosts) {
+      if (!w.state.postBudgetReached) {
+        w.state.postBudgetReached = true;
+        w.record('content_budget_reached', { maxPosts: w.config.maxPosts });
+      }
+      return null;
+    }
     const key = ctx.causeEvent ?? `ambient-${w.nextId('signal')}`;
     const preset = choosePreset(family, w.config.split, w.random('publication', key, 'preset'));
     if (preset.requires && !ctx.causeEvent && !ctx.false) return null;
@@ -62,6 +68,7 @@ export function installInformation(w) {
         need: ctx.need ?? null,
         createdAt: w.now,
         original: ctx.original ?? id,
+        audience: ctx.audience ?? 'public',
       },
       indexAt: null,
       deleted: false,
@@ -69,20 +76,36 @@ export function installInformation(w) {
     };
     w.state.posts.push(post);
     w.record('signal_created', { id, family, false: isFalse, format }, building);
-    w.send({ kind: 'post', post: id }, 'public', {
-      sector: ctx.sector ?? b?.sector,
-      bytes: format === 'video' ? 10000000 : format === 'audio' ? 600000 : 1000,
-    });
+    w.schedule(
+      w.now + (ctx.compositionMs ?? w.config.authorshipMs),
+      'signal_send',
+      {
+        id,
+        channel: ctx.channel ?? 'internet',
+        sector: ctx.sector ?? b?.sector,
+        bytes: format === 'video' ? 10000000 : format === 'audio' ? 600000 : 1000,
+      },
+      2,
+      id,
+    );
     return post;
   };
+  w.on('signal_send', (p) => {
+    w.send({ kind: 'post', post: p.id }, 'public', {
+      channel: p.channel,
+      sector: p.sector,
+      bytes: p.bytes,
+    });
+  });
   w.publishPost = (id) => {
     const p = w.post(id);
     if (!p || p.public.publishedAt !== null) return;
     p.public.publishedAt = w.now;
     p.indexAt = w.now + w.config.sourceIndexMs;
     p.history.push(structuredClone(p.public));
+    w.state.posts.persist?.(p);
     w.record('post_published', { id, format: p.public.format }, p.private.actualLocation);
-    if (w.random('diffusion', id, 'repost') < 0.25)
+    if (p.private.audience === 'public' && w.random('diffusion', id, 'repost') < 0.25)
       w.schedule(w.now + 60000, 'repost', { id }, 2, `repost-${id}`);
   };
   w.on('initial_report', ({ need: id }) => {
@@ -152,9 +175,14 @@ export function installInformation(w) {
               : `Thinking of teams and families affected near ${building.id}.`;
       if (isFalse && !n) {
         family = 'P13';
-        text = spanish
-          ? `Video: ${building.id} se derrumbó hoy.`
-          : `Video: ${building.id} has collapsed today.`;
+        text =
+          building.damage > 0
+            ? spanish
+              ? `El edificio ${building.id} está intacto y todos sus servicios funcionan.`
+              : `The building at ${building.id} is intact and all its services work.`
+            : spanish
+              ? `Video: ${building.id} se derrumbó hoy.`
+              : `Video: ${building.id} has collapsed today.`;
       }
       w.generateSignal(family, {
         building: building.id,
@@ -197,7 +225,9 @@ export function installInformation(w) {
     p.public.version++;
     p.public.text = text ?? p.public.text;
     p.deleted = deleted;
+    if (deleted) w.record('post_deleted', { id });
     p.indexAt = w.now + w.config.sourceIndexMs;
+    w.state.posts.persist?.(p);
     w.invalidateDependency?.(id);
     w.record('post_updated', { id, version: p.public.version, deleted });
   });
@@ -208,12 +238,25 @@ export function installInformation(w) {
     author = null,
     location = null,
     since = 0,
+    org = null,
+    audience = 'public',
   } = {}) => {
+    if (w.state.posts.publicPage)
+      return w.state.posts.publicPage({
+        now: w.now,
+        q,
+        cursor,
+        limit,
+        author,
+        location,
+        since,
+        org,
+        audience,
+      });
     const filtered = w.state.posts.filter(
       (p) =>
-        p.public.publishedAt !== null &&
-        p.indexAt <= w.now &&
-        !p.deleted &&
+        w.sourceVisible(p, org) &&
+        (audience === 'team' ? p.private.audience !== 'public' : p.private.audience === 'public') &&
         p.public.publishedAt >= since &&
         (!q || p.public.text.toLowerCase().includes(q.toLowerCase())) &&
         (!author || p.public.authorId === author) &&
