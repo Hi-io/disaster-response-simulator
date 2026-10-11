@@ -2,11 +2,11 @@
 
 Documento de trabajo · 11 de octubre de 2026.
 
-**Estado:** requisitos y propuestas; no se ha construido ni validado el simulador. Las cifras de la web son inventadas. Este documento no las convierte en objetivos que debamos conseguir a cualquier precio.
+**Estado actualizado · 12 de octubre de 2026:** este archivo conserva el diseño funcional y sus extensiones. Ya existe la implementación de este repositorio; la [auditoría del simulador](AUDITORIA_SIMULADOR.md) y [COVERAGE.md](COVERAGE.md) distinguen lo implementado, lo probado y lo pendiente. Las cifras de la web siguen siendo conceptuales; el motor construido no las valida automáticamente.
 
-Relacionados: [plataforma](PLATAFORMA.md) · [demo](DEMO.md).
+Relacionados: [plataforma y KPIs de aceptación](PLATAFORMA.md) · [auditoría actual](AUDITORIA_SIMULADOR.md) · [demo](DEMO.md).
 
-**Cómo leer este documento:** las secciones 1–15 conservan los criterios de evaluación y los escenarios acordados. Las secciones 16–39 convierten esos criterios en un diseño funcional: contratos de entrada/salida, mundo causal, desastres, red social, vista 3D, relojes, semillas, rendimiento y pruebas de aceptación. Es una especificación por implementar; ninguna cifra de capacidad o velocidad de este documento es un resultado medido.
+**Cómo leer este documento:** las secciones 1–15 conservan los criterios de evaluación y los escenarios acordados. Las secciones 16–39 convierten esos criterios en un diseño funcional: contratos de entrada/salida, mundo causal, desastres, red social, vista 3D, relojes, semillas, rendimiento y pruebas de aceptación. La sección 40 añade los requisitos posteriores de región y población. Consultar la auditoría para cobertura actual; ninguna cifra de capacidad o velocidad de este documento es por sí sola un resultado medido.
 
 **Decisión de alcance:** simular todo lo que NEXO pueda percibir o modificar y las dependencias que cambien sus resultados. El visor 3D se incluye para entender y presentar ese mundo. No construir un videojuego, una simulación clínica ni física detallada de edificios o fuego. La fidelidad buscada está en información, restricciones, demoras y consecuencias.
 

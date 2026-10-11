@@ -117,6 +117,8 @@ External-computation receipts measure latency and usage without running inferenc
 - [CALIBRATION.md](docs/CALIBRATION.md): causal assumptions, parameter ranges and sensitivity plan.
 - [PERFORMANCE.md](docs/PERFORMANCE.md): measured workloads and scaling limits.
 - [PLATAFORMA.md](docs/PLATAFORMA.md) / [DEMO.md](docs/DEMO.md): context for NEXO and its eventual demonstration.
+- [AUDITORIA_SIMULADOR.md](docs/AUDITORIA_SIMULADOR.md): code-based review, a reproduced deadline-metric issue, and remaining evaluation work.
+- [ARQUITECTURA_GCP.md](docs/ARQUITECTURA_GCP.md): proposed cloud architecture after local product validation; no deployment has been performed by this documentation update.
 
 There are 360 content presets across 30 semantic families, plus **102 contextual English/Spanish wordings** used by the live ambient generator: 36 personal/support posts, 18 requests, 12 damage reports and 36 misleading claims. Wording stays tied to actual outstanding needs and building state; extra variety never creates an incident or a completed delivery. The contextual wordings are expressions of existing situations, not 102 additional physical scenarios. Their development, validation and held-out variants are separate.
 

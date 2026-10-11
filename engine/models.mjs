@@ -8,7 +8,7 @@ export function installModels(w) {
   w.startModelCall = (actor, p) => {
     check(w.organization(actor.org), 'AUTHENTICATION', 'Unknown organization', 401);
     check(
-      typeof p.model === 'string' && /^[a-zA-Z0-9._-]{1,120}$/.test(p.model),
+      typeof p.model === 'string' && /^[a-zA-Z0-9._:/-]{1,180}$/.test(p.model),
       'MODEL',
       'Model name required',
     );
@@ -59,6 +59,7 @@ export function installModels(w) {
         'MODEL_USAGE',
         'Invalid usage',
       );
+    check(p.providerCost === undefined || (Number.isFinite(p.providerCost) && p.providerCost >= 0 && p.providerCost <= 100000), 'MODEL_USAGE', 'Invalid provider cost');
     if (!w.currentEvent)
       w.inputs.push({
         kind: 'model_finish',
@@ -74,6 +75,8 @@ export function installModels(w) {
     r.wallMs = p.wallMs ?? 0;
     r.promptTokens = p.promptTokens ?? 0;
     r.outputTokens = p.outputTokens ?? 0;
+    if (p.providerCost !== undefined) r.providerCost = p.providerCost;
+    if (typeof p.providerRequestId === 'string') r.providerRequestId = p.providerRequestId.slice(0, 200);
     r.failed = !!p.failed;
     r.state = 'scheduled';
     w.state.modelCalls++;

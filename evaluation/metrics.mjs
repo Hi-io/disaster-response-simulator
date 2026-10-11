@@ -45,6 +45,7 @@ export function evaluate(world) {
     quantity: n.quantity,
     served: Math.min(n.quantity, n.served),
     completedAt: n.completedAt,
+    createdAt: n.createdAt ?? n.occurredAt ?? 0,
     deadline: n.deadline,
     silent: n.silent,
     firstSignalAt: world.state.statistics.firstSignalAt[n.id] ?? null,
@@ -82,7 +83,9 @@ export function evaluate(world) {
       ),
       pending: (world.state.modelRequests ?? []).filter((r) => r.state === 'waiting').length,
       failed: (world.state.modelRequests ?? []).filter((r) => r.failed).length,
-      providerCost: null,
+      providerCost: (world.state.modelRequests ?? []).some((r) => r.providerCost !== undefined)
+        ? (world.state.modelRequests ?? []).reduce((n, r) => n + (r.providerCost ?? 0), 0)
+        : null,
     },
     invalidActions: world.state.invalidActions,
     ledgerValid: world.invariants().length === 0,
@@ -133,7 +136,16 @@ export function evaluate(world) {
         .filter((e) => e.type === 'received')
         .reduce((s, e) => s + e.amount, 0),
     },
-    subgroups: subgroups(perCommunity),
+    subgroups: subgroups(perCommunity, world.now),
+    response: {
+      completed: perCommunity.filter((n) => n.completedAt !== null).length,
+      rightCensored: perCommunity.filter((n) => n.completedAt === null).length,
+      needToServiceMs: {
+        p50: quantile(perCommunity.filter((n) => n.completedAt !== null).map((n) => n.completedAt - n.createdAt), 0.5),
+        p95: quantile(perCommunity.filter((n) => n.completedAt !== null).map((n) => n.completedAt - n.createdAt), 0.95),
+        note: 'Completed cases only; report right-censored cases alongside these percentiles.',
+      },
+    },
     eventCounts: { ...world.state.statistics.counts },
   };
 }
@@ -180,7 +192,7 @@ function evaluateInformation(w) {
     note: 'Error counts use private evaluator labels. Unverified content is not classified as true. No inferred accuracy score.',
   };
 }
-function subgroups(rows) {
+function subgroups(rows, now) {
   return Object.fromEntries(
     ['silent', 'remote'].map((group) => [
       group,
@@ -188,11 +200,16 @@ function subgroups(rows) {
         [true, false].map((value) => {
           const byType = {};
           for (const n of rows.filter((n) => n[group] === value)) {
-            const r = (byType[n.type] ??= { needs: 0, demand: 0, served: 0, missedDeadline: 0 });
+            const r = (byType[n.type] ??= { needs: 0, demand: 0, served: 0, missedDeadline: 0, pendingBeforeDeadline: 0, rightCensored: 0 });
             r.needs++;
             r.demand += n.quantity;
             r.served += n.served;
-            if (n.completedAt === null || n.completedAt > n.deadline) r.missedDeadline++;
+            if (n.completedAt !== null && n.completedAt > n.deadline) r.missedDeadline++;
+            if (n.completedAt === null) {
+              r.rightCensored++;
+              if (now >= n.deadline) r.missedDeadline++;
+              else r.pendingBeforeDeadline++;
+            }
           }
           return [String(value), byType];
         }),

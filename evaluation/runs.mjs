@@ -145,7 +145,7 @@ export function pairedComparison(rowsA, rowsB) {
   const pairs = rowsA.filter((r) => b.has(key(r))).map((a) => ({ a, b: b.get(key(a)) }));
   if (!pairs.length) throw new Error('No paired seeds/scenarios');
   const comparable = (c) => {
-    const { policy, mode, logMode, ...rest } = c;
+    const { policy, logMode, ...rest } = c;
     return digest(rest);
   };
   for (const { a, b } of pairs)

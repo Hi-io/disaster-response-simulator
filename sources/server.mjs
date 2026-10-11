@@ -158,6 +158,20 @@ export async function createLabServers({
           req.method === 'POST'
             ? await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000)
             : {};
+        if (url.pathname === '/api/actors/provision') {
+          if (!world.organization(b.org) || !['agent', 'commander', 'dispatcher', 'field'].includes(b.role))
+            throw new SimError('ACTOR', 'A valid organization and scoped role are required');
+          if (!Number.isSafeInteger(b.ttlMs ?? 86400000) || (b.ttlMs ?? 86400000) < 1000 || (b.ttlMs ?? 86400000) > 604800000)
+            throw new SimError('ACTOR_TTL', 'Actor credentials last between one second and seven days');
+          const key = randomBytes(24).toString('hex');
+          actorKeys[key] = { id: b.id ?? `operator-${b.org}-${randomBytes(4).toString('hex')}`, org: b.org, role: b.role, expiresAt: Date.now() + (b.ttlMs ?? 86400000) };
+          return json(res, 201, { key, actor: actorKeys[key] });
+        }
+        if (url.pathname === '/api/actors/revoke') {
+          if (!Object.hasOwn(actorKeys, b.key)) throw new SimError('ACTOR', 'Credential not found', 404);
+          delete actorKeys[b.key];
+          return json(res, 200, { revoked: true });
+        }
         if (url.pathname === '/api/config') {
           const replacement = new World(b);
           world.close();
@@ -353,6 +367,7 @@ export async function createLabServers({
         const key = req.headers.authorization?.replace(/^Bearer /, ''),
           actor = Object.hasOwn(actorKeys, key) ? actorKeys[key] : null;
         if (!actor) throw new SimError('AUTHENTICATION', 'Actor key required', 401);
+        if (actor.expiresAt && actor.expiresAt <= Date.now()) throw new SimError('AUTHENTICATION', 'Actor key expired', 401);
         if (
           !world.organization(actor.org) ||
           world.state.integrations.revokedOrgs.includes(actor.org)
