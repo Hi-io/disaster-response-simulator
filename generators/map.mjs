@@ -24,9 +24,10 @@ export function generateMap(c) {
   return {nodes,edges,buildings,sectors,organizations,shelterId:shelter.id,plantId:plant.id,extentM:c.extentKm*1000,grid:c.grid,hash:digest({nodes,edges,buildings,organizations})};
 }
 
+const routeIndexes=new WeakMap();
 export function route(map,from,to,vehicle,knownEdges=null) {
   if(from===to)return {edges:[],distanceM:0,freeTimeMs:0};
-  const adjacency=new Map();for(const e of map.edges){if(!adjacency.has(e.from))adjacency.set(e.from,[]);adjacency.get(e.from).push(e);}
+  let index=routeIndexes.get(map);if(!index||index.length!==map.edges.length){const adjacency=new Map(),byId=new Map();for(const e of map.edges){if(!adjacency.has(e.from))adjacency.set(e.from,[]);adjacency.get(e.from).push(e);byId.set(e.id,e);}index={length:map.edges.length,adjacency,byId};routeIndexes.set(map,index);}const {adjacency,byId}=index;
   const dist=new Map([[from,0]]),prev=new Map(),heap=[{node:from,cost:0}];
   const push=v=>{heap.push(v);let i=heap.length-1;while(i){const p=(i-1)>>1;if(heap[p].cost<=v.cost)break;heap[i]=heap[p];i=p;}heap[i]=v;};
   const pop=()=>{const h=heap[0],tail=heap.pop();if(heap.length){let i=0;while(i*2+1<heap.length){let child=i*2+1;if(child+1<heap.length&&heap[child+1].cost<heap[child].cost)child++;if(tail.cost<=heap[child].cost)break;heap[i]=heap[child];i=child;}heap[i]=tail;}return h;};
@@ -39,5 +40,5 @@ export function route(map,from,to,vehicle,knownEdges=null) {
   }
   if(!dist.has(to))return null;const path=[];let at=to;
   while(at!==from){const e=prev.get(at);if(!e)return null;path.unshift(e.id);at=e.from;}
-  return {edges:path,distanceM:path.reduce((sum,id)=>sum+map.edges.find(e=>e.id===id).lengthM,0),freeTimeMs:dist.get(to)};
+  return {edges:path,distanceM:path.reduce((sum,id)=>sum+byId.get(id).lengthM,0),freeTimeMs:dist.get(to)};
 }

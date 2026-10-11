@@ -18,7 +18,7 @@ export function installActions(w){
     check(['inventory','vehicles','roads','documents','facility','policy','sources','capabilities','map'].includes(p.target),'TARGET','Unknown query target');
     let result;
     if(p.target==='inventory')result=w.state.resources.filter(r=>r.owner===a.org||(r.public&&w.organization(r.owner)?.sharing==='public')).map(r=>({id:r.id,owner:r.owner,node:r.node,type:r.type,quantity:r.quantity,reserved:r.reserved,floor:r.floor,compatibility:r.compatibility,version:r.version,observedAt:w.now}));
-    if(p.target==='vehicles')result=w.state.vehicles.filter(v=>v.owner===a.org||(!v.background&&w.organization(v.owner)?.sharing==='public')).map(v=>w.vehicleView(v));
+    if(p.target==='vehicles')result=w.state.vehicles.filter(v=>!v.background&&(v.owner===a.org||w.organization(v.owner)?.sharing==='public')).map(v=>clone(w.state.observations[v.owner].vehicles[v.id]));
     if(p.target==='roads')result=clone(known(a).edges);
     if(p.target==='facility')result=clone(known(a).buildings[p.id]??null);
     if(p.target==='policy')result=clone(w.organization(a.org).policy);
@@ -94,10 +94,10 @@ export function installActions(w){
     if(b?.damage>=3){op.state='waiting_to_unload';w.record('unloading_blocked',{reason:'unsafe_destination'},op.id);return;}
     let destination=w.resource(`stock-${op.destination}-${op.resourceType}`);if(!destination){destination=createResource(`stock-${op.destination}-${op.resourceType}`,op.org,op.destination,op.resourceType,0);w.state.resources.push(destination);}destination.quantity+=v.load;destination.received+=v.load;destination.version++;op.received=v.load;op.times.received=w.now;op.state='received';v.load=0;v.state='idle';v.operation=null;
     const c=w.state.commitments.find(x=>x.id===op.commitment);transition(c,'completed',COMMITMENT_STATES);
-    if(b&&!op.need){b.provisioned[op.resourceType]=(b.provisioned[op.resourceType]??0)+op.received;b.version++;}
+    if(b&&!op.need){b.provisioned[op.resourceType]=(b.provisioned[op.resourceType]??0)+op.received;}
     w.record('delivery_received',{quantity:op.received,type:op.resourceType,building:op.building},op.id);
     w.generateSignal('P21',{building:op.building??w.state.map.shelterId,text:`The receiving team confirms ${op.received} ${destination.unit} of ${op.resourceType}.`,false:false,causeEvent:`receipt-${op.id}`});
-    if(op.need){destination.quantity-=op.received;destination.consumed+=op.received;w.serveNeed(op.need,op.received);op.state='completed';op.times.service=w.now;}else op.state='completed';
+    if(op.need){destination.quantity-=op.received;destination.consumed+=op.received;w.serveNeed(op.need,op.received);op.state='completed';op.times.service=w.now;w.send({kind:'need_observation',need:clone(w.need(op.need)),observedAt:w.now},op.org,{sector:b?.sector});}else op.state='completed';
     w.observeResource(op.org,w.resource(op.resource));w.reportOperation(op);
   });
   w.onAction('transfer',(a,p)=>{requireRole(a,commandRoles);const r=writable(w,a,p.resource);positive(p.quantity);check(p.quantity<=available(r),'INSUFFICIENT_RESOURCE','Not available');check(w.organization(p.to),'NOT_FOUND','Recipient not found');const transfer={id:w.nextId('transfer'),from:a.org,to:p.to,resource:r.id,quantity:p.quantity,state:'offered',createdAt:w.now};w.state.transfers??=[];w.state.transfers.push(transfer);return clone(transfer);});

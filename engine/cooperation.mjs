@@ -58,11 +58,13 @@ export function installCooperation(w) {
     const op=previousDispatch(a,p,request);const stored=w.state.operations.find(o=>o.id===op.id);stored.proposal=p.proposal??null;stored.references=clone(p.references??[]);return clone(stored);
   });
   const previousUnload=w.handlers.get('unload');
+  w.on('request_unload',p=>{const op=w.state.operations.find(o=>o.id===p.operation);if(!op||!['arrived','waiting_to_unload'].includes(op.state))return;const b=op.building?w.building(op.building):null;if(b&&(b.unloading>=b.unloadCapacity||!b.receiverAvailable||b.damage>=3)){op.state='waiting_to_unload';w.record('unloading_queued',{building:b.id},op.id);if(w.now+30000<=w.config.durationMs)w.schedule(w.now+30000,'request_unload',p,4,`unload-queue-${op.id}-${w.now}`);return;}if(b)b.unloading++;op.unloadingSlot=!!b;op.state='unloading';op.times.unloadingStarted=w.now;w.schedule(w.now+w.config.unloadMs,'unload',p,4,`unload-${op.id}-${w.now}`);});
   w.on('unload',p=>{
-    const op=w.state.operations.find(o=>o.id===p.operation);if(!op||op.state!=='arrived')return;
+    const op=w.state.operations.find(o=>o.id===p.operation);if(!op||op.state!=='unloading')return;
     const b=op.building?w.building(op.building):null,v=w.vehicle(op.vehicle);
-    if(b&&(b.damage>=3||!b.receiverAvailable||(b.unloading??0)>=b.unloadCapacity||(b.provisioned[op.resourceType]??0)+v.load>b.storageCapacity)){
-      op.waitingReason=b.damage>=3?'unsafe_destination':!b.receiverAvailable?'no_receiver':'storage_or_unloading_capacity';w.record('unloading_blocked',{reason:op.waitingReason},op.id);if(w.now+30000<=w.config.durationMs)w.schedule(w.now+30000,'unload',p,4,`unload-wait-${op.id}-${w.now}`);return;
+    if(op.unloadingSlot){b.unloading--;op.unloadingSlot=false;}op.state='arrived';
+    if(b&&(b.damage>=3||!b.receiverAvailable||(b.provisioned[op.resourceType]??0)+v.load>b.storageCapacity)){
+      op.state='waiting_to_unload';op.waitingReason=b.damage>=3?'unsafe_destination':!b.receiverAvailable?'no_receiver':'storage_or_unloading_capacity';w.record('unloading_blocked',{reason:op.waitingReason},op.id);if(w.now+30000<=w.config.durationMs)w.schedule(w.now+30000,'request_unload',p,4,`unload-wait-${op.id}-${w.now}`);return;
     }
     if(b&&op.resourceType==='energy'&&!op.need){const r=w.resource(op.resource);if(r.compatibility?.connector!==b.requiredPower.connector||r.compatibility.powerKw<b.requiredPower.powerKw){op.state='waiting_for_compatible_equipment';w.record('equipment_incompatible',{resource:r.id,building:b.id},op.id);return;}}
     previousUnload(p);

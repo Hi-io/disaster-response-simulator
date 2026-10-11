@@ -1,0 +1,1 @@
+{"seed":"hand-verifiable","scenario":"S01","grid":3,"extentKm":2,"hazard":"none","postsPerHour":0,"backgroundTraffic":0,"packetLoss":0,"durationMs":1800000,"reviewMs":1000,"loadMs":1000,"unloadMs":1000,"policy":"rules","mode":"headless"}

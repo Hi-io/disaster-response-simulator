@@ -29,7 +29,7 @@ export async function createLabServers({config={},observerPort=4318,sourcePort=4
         if(url.pathname==='/api/config'){world=new World(b);playing=false;return json(res,200,{runId:world.runId});}
         if(url.pathname==='/api/control'){if(b.rate!==undefined){if(![1,10,100,1000].includes(b.rate))throw new SimError('RATE','Invalid speed');rate=b.rate;}if(b.play!==undefined)playing=!!b.play;if(b.step){playing=false;world.step();}if(b.advanceTo!==undefined){playing=false;world.advance(b.advanceTo);}return json(res,200,{playing,rate,now:world.now});}
         if(url.pathname==='/api/action'){const org=b.org??'org0';return json(res,200,world.act({id:`human-${org}`,org,role:'commander'},b.action));}
-        if(url.pathname==='/api/inject'){if(!['damage','road_change','intervention','scenario_signal','fire_front','flood_level'].includes(b.type))throw new SimError('EVENT','Event type not allowed');world.schedule(world.now,b.type,b.data??{},0,`manual-${world.nextId('intervention')}`);world.step();return json(res,200,{injected:true});}
+        if(url.pathname==='/api/inject'){if(!['damage','road_change','intervention','scenario_signal','fire_front','flood_level'].includes(b.type))throw new SimError('EVENT','Event type not allowed');world.schedule(world.now,b.type,b.data??{},0,`manual-${world.nextId('intervention')}`);world.advance(world.now);return json(res,200,{injected:true});}
         if(url.pathname==='/api/checkpoint')return json(res,200,world.checkpoint());
         if(url.pathname==='/api/restore'){world=new World(b.manifest.config,b);playing=false;return json(res,200,{restored:true,runId:world.runId});}
         if(url.pathname==='/api/metrics')return json(res,200,world.observer().metrics);
@@ -49,7 +49,7 @@ export async function createLabServers({config={},observerPort=4318,sourcePort=4
         if(url.pathname==='/api/actor/state')return json(res,200,world.actorView(actor.org));
         if(url.pathname==='/api/actor/action')return json(res,200,world.act(actor,await body(req)));
         if(url.pathname==='/api/actor/queries')return json(res,200,{queries:(world.state.queries??[]).filter(q=>q.org===actor.org)});
-        if(url.pathname==='/api/actor/ingestion'){const b=await body(req),post=world.publicFeed({limit:100}).posts.find(p=>p.id===b.id)??world.state.posts.find(p=>p.public.id===b.id&&p.indexAt<=world.now&&!p.deleted)?.public;if(!post)throw new SimError('SOURCE','Post not accessible',404);if(!['downloaded','accepted','interpreted','discarded'].includes(b.stage))throw new SimError('STAGE','Invalid ingestion stage');const receipt={id:b.id,org:actor.org,stage:b.stage,reason:b.reason??null,at:world.now,version:post.version};world.state.ingestion.push(receipt);return json(res,200,receipt);}
+        if(url.pathname==='/api/actor/ingestion')return json(res,200,world.acknowledge(actor,await body(req)));
         throw new SimError('NOT_FOUND','Actor endpoint not found',404);
       }
       if(url.pathname.startsWith('/api/observer')||url.pathname.startsWith('/api/state'))throw new SimError('NOT_FOUND','Not found',404);

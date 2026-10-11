@@ -10,6 +10,9 @@ import {installHazards} from '../generators/hazards.mjs';
 import {installActions} from './operations.mjs';
 import {installTasks} from './tasks.mjs';
 import {installCooperation} from './cooperation.mjs';
+import {installReference} from '../adapters/reference.mjs';
+import {installIngestion} from './ingestion.mjs';
+import {installFacilities} from './facilities.mjs';
 import {configureScenario} from '../scenarios/catalog.mjs';
 import {evaluate} from '../evaluation/metrics.mjs';
 
@@ -17,7 +20,7 @@ export class World {
   constructor(input={},snapshot=null) {
     this.config=validateConfig(input);this.manifest=manifest(this.config,{contentVersion:'presets-v1'});
     this.runId=digest(this.manifest).slice(0,20);this.now=0;this.seq=0;this.eventCount=0;
-    this.queue=new EventQueue();this.log=[];this.handlers=new Map();this.actionHandlers=new Map();this.logSink=null;
+    this.queue=new EventQueue();this.log=[];this.inputs=[];this.currentEvent=null;this.actionDepth=0;this.handlers=new Map();this.actionHandlers=new Map();this.logSink=null;
     this.state={map:generateMap(this.config),resources:[],vehicles:[],needs:[],operations:[],commitments:[],messages:[],posts:[],ingestion:[],claims:[],proposals:[],publicUpdates:[],inspections:[],purchases:[],fundEntries:[],patterns:[],observations:{},queryCount:0,toolCost:0,invalidActions:0,modelCalls:0,modelWallMs:0,idempotency:{},counters:{},toolQuota:{},knownRouteVersion:0,actorMoves:[]};
     this.state.cohorts=this.state.map.sectors.map(s=>({id:`community-${s.id}`,sector:s.id,node:s.node,population:s.population,moved:0,inTransit:0,mobility:'group',language:this.random('population',s.id,'language')<.4?'es':'en',reportProbability:this.config.observationRate}));
     this.indices=new Map();
@@ -25,7 +28,7 @@ export class World {
     if(snapshot){this.restore(snapshot);return;}
     this.initialize();
   }
-  install(){installTraffic(this);installCommunications(this);installInformation(this);installHazards(this);installActions(this);installTasks(this);installCooperation(this);}
+  install(){installTraffic(this);installCommunications(this);installInformation(this);installHazards(this);installActions(this);installTasks(this);installCooperation(this);installFacilities(this);installReference(this);installIngestion(this);}
   initialize(){
     for(const org of this.state.map.organizations){
       this.state.observations[org.id]={buildings:{},needs:{},resources:{},vehicles:{},edges:{},operations:{},claims:[],lastContact:{}};
@@ -47,6 +50,7 @@ export class World {
     if(this.config.postsPerHour)this.schedule(5_000,'ambient_posts',{batch:0},2,'ambient-0');
     for(let i=0;i<this.config.backgroundTraffic;i++)this.schedule(i*1500,'background_trip',{index:i},3,`background-${i}`);
     this.record('world_initialized',{scenario:this.config.scenario,mapHash:this.state.map.hash});
+    if(this.config.policy!=='none')this.schedule(0,'reference_tick',{},5,'reference-initial');
   }
   on(type,fn){this.handlers.set(type,fn);}
   onAction(type,fn){this.actionHandlers.set(type,fn);}
@@ -60,7 +64,7 @@ export class World {
   record(type,data={},entity=null){const e={index:this.eventCount,at:this.now,type,entity,data:clone(data)};this.log.push(e);this.logSink?.(e);return e;}
   step(){
     const next=this.queue.pop();if(!next)return null;if(this.eventCount>=this.config.maxEvents)throw new SimError('EVENT_BUDGET','Event budget exhausted');
-    this.now=next.at;this.eventCount++;const fn=this.handlers.get(next.type);if(!fn)throw new Error(`Missing handler: ${next.type}`);fn(next.data,next);return next;
+    this.now=next.at;this.eventCount++;const fn=this.handlers.get(next.type);if(!fn)throw new Error(`Missing handler: ${next.type}`);this.currentEvent=next;try{fn(next.data,next);}finally{this.currentEvent=null;}return next;
   }
   advance(target=this.config.durationMs,{maxEvents=100000}={}){
     if(!Number.isSafeInteger(target)||target<this.now)throw new Error('Invalid advance target');let count=0;
@@ -68,7 +72,8 @@ export class World {
     const reached=!(this.queue.peek()?.at<=target);if(reached)this.now=target;
     return {now:this.now,processed:count,reached,nextAt:this.queue.peek()?.at??null};
   }
-  lookup(key,list,id){let index=this.indices.get(key);if(!index||index.length!==list.length){index={length:list.length,map:new Map(list.map(x=>[x.id,x]))};this.indices.set(key,index);}return index.map.get(id);}
+  lookup(key,list,id){let index=this.indices.get(key);if(!index||index.list!==list||index.length>list.length){index={list,length:0,map:new Map()};this.indices.set(key,index);}for(let i=index.length;i<list.length;i++)index.map.set(list[i].id??list[i].public?.id,list[i]);index.length=list.length;return index.map.get(id);}
+  post(id){return this.lookup('posts',this.state.posts,id);}
   building(id){return this.lookup('buildings',this.state.map.buildings,id);}
   organization(id){return this.lookup('organizations',this.state.map.organizations,id);}
   resource(id){return this.lookup('resources',this.state.resources,id);}
@@ -88,6 +93,10 @@ export class World {
   observeNeed(org,n){this.state.observations[org].needs[n.id]={id:n.id,building:n.building,type:n.type,quantity:n.quantity,served:n.served,unit:n.unit,deadline:n.deadline,population:n.population,version:n.version,at:this.now};const b=this.building(n.building);this.state.observations[org].buildings[b.id]={id:b.id,node:b.node,use:b.use,state:b.state,at:this.now};}
   vehicleView(v){return {id:v.id,owner:v.owner,node:v.lastGPS.node,at:v.lastGPS.at,capacity:v.capacity,weightKg:v.weightKg,speedMps:v.speedMps,maxWaterDepth:v.maxWaterDepth,fuel:v.fuel,shiftEnd:v.shiftEnd,state:v.state,version:v.version};}
   act(actor,request){
+    if(this.actionDepth===0&&!this.currentEvent)this.inputs.push({at:this.now,afterEventCount:this.eventCount,actor:clone(actor),request:clone(request)});
+    this.actionDepth++;try{return this.applyAction(actor,request);}finally{this.actionDepth--;}
+  }
+  applyAction(actor,request){
     validateAction(request);if(!actor||!this.organization(actor.org))throw new SimError('AUTHENTICATION','Unknown actor',401);
     const key=`${actor.org}:${actor.id}:${request.idempotencyKey}`;
     const signature=digest(request);const old=this.state.idempotency[key];
@@ -95,9 +104,9 @@ export class World {
     try{const fn=this.actionHandlers.get(request.type);if(!fn)throw new SimError('UNIMPLEMENTED','Action handler missing',501);const result=fn(actor,clone(request.params),request);if(result?.id&&result.vehicle&&this.state.operations.some(o=>o.id===result.id))this.state.observations[actor.org].operations[result.id]=clone(result);this.state.idempotency[key]={signature,result:clone(result)};this.record('action_accepted',{actor:actor.id,org:actor.org,type:request.type,key:request.idempotencyKey});return result;}
     catch(error){this.state.invalidActions++;this.record('action_rejected',{actor:actor.id,org:actor.org,type:request.type,code:error.code??'ERROR'});throw error;}
   }
-  checkpoint(){return clone({manifest:this.manifest,runId:this.runId,now:this.now,seq:this.seq,eventCount:this.eventCount,state:this.state,queue:this.queue.toJSON(),log:this.log});}
-  restore(snapshot){if(snapshot.manifest.engineVersion!==VERSION)throw new Error('Checkpoint engine version mismatch');if(digest(snapshot.manifest.config)!==digest(this.config))throw new Error('Checkpoint configuration mismatch');this.manifest=clone(snapshot.manifest);this.runId=snapshot.runId;this.now=snapshot.now;this.seq=snapshot.seq;this.eventCount=snapshot.eventCount;this.state=clone(snapshot.state);this.queue=new EventQueue(clone(snapshot.queue));this.log=clone(snapshot.log);this.indices.clear();}
-  stateHash(){return digest({manifest:this.manifest,now:this.now,state:this.state,queue:this.queue.toJSON(),log:this.log});}
+  checkpoint(){return clone({manifest:this.manifest,runId:this.runId,now:this.now,seq:this.seq,eventCount:this.eventCount,state:this.state,queue:this.queue.toJSON(),log:this.log,inputs:this.inputs});}
+  restore(snapshot){if(snapshot.manifest.engineVersion!==VERSION)throw new Error('Checkpoint engine version mismatch');if(digest(snapshot.manifest.config)!==digest(this.config))throw new Error('Checkpoint configuration mismatch');this.manifest=clone(snapshot.manifest);this.runId=snapshot.runId;this.now=snapshot.now;this.seq=snapshot.seq;this.eventCount=snapshot.eventCount;this.state=clone(snapshot.state);this.queue=new EventQueue(clone(snapshot.queue));this.log=clone(snapshot.log);this.inputs=clone(snapshot.inputs??[]);this.indices.clear();}
+  stateHash(){return digest({manifest:this.manifest,now:this.now,state:this.state,queue:this.queue.toJSON(),log:this.log,inputs:this.inputs});}
   invariants(){
     const errors=[];for(const r of this.state.resources)if(!checkResource(r))errors.push(`ledger:${r.id}`);
     for(const v of this.state.vehicles){if(v.load<0||v.load>v.capacity||v.fuel<0)errors.push(`vehicle:${v.id}`);if(v.edge&&!this.edge(v.edge)?.occupants.includes(v.id))errors.push(`occupancy:${v.id}`);}
@@ -106,9 +115,10 @@ export class World {
     for(const n of this.state.needs)if(n.served<0||n.quantity<0)errors.push(`need:${n.id}`);
     for(const b of this.state.map.buildings)if(b.occupancy<0||b.reservedPlaces<0||b.occupancy+b.reservedPlaces>b.capacity&&b.capacity>0)errors.push(`places:${b.id}`);
     for(const v of this.state.vehicles)if((v.passengers??0)<0||(v.passengers??0)>(v.seats??Infinity))errors.push(`passengers:${v.id}`);
+    const people=this.state.cohorts.reduce((total,c)=>total+c.population+c.inTransit,0);if(people!==this.config.grid**2*this.config.populationPerSector)errors.push('population_conservation');
     for(const op of this.state.operations){if(op.times?.arrived!=null&&op.times.dispatched==null)errors.push(`arrival:${op.id}`);if(['delivery','transfer','evacuation'].includes(op.type)&&op.times?.service!=null&&op.times.received==null)errors.push(`service:${op.id}`);}
     return errors;
   }
-  observer(){return {runId:this.runId,now:this.now,manifest:clone(this.manifest),state:clone(this.state),metrics:evaluate(this),events:this.log.slice(-200),nextAt:this.queue.peek()?.at??null,queueSize:this.queue.size,hash:this.stateHash()};}
-  actorView(org){const o=this.organization(org);if(!o)throw new SimError('AUTHENTICATION','Unknown organization',401);return {runId:this.runId,now:this.now,organization:{id:o.id,name:o.name,sharing:o.sharing,funds:o.funds},known:clone(this.state.observations[org]),operations:clone(Object.values(this.state.observations[org].operations)),proposals:clone(this.state.proposals.filter(p=>p.org===org)),commitments:clone(this.state.commitments.filter(p=>p.owner===org)),offers:clone(this.state.partnerOffers?.[org]??[]),sharedCommitments:clone(this.state.sharedCommitments?.[org]??[]),inspections:clone(this.state.inspections.filter(p=>p.org===org&&['completed','inconclusive','timeout'].includes(p.state))),queries:clone((this.state.queries??[]).filter(p=>p.org===org)),claims:clone(this.state.claims.filter(p=>p.org===org)),patterns:clone(this.state.patterns.filter(p=>p.org===org)),publicUpdates:clone(this.state.publicUpdates)};}
+  observer({limit=200,includeHash=false}={}){const view={...this.state,posts:this.state.posts.slice(-limit),messages:this.state.messages.slice(-limit),ingestion:this.state.ingestion.slice(-limit),queries:(this.state.queries??[]).slice(-limit),idempotency:undefined,reference:undefined};return {runId:this.runId,now:this.now,manifest:clone(this.manifest),state:clone(view),totals:{posts:this.state.posts.length,messages:this.state.messages.length,ingestion:this.state.ingestion.length},metrics:evaluate(this),events:this.log.slice(-limit),nextAt:this.queue.peek()?.at??null,queueSize:this.queue.size,...(includeHash?{hash:this.stateHash()}:{})};}
+  actorView(org,{includeQueries=true,includeEdges=true,historyLimit=100}={}){const o=this.organization(org);if(!o)throw new SimError('AUTHENTICATION','Unknown organization',401);return {runId:this.runId,now:this.now,organization:{id:o.id,name:o.name,sharing:o.sharing,funds:o.funds},known:clone({...this.state.observations[org],edges:includeEdges?this.state.observations[org].edges:Object.fromEntries(Object.entries(this.state.observations[org].edges).filter(([,e])=>!e.open))}),operations:clone(Object.values(this.state.observations[org].operations)),proposals:clone(this.state.proposals.filter(p=>p.org===org)),commitments:clone(this.state.commitments.filter(p=>p.owner===org)),offers:clone(this.state.partnerOffers?.[org]??[]),sharedCommitments:clone(this.state.sharedCommitments?.[org]??[]),inspections:clone(this.state.inspections.filter(p=>p.org===org&&['completed','inconclusive','timeout'].includes(p.state))),queries:includeQueries?clone((this.state.queries??[]).filter(p=>p.org===org).slice(-historyLimit)):[],claims:clone(this.state.claims.filter(p=>p.org===org)),patterns:clone(this.state.patterns.filter(p=>p.org===org)),publicUpdates:clone(this.state.publicUpdates)};}
 }

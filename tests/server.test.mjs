@@ -8,7 +8,9 @@ test('source server is scrapeable but cannot expose observer truth or accept una
  assert.equal((await fetch(source+'/api/actor/state')).status,401);
  const key=Object.keys(lab.actorKeys)[0],headers={Authorization:`Bearer ${key}`,'Content-Type':'application/json'};
  const posts=(await(await fetch(source+'/api/feed')).json()).posts;
- const receipt=await fetch(source+'/api/actor/ingestion',{method:'POST',headers,body:JSON.stringify({id:posts[0].id,stage:'accepted'})});assert.equal(receipt.status,200);assert.equal(lab.world.state.ingestion.length,1);
+ const missing=await fetch(source+'/api/actor/ingestion',{method:'POST',headers,body:JSON.stringify({id:posts[0].id,stage:'accepted'})});assert.equal(missing.status,400);
+ const download=await fetch(source+'/api/actor/ingestion',{method:'POST',headers,body:JSON.stringify({id:posts[0].id,stage:'downloaded'})});assert.equal(download.status,200);
+ const receipt=await fetch(source+'/api/actor/ingestion',{method:'POST',headers,body:JSON.stringify({id:posts[0].id,stage:'accepted'})});assert.equal(receipt.status,200);assert.equal(lab.world.state.ingestion.length,2);
  const dispatch=await fetch(source+'/api/actor/action',{method:'POST',headers,body:JSON.stringify({type:'dispatch',params:{},idempotencyKey:'unauthorized'})});assert.equal(dispatch.status,403);
  const state=await(await fetch(observer+'/api/state',{headers:{Authorization:`Bearer ${lab.observerKey}`}})).json();assert.ok(state.state.posts.some(p=>p.private.false));
 });

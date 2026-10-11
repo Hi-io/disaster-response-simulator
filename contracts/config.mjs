@@ -7,6 +7,7 @@ export const DEFAULT_CONFIG = {
   observationRate: 0.8, operatorCount: 2, reviewMs: 90_000, inspectionMs: 180_000,
   loadMs: 120_000, unloadMs: 90_000, setupMs: 300_000, networkLatencyMs: 3_000,
   packetLoss: 0.02, networkCapacity: 30, sourceIndexMs: 10_000, queryLatencyMs: 5_000,
+  bandwidthBytesPerSecond:1000000,
   toolQuota: 60, funds: 5000, stockWater: 2400, reservedWater: 100,
   policy: 'none', mode: 'interactive', clockLatency: 'modeled', split: 'development',
   language: 'mixed', logMode: 'full', maxEvents: 2_000_000, maxPosts: 1_000_000
@@ -25,6 +26,7 @@ const ranges = {
   falseRate:[0,1],observationRate:[0,1],operatorCount:[1,50],reviewMs:[1000,3600000],
   inspectionMs:[1000,3600000],loadMs:[1000,3600000],unloadMs:[1000,3600000],setupMs:[1000,3600000],
   networkLatencyMs:[0,3600000],packetLoss:[0,1],networkCapacity:[1,100000],sourceIndexMs:[0,3600000],
+  bandwidthBytesPerSecond:[100,100000000],
   queryLatencyMs:[0,3600000],toolQuota:[1,1000000],funds:[0,100000000],stockWater:[0,100000000],
   reservedWater:[0,100000000],maxEvents:[100,100000000],maxPosts:[10,10000000]
 };
