@@ -307,8 +307,16 @@ aside {
 }
 .scene {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 660px;
   background: linear-gradient(135deg, #f6f8fb, #eaf0f7);
+  overflow: hidden;
+}
+.mapViewport {
+  position: relative;
+  flex: 1;
+  min-height: 400px;
   overflow: hidden;
 }
 .sceneHeading {
@@ -331,7 +339,7 @@ aside {
 }
 .scene #canvas {
   position: absolute;
-  inset: 0 0 100px;
+  inset: 0;
 }
 canvas {
   display: block;
@@ -340,7 +348,7 @@ canvas {
 }
 .mapLegend {
   position: absolute;
-  bottom: 113px;
+  bottom: 14px;
   left: 20px;
   right: 20px;
   display: flex;
@@ -367,12 +375,8 @@ canvas {
   background: #607acc;
 }
 .summary {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   padding: 20px;
   border-top: 1px solid var(--line);
@@ -614,6 +618,7 @@ pre {
   .summary {
     gap: 5px;
     padding: 13px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .summary span {
     font-size: 8px;
@@ -656,4 +661,12 @@ pre {
   color: #657286;
   margin: 8px 18px 16px;
   line-height: 1.5;
+}
+@media (max-width: 720px) {
+  .healthSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mapViewport {
+    min-height: 340px;
+  }
 }
