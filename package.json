@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "A deterministic disaster-response simulation and evaluation laboratory",
-  "engines": {"node": ">=24"},
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node sources/server.mjs",
     "test": "node --test tests/*.test.mjs",
@@ -12,5 +14,7 @@
     "cli": "node cli.mjs",
     "benchmark": "node scripts/benchmark.mjs"
   },
-  "dependencies": {}
+  "dependencies": {
+    "three": "^0.186.1"
+  }
 }
