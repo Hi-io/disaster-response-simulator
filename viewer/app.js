@@ -757,7 +757,7 @@ async function refresh() {
     $('speed').value = snapshot.rate;
     $('runId').textContent = `run ${snapshot.runId.slice(0, 8)}`;
     $('sourceLink').href = snapshot.sourceUrl + '/feed';
-    $('effective').textContent = `${number(snapshot.effectiveRate)}× effective`;
+    $('effective').textContent = `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
     const m = snapshot.metrics;
     const knowledge =
       $('perspective').value === 'truth'
