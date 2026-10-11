@@ -1108,7 +1108,11 @@ function showStreams() {
   const filter = $('feedFilter').value.toLowerCase(),
     truth = $('perspective').value === 'truth';
   const org = $('focusOrg').value;
-  const models = streamModels(snapshot, org, truth);
+  const telemetry = $('showTelemetry').checked;
+  const discoverable = $('showDiscoverable').checked;
+  const models = streamModels(snapshot, org, truth, { telemetry });
+  const teamItems = discoverable ? models.available : models.received;
+  const visibleModels = { ...models, available: teamItems };
   for (const item of models.reality.concat(models.available))
     if (item.raw?.type) {
       eventCache.delete(eventCard(item.raw, snapshot.state).key);
@@ -1116,7 +1120,7 @@ function showStreams() {
     }
   while (eventCache.size > 500) eventCache.delete(eventCache.keys().next().value);
   const name = snapshot.state.map.organizations.find((o) => o.id === org)?.name ?? 'your team';
-  const scope = `${snapshot.runId}:${$('perspective').value}:${org}:${filter}`;
+  const scope = `${snapshot.runId}:${$('perspective').value}:${org}:${filter}:${telemetry}:${discoverable}`;
   const mapCards = truth
     ? models.reality
         .filter(
@@ -1124,12 +1128,12 @@ function showStreams() {
         )
         .concat(models.communication)
         .sort((a, b) => a.at - b.at)
-    : models.available
-        .filter((m) => m.tag === 'Received by this organization')
+    : models.received
+        .filter((m) => m.location)
         .concat(models.communication)
         .sort((a, b) => a.at - b.at);
   for (const [id, lane] of Object.entries(flowLanes)) {
-    const items = models[id].filter(
+    const items = visibleModels[id].filter(
       (m) => !filter || JSON.stringify(m).toLowerCase().includes(filter),
     );
     if (scope !== feedScope)
@@ -1138,17 +1142,22 @@ function showStreams() {
         id === 'reality' && !truth
           ? 'World truth is hidden. Only received observations are shown on the map.'
           : id === 'available'
-            ? 'No accessible sources or received reports yet.'
+            ? discoverable
+              ? 'No discoverable sources or received reports yet.'
+              : 'No reports received yet. Public sources can be fetched through the source API.'
             : 'No events in this recent window.',
       );
     else if (!frozen) lane.accept(items);
   }
-  const nextMapScope = `${snapshot.runId}:${$('perspective').value}:${org}`;
+  const nextMapScope = `${snapshot.runId}:${$('perspective').value}:${org}:${telemetry}`;
   if (nextMapScope !== mapScope) mapNotices.reset(mapCards);
   else mapNotices.accept(mapCards);
   mapScope = nextMapScope;
   feedScope = scope;
-  $('availableTitle').textContent = `Data available to ${name}`;
+  $('availableTitle').textContent = `${discoverable ? 'Available to' : 'Received by'} ${name}`;
+  $('availableTitle').title = discoverable
+    ? 'Consultable public sources, known reports and connector receipts. Availability is not consumption.'
+    : 'Delivered team reports, known operational data and actual connector receipts. No automatic AI filtering.';
   $('availableCount').textContent = '';
   $('realityCount').textContent = truth ? '' : 'Ground truth hidden';
   $('communicationCount').textContent = '';
@@ -1498,6 +1507,8 @@ $('freeze').onclick = () => {
   showStreams();
 };
 $('feedFilter').oninput = showStreams;
+$('showTelemetry').onchange = showStreams;
+$('showDiscoverable').onchange = showStreams;
 document.querySelector('.streamGrid').onclick = (e) => {
   const card = e.target.closest('[data-id]');
   if (card) select({ kind: card.dataset.kind, id: card.dataset.id });

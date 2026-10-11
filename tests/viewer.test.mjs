@@ -331,14 +331,125 @@ test('map notifications push older neighbours upward and cull overflow instead o
   assert.equal(separate[0].y, separate[1].y, 'unrelated locations keep their own anchors');
 });
 
-test('high-speed feed pacing drains bursts faster while preserving normal-speed timing', () => {
+test('feed pacing follows pending work rather than the simulation speed selector', () => {
   assert.deepEqual(feedTiming(0, 1), feedTiming(0, 10));
   assert.equal(feedTiming(0, 1).interval, 280);
   assert.ok(
     feedTiming(30, 1000).interval * 36 < 1000,
-    'a full presentation queue drains within the polling interval',
+    'a large backlog gets fast arrivals instead of a rate-dependent delay',
   );
-  assert.ok(feedTiming(30, 1000).transition < feedTiming(30, 10).transition);
+  assert.deepEqual(feedTiming(30, 1000), feedTiming(30, 1));
+  assert.ok(feedTiming(2).interval < feedTiming(1).interval);
+  assert.ok(feedTiming(30).transition < feedTiming(2).transition);
+});
+
+test('a new backlog accelerates a lane before its earlier slow deadline expires', () => {
+  const vars = new Map(),
+    seen = [];
+  const lane = new FlowLane({ style: { setProperty: (k, v) => vars.set(k, v) } });
+  lane.add = (item) => seen.push(item.key);
+  lane.accept([{ key: 'first' }]);
+  lane.tick(1000, false, false, true, 1);
+  assert.equal(lane.nextAt, 1280);
+  lane.accept(Array.from({ length: 30 }, (_, i) => ({ key: `burst-${i}` })));
+  lane.tick(1030, false, false, true, 1);
+  assert.equal(seen.length, 2, 'does not wait for the old 280 ms interval');
+  assert.equal(vars.get('--flow-fade'), '0ms', 'short-lived burst cards remain opaque');
+  for (let now = 1046; now <= 2534; now += 16) lane.tick(now, false, false, true, 1);
+  assert.equal(lane.queue.pending.length, 0, 'a 30-card burst drains at normal world speed');
+  assert.equal(seen.length, 31);
+});
+
+test('the received lane requires delivery or a receipt and collapses connector stages, not reposts', () => {
+  const s = state();
+  s.posts = [
+    post('p1', 'public'),
+    post('p2', 'public'),
+    post('team', ['org0']),
+    post('secret', ['org1']),
+  ];
+  s.ingestion = ['downloaded', 'accepted', 'discarded'].map((stage, i) => ({
+    id: 'p1',
+    version: 1,
+    org: 'org0',
+    stage,
+    at: 30 + i,
+    content: { id: 'p1', version: 1, text: 'ORIGINAL received content', location: 'b0' },
+  }));
+  s.ingestion.push({ id: 'secret', version: 1, org: 'org1', stage: 'downloaded', at: 35 });
+  const models = streamModels({ now: 50, state: s, events: [] }, 'org0', true);
+  assert.deepEqual(models.received.map((c) => c.entity.id).sort(), ['p1', 'team']);
+  assert.equal(models.received.filter((c) => c.entity.id === 'p1').length, 1);
+  assert.equal(models.received.find((c) => c.entity.id === 'p1').body, 'ORIGINAL received content');
+  assert.ok(
+    models.available.some((c) => c.entity?.id === 'p2'),
+    'consultable remains available, not consumed',
+  );
+  assert.equal(s.ingestion.length, 4, 'display grouping does not remove audit receipts');
+  s.posts[0].public.text = s.posts[1].public.text = 'The same message';
+  const network = streamModels({ now: 50, state: s, events: [] }, 'org0', false).communication;
+  assert.equal(network.filter((c) => c.body === 'The same message').length, 2);
+});
+
+test('telemetry is optional and a received GPS payload is represented once, not as a second receipt', () => {
+  const s = state();
+  s.observations = {
+    org0: { vehicles: { v0: { id: 'v0', node: 'a', at: 5, state: 'en_route' } } },
+  };
+  const snapshot = {
+    now: 50,
+    state: s,
+    events: [
+      {
+        type: 'message_delivered',
+        at: 10,
+        index: 1,
+        data: { kind: 'telemetry', to: 'org0', target: 'v0' },
+      },
+    ],
+  };
+  const normal = streamModels(snapshot, 'org0', true);
+  assert.equal(normal.received.length, 0);
+  assert.equal(normal.reality.length, 0);
+  const technical = streamModels(snapshot, 'org0', true, { telemetry: true });
+  assert.equal(technical.received.length, 1);
+  assert.equal(technical.received[0].title, 'Last received vehicle position');
+  assert.equal(technical.reality.length, 1);
+  assert.ok(!technical.received.some((c) => c.title === 'Information received'));
+  snapshot.events.push({
+    type: 'query_completed',
+    at: 15,
+    index: 2,
+    data: { target: 'vehicles', org: 'org0' },
+  });
+  assert.equal(streamModels(snapshot, 'org0', true).received.length, 0);
+  assert.equal(streamModels(snapshot, 'org0', true, { telemetry: true }).received.length, 2);
+});
+
+test('unchanged operational heartbeats do not create new cards, while real changes do', () => {
+  const s = state();
+  s.observations = {
+    org0: {
+      needs: {
+        n: {
+          id: 'n',
+          building: 'b0',
+          type: 'food',
+          unit: 'portion',
+          quantity: 100,
+          served: 0,
+          version: 1,
+          at: 5,
+        },
+      },
+    },
+  };
+  const snapshot = { now: 50, state: s, events: [] };
+  const first = streamModels(snapshot, 'org0', false).received[0];
+  s.observations.org0.needs.n.at = 20;
+  assert.equal(streamModels(snapshot, 'org0', false).received[0].key, first.key);
+  s.observations.org0.needs.n.served = 10;
+  assert.notEqual(streamModels(snapshot, 'org0', false).received[0].key, first.key);
 });
 
 test('pausing a feed immediately settles to recent items instead of replaying a stale backlog', () => {

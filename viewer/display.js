@@ -1,10 +1,11 @@
 // Presentation rules only. These never advance time or change the simulated world.
-export function feedTiming(backlog, rate = 1) {
-  if (rate >= 1000) return { interval: backlog > 6 ? 24 : 45, transition: 130 };
-  if (rate >= 100) return { interval: backlog > 6 ? 55 : 100, transition: 240 };
+export function feedTiming(backlog) {
+  const queued = Math.max(0, backlog);
+  if (queued <= 1) return { interval: 280, transition: 520, fade: 240 };
   return {
-    interval: backlog > 12 ? 100 : backlog > 4 ? 150 : 280,
-    transition: 520,
+    interval: Math.max(18, Math.round(140 / (queued - 1))),
+    transition: Math.max(90, Math.round(440 / Math.sqrt(queued))),
+    fade: queued > 3 ? 0 : 70,
   };
 }
 

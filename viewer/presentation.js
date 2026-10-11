@@ -227,7 +227,52 @@ export function receiptCard(receipt, state) {
     raw: receipt,
   };
 }
-export function streamModels(snapshot, org, truth) {
+export function isRoutineEvent(event) {
+  return (
+    ['vehicle_position', 'vehicle_telemetry', 'ingestion_receipt', 'query_completed'].includes(
+      event.type,
+    ) ||
+    (event.type === 'message_delivered' &&
+      !['command', 'reroute', 'cancel', 'task_command'].includes(event.data?.kind))
+  );
+}
+
+function meaningfulObservation(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key]) => !['at', 'observedAt', 'availableAt', 'receivedAt'].includes(key),
+    ),
+  );
+}
+
+function receivedSources(receipts, state, org) {
+  const groups = new Map();
+  for (const receipt of receipts) {
+    const key = `received-post:${org}:${receipt.id}:${receipt.version}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(receipt);
+  }
+  return [...groups].map(([key, stages]) => {
+    stages.sort((a, b) => a.at - b.at);
+    const first = stages[0];
+    const card = receiptCard(first, state);
+    const content =
+      stages.find((r) => r.content)?.content ??
+      state.posts.find((p) => p.public.id === first.id && p.public.version === first.version)
+        ?.public;
+    return {
+      ...card,
+      key,
+      title: 'Source received',
+      body: content?.text ?? card.body,
+      location: content?.location,
+      media: content?.format && content.format !== 'text' ? content.format : null,
+      tag: `Actual connector receipt · ${[...new Set(stages.map((r) => r.stage))].join(' → ')}`,
+    };
+  });
+}
+
+export function streamModels(snapshot, org, truth, { telemetry = false } = {}) {
   const s = snapshot.state;
   const accessible = (p) => p.private?.audience === 'public' || p.private?.audience?.includes(org);
   const published = s.posts.filter(
@@ -256,7 +301,9 @@ export function streamModels(snapshot, org, truth) {
   const received = snapshot.events
     .filter(
       (e) =>
-        (e.type === 'message_delivered' && e.data.to === org && e.data.kind !== 'post') ||
+        (e.type === 'message_delivered' &&
+          e.data.to === org &&
+          !['post', 'telemetry'].includes(e.data.kind)) ||
         (e.type === 'sharing_received' && e.data.to === org) ||
         (e.type === 'query_completed' && e.data.org === org),
     )
@@ -265,7 +312,8 @@ export function streamModels(snapshot, org, truth) {
       key: `received:${eventCard(e, s).key}`,
       tag: 'Received by this organization',
     }));
-  const receipts = s.ingestion.filter((r) => r.org === org).map((r) => receiptCard(r, s));
+  const scopedReceipts = s.ingestion.filter((r) => r.org === org && r.at <= snapshot.now);
+  const receipts = scopedReceipts.map((r) => receiptCard(r, s));
   const known = s.observations?.[org] ?? {};
   const observations = [];
   for (const [collection, kind, icon, title] of [
@@ -276,6 +324,7 @@ export function streamModels(snapshot, org, truth) {
     ['operations', 'operation', 'truck', 'Received operation status'],
   ])
     for (const e of Object.values(known[collection] ?? {})) {
+      if (kind === 'vehicle' && !telemetry) continue;
       const at = e.at ?? e.observedAt ?? 0;
       let body = `${e.id} · ${humanize(e.state ?? e.type ?? kind)}`;
       if (kind === 'resource')
@@ -283,7 +332,7 @@ export function streamModels(snapshot, org, truth) {
       if (kind === 'need')
         body = `${number(Math.max(0, e.quantity - e.served))} ${e.unit} ${e.type} still needed · ${placeName(s, e.building)}`;
       observations.push({
-        key: `known:${org}:${kind}:${e.id}:${JSON.stringify(e)}`,
+        key: `known:${org}:${kind}:${e.id}:${JSON.stringify(meaningfulObservation(e))}`,
         at,
         title,
         body,
@@ -296,12 +345,47 @@ export function streamModels(snapshot, org, truth) {
         location: e.building ?? e.node ?? e.id,
       });
     }
+  const inbox = published
+    .filter((p) => p.private.audience !== 'public' && accessible(p))
+    .map((p) => ({
+      ...postCard(p),
+      key: `received-post:${org}:${p.public.id}:${p.public.version}`,
+      tag: 'Team inbox · delivered report',
+    }));
+  const receivedChanges = received.filter(
+    (card) =>
+      (telemetry || card.raw?.type !== 'query_completed') &&
+      (card.raw?.type !== 'message_delivered' ||
+        !['telemetry', 'need_observation', 'operation_status', 'query_result'].includes(
+          card.raw.data.kind,
+        )),
+  );
+  const teamFeed = new Map();
+  for (const card of [
+    ...inbox,
+    ...receivedSources(scopedReceipts, s, org),
+    ...receivedChanges,
+    ...observations,
+  ])
+    teamFeed.set(card.key, card);
+  const reality = new Map();
+  if (truth)
+    for (const event of snapshot.events) {
+      if (!telemetry && isRoutineEvent(event)) continue;
+      const card = eventCard(event, s);
+      if (!telemetry && event.type === 'traffic_spillback')
+        card.key = `traffic-pressure:${event.data.edge}:${event.data.downstream}:${Math.floor(event.at / 900000)}`;
+      reality.set(card.key, card);
+    }
   return {
-    reality: truth ? snapshot.events.map((e) => eventCard(e, s)) : [],
+    reality: [...reality.values()].sort((a, b) => a.at - b.at),
     communication,
     available: [...available, ...received, ...receipts, ...observations].sort(
       (a, b) => a.at - b.at,
     ),
+    // A consultable source is not a report that an organization has received.
+    // Collapse receipts for the same source/version, not independent reposts.
+    received: [...teamFeed.values()].sort((a, b) => a.at - b.at),
   };
 }
 // A finite presentation queue. Full history lives in the world archive, not the DOM.

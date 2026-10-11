@@ -19,6 +19,16 @@ pnpm start
 
 Both servers bind to loopback. This is a local research tool; it is not an internet-facing deployment.
 
+The **Node.js service owns the clock, disasters, traffic, decisions and metrics**. A browser is an optional observer: it draws the map, interpolates confirmed positions and animates cards. Closing it does not stop a playing simulation. Keep the Node process running; a paused world stays paused until the control API or Play starts it.
+
+To run the same service without serving the 3D frontend:
+
+```sh
+pnpm service -- --play
+```
+
+This starts the backend clock and retains the observer API on port 4318 and organization/source gateway on port 4319. `pnpm service` starts paused. `pnpm start` serves the optional viewer as well; both modes run the same engine. Use one mode at a time. The fictional social network remains readable for scraping in API-only mode. For accelerated experiments and multiple seeds, use the headless CLI commands below; no browser is needed.
+
 The default world covers **160 × 160 km**, with 625 irregularly placed settlements, winding roads, four response organizations and **three river crossings**. Road speed, capacity, terrain cost and vehicle restrictions vary. Closing a crossing can create an hours-long detour or make a community inaccessible. The `grid` parameter controls settlement density; regional roads do not form a square grid.
 
 The default earthquake runs for 48 simulated hours with disk-backed compact history and a scripted conventional coordination policy. Select **Manual / external platform** to operate it yourself or connect NEXO. A reference policy is ordinary code, not a substitute for a functioning Gemini integration.
@@ -29,13 +39,15 @@ The default earthquake runs for 48 simulated hours with disk-backed compact hist
 2. Use Play and the requested ×1/×10/×100/×1000 speed. Step and Advance world are in the configuration menu. Measured effective speed is in Measurements → diagnostics.
 3. Drag to pan, scroll to zoom, use right-drag to rotate, or Fit region to return to the isometric overview. Selecting a building, organization, vehicle, request or located report opens its inspector and smoothly zooms to it. The camera follows moving targets using confirmed positions. Pan, rotate, zoom, Stop tracking or close the inspector to release it; Track target resumes. Browse archived history when needed.
 4. Switch **Map view** from observer truth to an organization's received knowledge. Unknown information stays unknown. **Organization data** selects the team represented in the third stream. **Layers** controls traffic colors, vehicles, requests, disaster zones, connectivity, communities, routes, organizations and map notifications. Green/amber/coral road colors represent occupancy and queues; an organization view never borrows hidden live congestion.
-5. The three stacked lanes show world events, communication, and **data available to the selected organization**. The last combines accessible indexed sources, known observations and actual connector receipts. Available is not downloaded, and downloaded is not understood. Misleading-content labels appear only in observer truth. Select a card for its full contents. Freeze the feed to read it while the world and map continue running.
+5. The three stacked lanes show meaningful world events, communication, and **reports received by the selected organization**. The last shows delivered team messages, known operational observations and actual connector receipts. Stages for one downloaded source/version form one card; separate reposts remain separate messages. **Layers → Information flow** can include consultable sources or reveal routine telemetry. Both are off by default. Available is not received, and received is not understood. Misleading-content labels appear only in observer truth. Select a card for its full contents. Freeze the feed to read it while the world and map continue running.
 6. Use Actions & interventions to submit proposals, review decisions, dispatch resources or introduce disruptions. Agent sessions cannot authorize physical interventions.
 7. Compare A / B creates independent worlds with identical initial conditions and synchronized cameras. The built-in comparison uses scripted references, not Gemini.
 
 The complete operating view fits the viewport. The default view shows the map, clock, playback controls and three information lanes. **Measurements** opens resource-specific unmet, served and excess quantities, including food as well as water, plus simulated fatalities, injuries and deficit person-hours. Other need types appear as they arise. Missing organization observations remain “not reported”, never zero. Measurements, diagnostics, comparisons and the color key are available on demand rather than permanently taking space from the demonstration.
 
-Map notifications stay anchored to actual locations; nearby arrivals push older cards upward. Overflow leaves the visible area and is culled. At ×1000, the lower feeds accelerate to keep up with bursts; pausing immediately settles their finite presentation queues to recent records instead of replaying seconds of stale animations. Freeze still holds a readable view independently. Sampling details are in Measurements → diagnostics, and the full causal event history remains archived.
+Map notifications stay anchored to actual locations; nearby arrivals push older cards upward. Overflow leaves the visible area and is culled. **Card pacing follows pending queue size**, independently of the simulation-speed selector: more than one waiting card accelerates arrivals and movement; an emptying queue returns to a calmer pace. Large bursts and ×1000 show cards without an entry fade. Pausing immediately settles the finite presentation queues to recent records instead of replaying stale animations. Freeze still holds a readable view independently. Sampling details are in Measurements → diagnostics, and the full causal event history remains archived.
+
+Lane volumes do not have a forced ordering. One physical incident can generate many reports, reposts and unrelated messages. An organization may receive only a few of them, or fetch the entire accessible feed. The simulator does not pretend to perform AI filtering. Routine GPS and transport receipts are hidden in the default visual sample; a received vehicle position has one card when telemetry is enabled.
 
 Motion is buffered between confirmed snapshots, follows the known road shape and never extrapolates past the latest world state. GPS-only organization views retain reported positions instead of inventing travel between reports. Camera movement, visual interpolation and frame rate never advance the simulation. The model represents operational interactions, not photorealistic physics.
 

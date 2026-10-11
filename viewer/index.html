@@ -293,6 +293,19 @@
                 </div>
               </details>
               <p>Drag to pan · scroll to zoom. Moving the camera releases tracking.</p>
+              <div class="feedOptions">
+                <span class="eyebrow">INFORMATION FLOW</span>
+                <label
+                  ><input id="showTelemetry" type="checkbox" /> Telemetry & internal receipts</label
+                >
+                <label
+                  ><input id="showDiscoverable" type="checkbox" /> Include discoverable sources in
+                  team lane</label
+                >
+                <p>
+                  Changes the visual sample only. All records remain in the service and archive.
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -378,7 +391,7 @@
             <header>
               <span class="laneNumber">03</span>
               <div>
-                <strong id="availableTitle">Data available to your team</strong
+                <strong id="availableTitle">Received by your team</strong
                 ><span id="availableCount"></span>
               </div>
             </header>

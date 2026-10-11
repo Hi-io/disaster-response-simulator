@@ -46,9 +46,11 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Release verification
 
-The current automated suite has 91 tests and zero skipped tests: 76 causal/integration tests and 15 presentation-model tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+The current automated suite has 97 tests and zero skipped tests: 78 causal/integration tests and 19 presentation-model tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
 
-`viewer.test.mjs` checks indexed and scoped source availability, receipt-version fidelity, initial organization inventory, bounded/deduplicated visual queues, traffic colors without hidden-state leakage, confirmed curved paths, new departures, paused motion and GPS-only views. These are view-model checks; browser QA separately verifies the viewport layout, drawers, clickable cards, notifications, layer toggles, freeze/filter controls and responsive states. Animations do not execute Gemini or establish an operational advantage.
+`service.test.mjs` verifies that the API-only backend advances without a browser or polling, preserves authentication and organization scope, hides observer UI assets, stops only when paused, and produces the same seeded results as the service with its optional viewer.
+
+`viewer.test.mjs` checks indexed and scoped source availability, receipt-version fidelity, actual delivery versus consultable sources, consolidation of connector stages, optional telemetry without duplicate GPS cards, meaningful observation changes, queue-pressure pacing, bounded visual queues, traffic colors without hidden-state leakage, confirmed curved paths, new departures, paused motion and GPS-only views. These are view-model checks; browser QA separately verifies the viewport layout, drawers, clickable cards, notifications, layer toggles, freeze/filter controls and responsive states. Animations do not execute Gemini or establish an operational advantage.
 
 Browser QA covers the map, controls, selection, information streams, scoped perspectives and comparison surface. It does not substitute for headless causal tests. Measured scaling results and machine details are stored in `PERFORMANCE.md`; complete run artifacts stay under ignored `runs/`.
 

@@ -106,6 +106,16 @@ The external platform should wait for a timing receipt's `available` state befor
 
 ## Observer-only controls
 
+The Node.js backend runs independently of observer polling or rendering. `pnpm start` exposes the optional 3D viewer; `pnpm service -- --play` exposes the same APIs without that viewer and starts playback. `pnpm service` starts paused. Only one mode should bind the default ports. The source network on port 4319 stays available in both modes, including its HTML surface for scraper tests. Closing a browser neither stops nor advances the world.
+
+A headless controller starts or adjusts playback with an authenticated `POST http://127.0.0.1:4318/api/control`, using `Authorization: Bearer <observer key>` and `Content-Type: application/json`:
+
+```json
+{ "play": true, "rate": 1000 }
+```
+
+The external platform connects to the organization gateway on port 4319 with its scoped actor key. Observer control remains a laboratory capability. CLI run/batch/replay modes also require no browser; the viewer is never the simulation runtime.
+
 Read endpoints: `/api/state`, `/api/catalog`, `/api/checkpoint`, `/api/metrics`, `/api/events?entity=...&offset=0`, `/api/credentials`, `/api/compare`.
 
 `/api/compare?pair=1` captures both comparison worlds (`a`, `b`) in one server turn. Use this for synchronized A/B rendering; two separate reads during playback can straddle a clock tick even when the underlying worlds are synchronized.

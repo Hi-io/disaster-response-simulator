@@ -20,12 +20,14 @@ export class FlowLane {
     this.queue = new NotificationQueue({ capacity: 36 });
     this.cards = [];
     this.nextAt = 0;
+    this.lastShownAt = 0;
     this.emptyText = 'No reports yet.';
   }
   reset(items, emptyText = this.emptyText) {
     this.queue.reset(items);
     this.cards = [];
     this.nextAt = 0;
+    this.lastShownAt = 0;
     this.emptyText = emptyText;
     this.element.replaceChildren();
     if (!items.length) this.element.innerHTML = `<p class="empty">${escape(emptyText)}</p>`;
@@ -71,22 +73,24 @@ export class FlowLane {
     else place();
   }
   tick(now, frozen = false, reduced = false, playing = true, rate = 1) {
-    const timing = feedTiming(this.queue.pending.length, rate);
+    const timing = feedTiming(this.queue.pending.length);
     this.element.style.setProperty(
       '--flow-duration',
       `${playing && !reduced ? timing.transition : 0}ms`,
     );
     this.element.style.setProperty(
       '--flow-fade',
-      `${playing && !reduced && rate < 1000 ? (rate >= 100 ? 80 : 240) : 0}ms`,
+      `${playing && !reduced && rate < 1000 ? timing.fade : 0}ms`,
     );
     if (!playing && !frozen) {
       this.settle();
       return;
     }
-    if (frozen || now < this.nextAt || !this.queue.pending.length) return;
+    const dueAt = Math.min(this.nextAt, this.lastShownAt + timing.interval);
+    if (frozen || now < dueAt || !this.queue.pending.length) return;
     const item = this.queue.shift();
     this.add(item, !reduced);
+    this.lastShownAt = now;
     this.nextAt = now + timing.interval;
   }
 }
@@ -99,11 +103,15 @@ export class MapNotices {
     this.cards = [];
     this.nextAt = 0;
     this.lastTick = 0;
+    this.lastShownAt = 0;
+    this.burstUntil = 0;
   }
   reset(items = []) {
     this.queue.reset(items);
     this.cards = [];
     this.nextAt = 0;
+    this.lastShownAt = 0;
+    this.burstUntil = 0;
     this.element.replaceChildren();
   }
   accept(items) {
@@ -120,11 +128,16 @@ export class MapNotices {
       this.queue.pending = [];
       for (const c of this.cards) c.exitAt ??= now + 220;
     }
-    if (playing && now >= this.nextAt && this.queue.pending.length) {
+    const backlog = this.queue.pending.length;
+    const timing = feedTiming(backlog);
+    if (backlog > 3) this.burstUntil = now + 900;
+    const burst = now < this.burstUntil;
+    const dueAt = Math.min(this.nextAt, this.lastShownAt + timing.interval);
+    if (playing && now >= dueAt && backlog) {
       const item = this.queue.shift(),
         point = this.locate(item);
-      this.nextAt =
-        now + (rate >= 1000 ? 35 : rate >= 100 ? 85 : this.queue.pending.length > 10 ? 110 : 250);
+      this.lastShownAt = now;
+      this.nextAt = now + timing.interval;
       if (point) {
         const el = document.createElement('button');
         el.className = `mapNotice ${item.tone}`;
@@ -144,21 +157,16 @@ export class MapNotices {
           width: rect.width,
           height: rect.height,
           screen: null,
+          instantEntry: burst || rate >= 1000,
+          lifespan: reduced ? 2200 : burst ? 900 : 2400,
         });
       }
     }
     // Brief notifications at high speed; no animated backlog can grow without bound.
-    const lifespan = reduced
-      ? 2200
-      : rate >= 1000
-        ? 900
-        : this.queue.pending.length > 8
-          ? 1400
-          : 2400;
-    while (this.cards.length > (rate >= 1000 ? 12 : 9)) this.cards.shift().element.remove();
+    while (this.cards.length > (burst ? 12 : 9)) this.cards.shift().element.remove();
     this.cards = this.cards.filter((c) => {
       const age = now - c.born;
-      if (age > lifespan || now >= c.exitAt) {
+      if (age > c.lifespan || now >= c.exitAt) {
         c.element.remove();
         return false;
       }
@@ -209,8 +217,8 @@ export class MapNotices {
           0,
           Math.min(
             1,
-            rate >= 1000 ? 1 : age / 140,
-            (lifespan - age) / 250,
+            c.instantEntry ? 1 : age / 140,
+            (c.lifespan - age) / 250,
             c.exitAt ? (c.exitAt - now) / 220 : 1,
           ),
         ),
