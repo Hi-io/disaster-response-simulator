@@ -1,3 +1,4 @@
+import { socialEnglishText } from '../content/social.mjs';
 // Existing multilingual experiments retain their original source records.
 // Only the simulator's known synthetic Spanish templates get an English view;
 // arbitrary external/user text is never guessed or overwritten.
@@ -32,6 +33,8 @@ const templates = [
 ];
 export function englishText(text) {
   if (typeof text !== 'string') return text;
+  const social = socialEnglishText(text);
+  if (social !== text) return social;
   for (const [pattern, render] of templates) {
     const match = pattern.exec(text);
     if (match) return render(...match);

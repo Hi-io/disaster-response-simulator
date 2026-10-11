@@ -508,6 +508,89 @@ test('the received lane requires delivery or a receipt and collapses connector s
   assert.equal(network.filter((c) => c.body === 'The same message').length, 2);
 });
 
+test('a received source retains its original author, format and repost badge, even after a later edit', () => {
+  const s = state();
+  s.posts = [
+    post('p1', 'public', {
+      public: {
+        id: 'p1',
+        version: 2,
+        text: 'Later edit',
+        authorName: 'Later author',
+        publishedAt: 20,
+      },
+    }),
+  ];
+  s.ingestion = ['downloaded', 'accepted', 'interpreted'].map((stage, i) => ({
+    id: 'p1',
+    version: 1,
+    org: 'org0',
+    stage,
+    at: 10 + i,
+    content:
+      i === 0
+        ? {
+            id: 'p1',
+            version: 1,
+            text: 'Original message',
+            authorName: 'Maya R.',
+            format: 'photo',
+            repostOf: 'original',
+            location: 'b0',
+            publishedAt: 5,
+          }
+        : undefined,
+  }));
+  const cards = streamModels({ now: 50, state: s, events: [] }, 'org0', false).received;
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].title, 'Maya R.');
+  assert.equal(cards[0].body, 'Original message');
+  assert.equal(cards[0].icon, 'image');
+  assert.equal(cards[0].media, 'photo');
+  assert.equal(cards[0].badge, 'Repost');
+  assert.match(cards[0].tag, /downloaded → accepted → interpreted/);
+  assert.equal(s.ingestion.length, 3);
+});
+
+test('new bilingual social wordings appear in English in every visible source lane', () => {
+  const s = state();
+  const text = 'Seguimos esperando 120 litros de agua potable en East Ridge school.';
+  s.posts = [
+    post('p1', 'public', {
+      public: {
+        id: 'p1',
+        version: 1,
+        text,
+        authorName: 'Alex R.',
+        publishedAt: 10,
+        format: 'audio',
+      },
+    }),
+  ];
+  s.ingestion = [
+    {
+      id: 'p1',
+      version: 1,
+      org: 'org0',
+      stage: 'downloaded',
+      at: 30,
+      content: structuredClone(s.posts[0].public),
+    },
+  ];
+  const snapshot = {
+    now: 50,
+    state: s,
+    events: [{ type: 'post_published', at: 10, data: { id: 'p1' } }],
+  };
+  const view = streamModels(snapshot, 'org0', true);
+  for (const lane of ['communication', 'received', 'reality'])
+    assert.equal(
+      view[lane][0].body,
+      'Still waiting for 120 litres of drinking water at East Ridge school.',
+    );
+  assert.equal(s.posts[0].public.text, text);
+});
+
 test('telemetry is optional and a received GPS payload is represented once, not as a second receipt', () => {
   const s = state();
   s.observations = {

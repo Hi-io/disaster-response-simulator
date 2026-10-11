@@ -25,7 +25,7 @@ import { RecordArchive, recordsDigest, recordSnapshot } from './archive.mjs';
 export class World {
   constructor(input = {}, snapshot = null) {
     this.config = validateConfig(input);
-    this.manifest = manifest(this.config, { contentVersion: 'presets-v1' });
+    this.manifest = manifest(this.config, { contentVersion: 'presets-v1+social-v1' });
     this.runId = digest(this.manifest).slice(0, 20);
     this.now = 0;
     this.seq = 0;

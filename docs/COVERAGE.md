@@ -46,11 +46,13 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Release verification
 
-The current automated suite has 101 tests and zero skipped tests: 80 causal/integration tests and 21 presentation-model tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+The current automated suite has 108 tests and zero skipped tests: 85 causal/integration tests and 23 presentation-model tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
 
 `service.test.mjs` verifies that the API-only backend advances without a browser or polling, preserves authentication and organization scope, hides observer UI assets, stops only when paused, and produces the same seeded results as the service with its optional viewer.
 
 `activity.test.mjs` checks observer authentication, read-only methods, selected-team payloads, exact source/receipt/event content, retained archived history and English laboratory defaults. Repeated lightweight polling leaves the world hash unchanged.
+
+`social.test.mjs` checks all 102 contextual bilingual wordings, separate content splits, quantity/unit fidelity, actual ambient diversity, stable author identities, exact seeded continuation, coherent personal/news media, retained repost lineage and misleading statements tied to real unmet demand or damage. Contextual wording augments the existing 360 situation presets; it is not credited as additional simulated physical capabilities.
 
 `viewer.test.mjs` checks indexed and scoped source availability, receipt-version fidelity, actual delivery versus consultable sources, consolidation of connector stages, optional telemetry without duplicate GPS cards, meaningful observation changes, queue-pressure pacing, bounded visual queues, traffic colors without hidden-state leakage, confirmed curved paths, new departures, paused motion and GPS-only views. These are view-model checks; browser QA separately verifies the viewport layout, drawers, clickable cards, notifications, layer toggles, freeze/filter controls and responsive states. Animations do not execute Gemini or establish an operational advantage.
 

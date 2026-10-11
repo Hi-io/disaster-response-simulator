@@ -12,7 +12,25 @@ export function applyIcons(root = document) {
     el.style.setProperty('--icon-url', `url('/icons/${el.dataset.icon}.svg')`);
 }
 function content(item, small = false) {
-  return `<span class="avatar">${iconHTML(item.icon)}</span><span class="cardContent">${small ? `<strong>${escape(item.title)}</strong>` : `<span class="cardMeta"><strong>${escape(item.title)}</strong><time>${formatTime(item.at ?? 0)}</time></span>`}<p>${escape(item.body)}</p></span>${!small && item.media ? `<span class="mediaHint">${iconHTML(item.media === 'audio' ? 'mic' : item.media === 'video' ? 'play' : 'image')}${escape(item.media === 'audio' ? 'Voice note' : item.media)}</span>` : ''}`;
+  const mediaIcon =
+    {
+      audio: 'mic',
+      video: 'play',
+      news: 'newspaper',
+      bulletin: 'file-text',
+      photo: 'image',
+      image: 'image',
+    }[item.media] ?? 'file-text';
+  const mediaLabel =
+    {
+      audio: 'Voice note',
+      video: 'Video',
+      news: 'News',
+      bulletin: 'Bulletin',
+      photo: 'Photo',
+      image: 'Photo',
+    }[item.media] ?? item.media;
+  return `<span class="avatar">${iconHTML(item.icon)}</span><span class="cardContent">${small ? `<strong>${escape(item.title)}</strong>` : `<span class="cardMeta"><strong>${escape(item.title)}</strong>${item.badge ? `<span class="sourceTag">↻ ${escape(item.badge)}</span>` : ''}<time>${formatTime(item.at ?? 0)}</time></span>`}<p>${escape(item.body)}</p></span>${!small && item.media ? `<span class="mediaHint">${iconHTML(mediaIcon)}${escape(mediaLabel)}</span>` : ''}`;
 }
 export class FlowLane {
   constructor(element) {
@@ -31,6 +49,10 @@ export class FlowLane {
       }).observe(element);
   }
   reset(items, emptyText = this.emptyText) {
+    // A first snapshot can arrive before ResizeObserver sees the unhidden app.
+    // Use its current width so the initial strip is not incorrectly cut to two cards.
+    this.laneWidth = this.element.clientWidth || this.laneWidth;
+    this.cardWidth = null;
     this.queue.reset(items);
     this.cards = [];
     this.nextAt = 0;

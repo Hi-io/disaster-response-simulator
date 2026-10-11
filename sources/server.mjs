@@ -288,9 +288,11 @@ export async function createLabServers({
       let file =
         url.pathname === '/'
           ? 'viewer/index.html'
-          : url.pathname.startsWith('/vendor/')
-            ? 'node_modules/three/' + url.pathname.slice(8)
-            : 'viewer/' + url.pathname.slice(1);
+          : url.pathname === '/content/social.mjs'
+            ? 'content/social.mjs'
+            : url.pathname.startsWith('/vendor/')
+              ? 'node_modules/three/' + url.pathname.slice(8)
+              : 'viewer/' + url.pathname.slice(1);
       const resolved = path.resolve(root, file);
       if (!resolved.startsWith(root + path.sep) || file.includes('..'))
         throw new SimError('PATH', 'Invalid path', 403);
@@ -298,6 +300,7 @@ export async function createLabServers({
       const mime = {
         '.html': 'text/html; charset=utf-8',
         '.js': 'text/javascript',
+        '.mjs': 'text/javascript',
         '.css': 'text/css',
         '.svg': 'image/svg+xml',
       };

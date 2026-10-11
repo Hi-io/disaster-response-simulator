@@ -829,6 +829,11 @@ summary {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
+.sourceTag {
+  color: var(--muted);
+  font-size: 8px;
+  flex-shrink: 0;
+}
 .cardContent p {
   font-size: 10px;
   line-height: 1.35;

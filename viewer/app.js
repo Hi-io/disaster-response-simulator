@@ -1227,6 +1227,7 @@ async function refresh() {
   if (busy) return;
   busy = true;
   try {
+    const previousTime = snapshot?.now;
     snapshot = await api('/api/state');
     if (playbackOverride === snapshot.playing) playbackOverride = null;
     nodeIndex = new Map(snapshot.state.map.nodes.map((n) => [n.id, n]));
@@ -1237,7 +1238,7 @@ async function refresh() {
     $('login').hidden = true;
     $('app').hidden = false;
     if (!renderer) initialize3D();
-    const changed = snapshot.runId !== lastRun;
+    const changed = snapshot.runId !== lastRun || snapshot.now < previousTime;
     if (changed) {
       activity = null;
       motion.reset();

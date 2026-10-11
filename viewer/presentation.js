@@ -169,6 +169,7 @@ export function postCard(post, { truth = false, available = false } = {}) {
       video: 'video',
       audio: 'mic',
       image: 'image',
+      photo: 'image',
       news: 'newspaper',
       bulletin: 'file-text',
       text: 'user-round',
@@ -178,6 +179,7 @@ export function postCard(post, { truth = false, available = false } = {}) {
     at: p.publishedAt,
     title: p.authorName ?? 'Community report',
     body: englishText(p.text),
+    badge: p.repostOf ? 'Repost' : null,
     icon,
     tone: truth && post.private?.false ? 'urgent' : 'social',
     tag:
@@ -189,6 +191,7 @@ export function postCard(post, { truth = false, available = false } = {}) {
               audio: 'Voice note',
               video: 'Video post',
               image: 'Photo post',
+              photo: 'Photo post',
               news: 'News report',
               bulletin: 'Bulletin',
               text: 'Social post',
@@ -263,10 +266,13 @@ function receivedSources(receipts, state, org) {
       stages.find((r) => r.content)?.content ??
       state.posts.find((p) => p.public.id === first.id && p.public.version === first.version)
         ?.public;
+    const source = content ? postCard(content) : null;
     return {
       ...card,
       key,
-      title: 'Source received',
+      title: source?.title ?? 'Source received',
+      icon: source?.icon ?? card.icon,
+      badge: source?.badge ?? null,
       body: englishText(content?.text ?? card.body),
       location: content?.location,
       media: content?.format && content.format !== 'text' ? content.format : null,
