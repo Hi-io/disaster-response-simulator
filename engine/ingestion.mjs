@@ -2,6 +2,8 @@ import {digest,clone} from './determinism.mjs';
 import {requireCondition as check} from '../contracts/actions.mjs';
 export function installIngestion(w){
   w.acknowledge=(actor,p)=>{
+    if(!w.organization(actor?.org))throw new Error('Unknown ingestion actor');
+    if(!w.currentEvent)w.inputs.push({kind:'ingestion',at:w.now,afterEventCount:w.eventCount,actor:clone(actor),request:clone(p)});
     const post=w.post(p.id);check(post&&post.public.publishedAt!==null&&post.indexAt<=w.now&&!post.deleted,'SOURCE','Post is not accessible',404);
     const version=p.version??post.public.version;const content=version===post.public.version?post.public:post.history.find(h=>h.version===version);
     check(content,'VERSION','Unknown public version');check(['downloaded','accepted','interpreted','discarded'].includes(p.stage),'STAGE','Unknown ingestion stage');

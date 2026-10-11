@@ -1,4 +1,4 @@
-export function quantile(values,q) {if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.floor((sorted.length-1)*q))];}
+export function quantile(values,q) {if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.max(0,Math.min(sorted.length-1,Math.ceil(sorted.length*q)-1))];}
 export function evaluate(world) {
   const events=world.log, needs=world.state.needs;
   const services={};for(const n of needs){const row=services[n.type]??={unit:n.unit,demand:0,served:0,pending:0,overprovided:0,uncoveredUnitMs:0,onTime:0};row.demand+=n.quantity;row.served+=n.served;row.pending+=Math.max(0,n.quantity-n.served);row.overprovided+=Math.max(0,n.served-n.quantity);row.uncoveredUnitMs+=n.pendingIntegral+(world.now-n.integratedAt)*Math.max(0,n.quantity-n.served);if(n.completedAt!==null&&n.completedAt<=n.deadline)row.onTime++;}

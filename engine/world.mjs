@@ -13,6 +13,7 @@ import {installCooperation} from './cooperation.mjs';
 import {installReference} from '../adapters/reference.mjs';
 import {installIngestion} from './ingestion.mjs';
 import {installFacilities} from './facilities.mjs';
+import {validateParameters} from '../contracts/parameters.mjs';
 import {configureScenario} from '../scenarios/catalog.mjs';
 import {evaluate} from '../evaluation/metrics.mjs';
 
@@ -28,7 +29,7 @@ export class World {
     if(snapshot){this.restore(snapshot);return;}
     this.initialize();
   }
-  install(){installTraffic(this);installCommunications(this);installInformation(this);installHazards(this);installActions(this);installTasks(this);installCooperation(this);installFacilities(this);installReference(this);installIngestion(this);}
+  install(){installTraffic(this);installCommunications(this);installInformation(this);installHazards(this);installActions(this);installTasks(this);installCooperation(this);installFacilities(this);installReference(this);installIngestion(this);configureScenario(this,{handlersOnly:true});}
   initialize(){
     for(const org of this.state.map.organizations){
       this.state.observations[org.id]={buildings:{},needs:{},resources:{},vehicles:{},edges:{},operations:{},claims:[],lastContact:{}};
@@ -58,12 +59,12 @@ export class World {
   random(stream,entity,event,index=0){return keyedRandom(this.config.seed,stream,entity,event,index);}
   publicId(kind,key){return opaqueId(this.config.seed,kind,key);}
   schedule(at,type,data={},phase=2,key=''){
-    if(at<this.now)throw new Error(`Cannot schedule ${type} in the past`);
+    if(!Number.isFinite(at)||!Number.isSafeInteger(Math.round(at))||at<this.now)throw new Error(`Invalid event time for ${type}`);
     const event={at:Math.round(at),type,data:clone(data),phase,key:key||`${type}-${this.seq}`,seq:this.seq++};this.queue.push(event);return event;
   }
   record(type,data={},entity=null){const e={index:this.eventCount,at:this.now,type,entity,data:clone(data)};this.log.push(e);this.logSink?.(e);return e;}
   step(){
-    const next=this.queue.pop();if(!next)return null;if(this.eventCount>=this.config.maxEvents)throw new SimError('EVENT_BUDGET','Event budget exhausted');
+    if(!this.queue.peek())return null;if(this.eventCount>=this.config.maxEvents)throw new SimError('EVENT_BUDGET','Event budget exhausted');const next=this.queue.pop();
     this.now=next.at;this.eventCount++;const fn=this.handlers.get(next.type);if(!fn)throw new Error(`Missing handler: ${next.type}`);this.currentEvent=next;try{fn(next.data,next);}finally{this.currentEvent=null;}return next;
   }
   advance(target=this.config.durationMs,{maxEvents=100000}={}){
@@ -97,7 +98,7 @@ export class World {
     this.actionDepth++;try{return this.applyAction(actor,request);}finally{this.actionDepth--;}
   }
   applyAction(actor,request){
-    validateAction(request);if(!actor||!this.organization(actor.org))throw new SimError('AUTHENTICATION','Unknown actor',401);
+    validateAction(request);validateParameters(request.type,request.params);if(!actor||!this.organization(actor.org))throw new SimError('AUTHENTICATION','Unknown actor',401);
     const key=`${actor.org}:${actor.id}:${request.idempotencyKey}`;
     const signature=digest(request);const old=this.state.idempotency[key];
     if(old){if(old.signature!==signature)throw new SimError('IDEMPOTENCY_CONFLICT','Key reused with different parameters',409);return clone(old.result);}
@@ -105,6 +106,7 @@ export class World {
     catch(error){this.state.invalidActions++;this.record('action_rejected',{actor:actor.id,org:actor.org,type:request.type,code:error.code??'ERROR'});throw error;}
   }
   checkpoint(){return clone({manifest:this.manifest,runId:this.runId,now:this.now,seq:this.seq,eventCount:this.eventCount,state:this.state,queue:this.queue.toJSON(),log:this.log,inputs:this.inputs});}
+  inject(type,data={}){if(!this.handlers.has(type))throw new SimError('EVENT','Unknown event');if(!this.currentEvent)this.inputs.push({kind:'intervention',at:this.now,afterEventCount:this.eventCount,type,data:clone(data)});this.schedule(this.now,type,data,0,`manual-${this.nextId('intervention')}`);this.advance(this.now);}
   restore(snapshot){if(snapshot.manifest.engineVersion!==VERSION)throw new Error('Checkpoint engine version mismatch');if(digest(snapshot.manifest.config)!==digest(this.config))throw new Error('Checkpoint configuration mismatch');this.manifest=clone(snapshot.manifest);this.runId=snapshot.runId;this.now=snapshot.now;this.seq=snapshot.seq;this.eventCount=snapshot.eventCount;this.state=clone(snapshot.state);this.queue=new EventQueue(clone(snapshot.queue));this.log=clone(snapshot.log);this.inputs=clone(snapshot.inputs??[]);this.indices.clear();}
   stateHash(){return digest({manifest:this.manifest,now:this.now,state:this.state,queue:this.queue.toJSON(),log:this.log,inputs:this.inputs});}
   invariants(){
