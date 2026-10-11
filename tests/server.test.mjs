@@ -64,3 +64,39 @@ test('source server is scrapeable but cannot expose observer truth or accept una
   ).json();
   assert.ok(state.state.posts.some((p) => p.private.false));
 });
+
+test('paired observer snapshots capture both worlds at the same clock boundary', async (t) => {
+  const lab = await createLabServers({
+    observerPort: 0,
+    sourcePort: 0,
+    persistCredentials: false,
+    config: { grid: 3, extentKm: 2, hazard: 'none', backgroundTraffic: 0, postsPerHour: 0 },
+  });
+  t.after(() => lab.close());
+  const base = `http://127.0.0.1:${lab.observerPort}`;
+  const headers = {
+    Authorization: `Bearer ${lab.observerKey}`,
+    'Content-Type': 'application/json',
+  };
+  const mutate = async (url, body) => {
+    const response = await fetch(base + url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 200);
+  };
+  await mutate('/api/comparison', { policyA: 'conventional', policyB: 'federated' });
+  await mutate('/api/control', { advanceTo: 600000 });
+  await mutate('/api/control', { play: true, rate: 1000 });
+  for (let i = 0; i < 20; i++) {
+    const response = await fetch(base + '/api/compare?pair=1', { headers });
+    assert.equal(response.status, 200);
+    const pair = await response.json();
+    assert.equal(pair.a.now, pair.b.now);
+    assert.equal(pair.a.state.map.hash, pair.b.state.map.hash);
+    assert.equal(pair.a.manifest.config.policy, 'conventional');
+    assert.equal(pair.b.manifest.config.policy, 'federated');
+  }
+  await mutate('/api/control', { play: false });
+});

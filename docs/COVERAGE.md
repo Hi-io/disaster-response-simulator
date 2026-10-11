@@ -4,32 +4,32 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Acceptance matrix
 
-| Phase | Implemented behavior | Executable evidence |
-|---|---|---|
-| F0 — Contracts | 26 versioned input kinds, 23 action types, units, permissions, idempotency and config validation | `core.test.mjs`, `laboratory.test.mjs`, `server.test.mjs` |
-| F1 — Engine | Deterministic ordered event heap, independent keyed streams, recorded inputs, checkpoints, restore, fork and replay | `core.test.mjs`, `world.test.mjs`, `laboratory.test.mjs`, `archive-batch.test.mjs` |
-| F2 — Geography and operations | Regional road graph, three scarce crossings, varied road profiles, congestion, real loading/travel/unloading, finite resources and composed facilities | `region-population.test.mjs`, `world.test.mjs`, `tasks.test.mjs`, `laboratory.test.mjs` |
-| F3 — Disaster and communication | Earthquake, aftershock, fire front, flood, access changes, channel outages, retries, queued orders, delayed GPS and stale-report handling | `world.test.mjs`, `tasks.test.mjs`, `laboratory.test.mjs` |
-| F4 — Sources | Fictional HTML network, paginated/searchable API, revisions, deletions, misinformation, scoped team audio, 360 presets and 30 families | `server.test.mjs`, `adapters.test.mjs`, `extensions.test.mjs`, `archive-batch.test.mjs` |
-| F5 — Observer | Isometric 3D, map layers, selection, search, truck follow, event history, three information streams, scoped views, checkpoint controls, synchronized A/B maps | Browser QA; backend access tests in `server.test.mjs`. Browser verification is separate from automated engine tests. |
-| F6 — Actors and collective capacity | Human approval, finite review slots, evidence-backed conditions, owned stock, bilateral transfers, return trips, withdrawal, loans, finite funds and purchases | `tasks.test.mjs`, `laboratory.test.mjs`, `extensions.test.mjs` |
-| F7 — Integration | Generic source client, real HTTP scrape, versioned ingestion receipts, quotas, outage/schema/revocation faults, external-computation timing with live/modeled clocks | `adapters.test.mjs`, `server.test.mjs`, `integration-clock.test.mjs`, `extensions.test.mjs` |
-| F8 — Evaluation | 24 runnable fixtures, standard/adverse/infeasible variants, physical service metrics, per-community outcomes, integrity checks, paired comparisons and loss-preserving intervals | `world.test.mjs`, `laboratory.test.mjs`, `integration-clock.test.mjs` |
-| F9 — Scaling | CLI, headless execution, isolated worker batches, budgets/cancellation/resume, compact disk archives, portable bundles and load benchmarks | `archive-batch.test.mjs`; `scripts/benchmark.mjs --full`; `PERFORMANCE.md` |
-| Population extension | Dynamic water/food consumption, recurrent requests, injuries/exposure, received aid, evacuations, simulated deaths and observed-vs-private health | `region-population.test.mjs`, `tasks.test.mjs` |
-| H1 — Optional precedent | Evidence-backed outcome records with explicit conditions to revalidate; no autonomous learned policy | `extensions.test.mjs`; S24 |
+| Phase                               | Implemented behavior                                                                                                                                                             | Executable evidence                                                                                                  |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| F0 — Contracts                      | 26 versioned input kinds, 23 action types, units, permissions, idempotency and config validation                                                                                 | `core.test.mjs`, `laboratory.test.mjs`, `server.test.mjs`                                                            |
+| F1 — Engine                         | Deterministic ordered event heap, independent keyed streams, recorded inputs, checkpoints, restore, fork and replay                                                              | `core.test.mjs`, `world.test.mjs`, `laboratory.test.mjs`, `archive-batch.test.mjs`                                   |
+| F2 — Geography and operations       | Regional road graph, three scarce crossings, varied road profiles, congestion, real loading/travel/unloading, finite resources and composed facilities                           | `region-population.test.mjs`, `world.test.mjs`, `tasks.test.mjs`, `laboratory.test.mjs`                              |
+| F3 — Disaster and communication     | Earthquake, aftershock, fire front, flood, access changes, channel outages, retries, queued orders, delayed GPS and stale-report handling                                        | `world.test.mjs`, `tasks.test.mjs`, `laboratory.test.mjs`                                                            |
+| F4 — Sources                        | Fictional HTML network, paginated/searchable API, revisions, deletions, misinformation, scoped team audio, 360 presets and 30 families                                           | `server.test.mjs`, `adapters.test.mjs`, `extensions.test.mjs`, `archive-batch.test.mjs`                              |
+| F5 — Observer                       | Isometric 3D, map layers, selection, search, truck follow, event history, three information streams, scoped views, checkpoint controls, synchronized A/B maps                    | Browser QA; backend access tests in `server.test.mjs`. Browser verification is separate from automated engine tests. |
+| F6 — Actors and collective capacity | Human approval, finite review slots, evidence-backed conditions, owned stock, bilateral transfers, return trips, withdrawal, loans, finite funds and purchases                   | `tasks.test.mjs`, `laboratory.test.mjs`, `extensions.test.mjs`                                                       |
+| F7 — Integration                    | Generic source client, real HTTP scrape, versioned ingestion receipts, quotas, outage/schema/revocation faults, external-computation timing with live/modeled clocks             | `adapters.test.mjs`, `server.test.mjs`, `integration-clock.test.mjs`, `extensions.test.mjs`                          |
+| F8 — Evaluation                     | 24 runnable fixtures, standard/adverse/infeasible variants, physical service metrics, per-community outcomes, integrity checks, paired comparisons and loss-preserving intervals | `world.test.mjs`, `laboratory.test.mjs`, `integration-clock.test.mjs`                                                |
+| F9 — Scaling                        | CLI, headless execution, isolated worker batches, budgets/cancellation/resume, compact disk archives, portable bundles and load benchmarks                                       | `archive-batch.test.mjs`; `scripts/benchmark.mjs --full`; `PERFORMANCE.md`                                           |
+| Population extension                | Dynamic water/food consumption, recurrent requests, injuries/exposure, received aid, evacuations, simulated deaths and observed-vs-private health                                | `region-population.test.mjs`, `tasks.test.mjs`                                                                       |
+| H1 — Optional precedent             | Evidence-backed outcome records with explicit conditions to revalidate; no autonomous learned policy                                                                             | `extensions.test.mjs`; S24                                                                                           |
 
 ## C1–C7: what the laboratory can test
 
-| Capability | Implemented world mechanism | What still comes from the external platform |
-|---|---|---|
-| C1 — Composed service | Four owners' actual deliveries can open a shelter; compatibility, current assessment, finite feedstock and permission constrain a plant | Discovering and assembling that plan from unstructured sources |
-| C2 — Conditional commitments | Versioned owner reservations, inspection/approval/time/commitment conditions, expiry and conflict prevention | Negotiating and choosing a feasible set of commitments |
-| C3 — Value of investigating | Queries and clarification have quotas, delays and finite personnel; unobserved needs can remain unmet | Deciding which question is worth its opportunity cost |
-| C4 — Competing demand | 100 heterogeneous needs can compete for the same fleet, supplies and human reviewers | Joint prioritization and avoiding harm displaced to another community |
-| C5 — Repairing a plan | Changed routes, withdrawals, expired stock, unsafe sites and communication loss affect ongoing physical operations; sunk cost remains | Selecting a revised plan while preserving still-valid work |
-| C6 — Human capacity | Review queues, decisions, ownership, shift cycles and clarification remain distinct from physical execution | Reducing attention needed without hiding uncertainty |
-| C7 — Partial cooperation | Separate inventories, permissions, delayed sharing, partitions and a fifth partner without the platform | Discovering collective opportunities while retaining local autonomy |
+| Capability                   | Implemented world mechanism                                                                                                             | What still comes from the external platform                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| C1 — Composed service        | Four owners' actual deliveries can open a shelter; compatibility, current assessment, finite feedstock and permission constrain a plant | Discovering and assembling that plan from unstructured sources        |
+| C2 — Conditional commitments | Versioned owner reservations, inspection/approval/time/commitment conditions, expiry and conflict prevention                            | Negotiating and choosing a feasible set of commitments                |
+| C3 — Value of investigating  | Queries and clarification have quotas, delays and finite personnel; unobserved needs can remain unmet                                   | Deciding which question is worth its opportunity cost                 |
+| C4 — Competing demand        | 100 heterogeneous needs can compete for the same fleet, supplies and human reviewers                                                    | Joint prioritization and avoiding harm displaced to another community |
+| C5 — Repairing a plan        | Changed routes, withdrawals, expired stock, unsafe sites and communication loss affect ongoing physical operations; sunk cost remains   | Selecting a revised plan while preserving still-valid work            |
+| C6 — Human capacity          | Review queues, decisions, ownership, shift cycles and clarification remain distinct from physical execution                             | Reducing attention needed without hiding uncertainty                  |
+| C7 — Partial cooperation     | Separate inventories, permissions, delayed sharing, partitions and a fifth partner without the platform                                 | Discovering collective opportunities while retaining local autonomy   |
 
 ## Current validation boundaries
 
@@ -46,7 +46,7 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Release verification
 
-At the documented 0.2.0 checkpoint, the automated suite has 75 passing tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+At the documented 0.2.0 checkpoint, the automated suite has 76 passing tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
 
 Browser QA covers the map, controls, selection, information streams, scoped perspectives and comparison surface. It does not substitute for headless causal tests. Measured scaling results and machine details are stored in `PERFORMANCE.md`; complete run artifacts stay under ignored `runs/`.
 

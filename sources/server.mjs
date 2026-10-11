@@ -242,8 +242,16 @@ export async function createLabServers({
           ensureActorKeys();
           return json(res, 200, { paired: true, initialMapHash: a.state.map.hash });
         }
-        if (url.pathname === '/api/compare')
-          return json(res, 200, comparison ? comparison.observer({ limit: 100 }) : null);
+        if (url.pathname === '/api/compare') {
+          if (!comparison) return json(res, 200, null);
+          // Capture both worlds in one event-loop turn. Separate reads can straddle a tick.
+          if (url.searchParams.get('pair') === '1')
+            return json(res, 200, {
+              a: world.observer({ limit: 100 }),
+              b: comparison.observer({ limit: 100 }),
+            });
+          return json(res, 200, comparison.observer({ limit: 100 }));
+        }
         if (url.pathname === '/api/restore') {
           const replacement = new World(b.manifest.config, b);
           world.close();

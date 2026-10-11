@@ -665,12 +665,22 @@ function inspect() {
       property('Original source', p.private.original);
   }
   if (!obs) {
-    const history = timelineCache.get(selected.id) ?? snapshot.events;
+    const archive = timelineCache.get(selected.id);
+    const history = archive
+      ? archive.events
+      : snapshot.events
+          .filter(
+            (ev) => ev.entity === selected.id || JSON.stringify(ev.data).includes(selected.id),
+          )
+          .slice(-12);
     html +=
-      '<h2>Timeline</h2>' +
+      (archive
+        ? `<h2>Archived history</h2><p class="muted">${archive.events.length ? archive.offset + 1 : 0}–${archive.offset + archive.events.length} of ${archive.total} events · newest first within this page</p>
+           <button data-history-offset="${Math.max(0, archive.offset - 200)}" ${archive.offset === 0 ? 'disabled' : ''}>Earlier page</button>
+           <button data-history-offset="${archive.next ?? 0}" ${archive.next === null ? 'disabled' : ''}>Later page</button>`
+        : '<h2>Recent timeline</h2>') +
       history
-        .filter((ev) => ev.entity === selected.id || JSON.stringify(ev.data).includes(selected.id))
-        .slice(-12)
+        .slice()
         .reverse()
         .map(
           (ev) =>
@@ -818,6 +828,13 @@ async function refresh() {
     if (changed) {
       home();
       selected = null;
+      following = false;
+      timelineCache.clear();
+      $('selectionTitle').textContent = 'Explore the world.';
+      $('selectionHint').textContent =
+        'Choose a building or vehicle. Its state, dependencies and timeline appear here.';
+      $('selection').innerHTML = '';
+      for (const id of ['follow', 'nextEntity', 'fullTimeline']) $(id).hidden = true;
       for (const k of [
         'seed',
         'scenario',
@@ -835,18 +852,20 @@ async function refresh() {
     inspect();
     showStreams();
     if ($('comparisonDialog').open && snapshot.comparison) {
-      const other = await api('/api/compare');
-      renderComparison(snapshot, other);
-      $('compareATitle').textContent = 'A · ' + snapshot.manifest.config.policy;
+      const pair = await api('/api/compare?pair=1');
+      if (!pair) return;
+      const { a, b: other } = pair;
+      renderComparison(a, other);
+      $('compareATitle').textContent = 'A · ' + a.manifest.config.policy;
       $('compareBTitle').textContent = 'B · ' + other.manifest.config.policy;
       for (const [name, data] of [
-        ['A', snapshot],
+        ['A', a],
         ['B', other],
       ])
         $(`compare${name}Metrics`).textContent =
           `${clock(data.now)} · ${number(data.metrics.services.water?.served)} L served · ${number(data.metrics.services.water?.pending)} L pending · ${number(data.metrics.population.deceased)} simulated fatalities`;
       $('comparisonStatus').textContent =
-        `Paired initial map ${snapshot.state.map.hash.slice(0, 12)} · equal physical endowment · ${snapshot.now === other.now ? 'clocks synchronized' : 'clock catching up'}`;
+        `Paired initial map ${a.state.map.hash.slice(0, 12)} · equal physical endowment · ${a.now === other.now ? 'clocks synchronized' : 'clock catching up'}`;
     }
   } catch (e) {
     if (!snapshot) {
@@ -910,31 +929,10 @@ $('play').onclick = perform(() => api('/api/control', { play: !snapshot.playing 
 $('step').onclick = perform(() => api('/api/control', { step: true }));
 $('speed').onchange = perform(() => api('/api/control', { rate: Number($('speed').value) }));
 $('home').onclick = home;
-$('reset').onclick = perform(() => api('/api/config', snapshot.manifest.config));
-$('configForm').onsubmit = perform(() =>
-  api(
-    '/api/config',
-    Object.fromEntries(
-      [
-        'seed',
-        'scenario',
-        'grid',
-        'extentKm',
-        'hazard',
-        'variant',
-        'postsPerHour',
-        'backgroundTraffic',
-        'policy',
-        'topology',
-      ].map((k) => [
-        k,
-        ['grid', 'extentKm', 'postsPerHour', 'backgroundTraffic'].includes(k)
-          ? Number($(k).value)
-          : $(k).value,
-      ]),
-    ),
-  ),
-);
+$('reset').onclick = perform(async () => {
+  await api('/api/config', snapshot.manifest.config);
+  lastRun = null;
+});
 $('configForm').onsubmit = perform(async () => {
   const fields = [
     'seed',
@@ -973,21 +971,21 @@ $('advanceForm').onsubmit = perform(async () => {
   await api('/api/control', { advanceTo: ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000 });
 });
 $('nextEntity').onclick = perform(() => api('/api/control', { nextRelevant: selected.id }));
-$('fullTimeline').onclick = perform(async () => {
-  const rows = await api('/api/events?entity=' + encodeURIComponent(selected.id));
-  timelineCache.set(selected.id, rows.events);
-  $('selection').innerHTML +=
-    '<h2>Recorded history · ' +
-    rows.total +
-    ' events</h2>' +
-    rows.events
-      .map(
-        (e) =>
-          `<div class="timelineEntry">${clock(e.at)} · ${escape(e.type)}<br>${escape(JSON.stringify(e.data))}</div>`,
-      )
-      .join('');
-});
+async function loadTimeline(offset = 0) {
+  if (!selected || $('perspective').value !== 'truth') return;
+  const id = selected.id,
+    runId = snapshot.runId;
+  const rows = await api('/api/events?entity=' + encodeURIComponent(id) + '&offset=' + offset);
+  if (snapshot.runId !== runId) return;
+  timelineCache.delete(id);
+  if (timelineCache.size >= 20) timelineCache.delete(timelineCache.keys().next().value);
+  timelineCache.set(id, { ...rows, offset });
+  if (selected?.id === id) inspect();
+}
+$('fullTimeline').onclick = perform(() => loadTimeline());
 $('selection').onclick = (e) => {
+  const page = e.target.closest('[data-history-offset]');
+  if (page) return perform(() => loadTimeline(Number(page.dataset.historyOffset)))();
   const op = e.target.closest('[data-operation]');
   if (op) select({ kind: 'operation', id: op.dataset.operation });
 };
