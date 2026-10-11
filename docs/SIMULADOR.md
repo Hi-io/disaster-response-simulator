@@ -1184,8 +1184,8 @@ Los documentos de cobertura y calibración conservan los límites actuales. Prec
 
 ### 41.1 Jerarquía y controles
 
-- El mapa, las métricas operativas y los tres carriles de información deben caber en el viewport sin scroll de página. El historial y los formularios largos pueden desplazarse dentro de sus paneles.
-- Configuración detrás de una hamburguesa, que se cierra al iniciar. El inspector derecho aparece al seleccionar un objeto, tarjeta o métrica y se puede cerrar. Nada debe reducir permanentemente el espacio del mapa.
+- El mapa y los tres carriles de información deben caber en el viewport sin scroll de página. Las métricas, diagnósticos y leyendas aparecen solo al abrir sus controles; la vista inicial sirve para comprender el desastre y el volumen de mensajes, no para vigilar todos los indicadores. El historial y los formularios largos pueden desplazarse dentro de sus paneles.
+- Configuración detrás de una hamburguesa, que se cierra al iniciar. El inspector aparece al seleccionar un objeto o tarjeta y se puede cerrar. Las métricas tienen su propio panel opcional Measurements. En pantallas pequeñas, el inspector usa una hoja inferior para conservar visible el objetivo. Nada debe reducir permanentemente el espacio del mapa.
 - Selector explícito de organización: cuatro por defecto, entre una y doce configurables. Cambiar la organización actualiza el carril de datos y, en modo de conocimiento recibido, también la perspectiva del mapa.
 - Capas independientes para vehículos, tráfico, necesidades, zonas de desastre, rutas, conectividad, grupos de población, organizaciones y notificaciones. Conservar el acceso a comparaciones, acciones, checkpoints y exportación.
 
@@ -1201,8 +1201,8 @@ Disponibilidad, descarga, aceptación, interpretación y descarte son etapas dif
 
 - Tres carriles apilados verticalmente; las nuevas tarjetas entran por la izquierda y desplazan las anteriores hacia la derecha. Identidades estables, no reemplazar todo el DOM en cada actualización.
 - Distribuir secuencialmente los lotes en una cola de presentación. A gran velocidad, representar una muestra explícita y mantener todos los registros en el archivo causal. Nunca ralentizar o alterar la simulación para acomodar la animación.
-- Ventana de render finita: como máximo ocho tarjetas por carril y 36 pendientes; máximo nueve notificaciones en el mapa y 30 pendientes. Desmontar lo que salga del área visible y descartar de la cola visual lo que ya no pueda mostrarse oportunamente. Estas cotas no eliminan historia del mundo.
-- Notificaciones del mapa breves, con entrada y salida suaves, ubicación real, categoría visual y acceso al detalle. Pueden resultar abrumadoras bajo carga, pero no tapar de forma permanente controles ni métricas.
+- Ventana de render finita: como máximo ocho tarjetas por carril y 36 pendientes; máximo nueve notificaciones del mapa a velocidad normal, doce en ×1000 y 30 pendientes. Desmontar lo que salga del área visible y descartar de la cola visual lo que ya no pueda mostrarse oportunamente. Estas cotas no eliminan historia del mundo.
+- Notificaciones del mapa breves, con entrada y salida suaves, ubicación real, categoría visual y acceso al detalle. Pueden resultar abrumadoras bajo carga, pero no tapar de forma permanente los controles. Las tarjetas nuevas conservan su ancla; empujan hacia arriba a las anteriores que coinciden en pantalla. Desmontar las que salen del viewport en lugar de superponerlas.
 - Congelar los carriles para lectura sin detener el reloj ni la actividad del mapa. Filtrar una ventana reciente debe estar identificado como filtro de vista, no como una consulta sobre todo el archivo.
 - Respetar `prefers-reduced-motion`; controles con teclado, nombres accesibles y significado de los colores explicado en la leyenda.
 
@@ -1213,3 +1213,16 @@ Disponibilidad, descarga, aceptación, interpretación y descarte son etapas dif
 - Tráfico verde/ámbar/coral según ocupación y colas. Considerar ambos sentidos. La vista de una organización conserva cierres reportados y muestra desconocido el tráfico que no haya recibido; no consultar la verdad oculta para colorearlo.
 - Interpolar entre posiciones confirmadas por el reloj del mundo y siguiendo curvas y trayectos confirmados. No inventar atajos cuando cambie una ruta ni adelantar una llegada. La posición de una organización con GPS discontinuo permanece en la última observación, sin reconstruir un recorrido desconocido.
 - Probar ×1000, cambios de alcance, selección, seguimiento, interrupciones, grandes ráfagas, pausa y reanudación. Validar tanto el estado causal como límites de DOM/GPU y la legibilidad; una animación convincente no sustituye esas comprobaciones.
+
+
+### 41.5 Presentación para acompañar a NEXO
+
+- El simulador tiene un papel secundario en la demo: mapa, reloj, movimiento y abundancia de mensajes. Evitar indicadores numéricos, leyendas completas, FPS, hashes y explicaciones técnicas permanentes. Conservarlos accesibles en Measurements, Layers y el menú de configuración.
+- Measurements muestra demanda sin cubrir, servicio efectivo y exceso por tipo y unidad. Incluir comida y agua; sumar refugio, medicina u otras necesidades cuando el mundo las genere. No cambiar los tipos físicos o sus unidades para satisfacer un diseño visual.
+- Mantener sufrimiento sin mortalidad como métrica: déficit de comida/agua en persona-horas, exposición y lesiones sin tratar. Cifras del observador separadas de reportes realmente recibidos por cada organización. Datos desconocidos no equivalen a cero.
+- Al seleccionar una entidad con ubicación, acercar la cámara con una transición suave y seguir el objetivo automáticamente. Para vehículos, seguir únicamente la posición confirmada usada por el renderer; para publicaciones, utilizar la ubicación declarada, no la coordenada privada real. No enfocar vehículos ni necesidades desconocidas en la vista de un equipo.
+- Desplazar el encuadre para que el objetivo quede visible junto al inspector o sobre la hoja inferior en móvil. Pan, giro, zoom, cierre o Stop tracking liberan el seguimiento; permitir reanudarlo.
+- Marcar únicamente la entidad seleccionada con un anillo discreto, sin añadir otra etiqueta permanente. La búsqueda por ID debe permitir confirmar con Enter.
+- Conservar el ritmo de ×1 y ×10. Acelerar la cola visual en ×100 y ×1000 para representar las ráfagas sin retrasos largos. Al pausar, terminar las transiciones y mostrar los registros más recientes de inmediato; no continuar una reproducción de mensajes obsoletos. Congelar el feed sigue siendo una operación distinta de pausar el mundo.
+- En ×1000 eliminar el fade-in de las tarjetas del mapa y de los carriles: deben aparecer con opacidad completa para que una vida breve no las vuelva invisibles. Mantener desplazamiento suave y una salida breve. No modificar los eventos físicos o sus tiempos para compensar el render.
+- Verificar ausencia de solapamiento de tarjetas cercanas, acotación del DOM, privacidad de la selección, seguimiento de objetivos móviles y pausa bajo carga. Estas animaciones no producen acciones, no alteran el seed ni modifican los resultados físicos.

@@ -1,4 +1,5 @@
 import { NotificationQueue, formatTime } from './presentation.js';
+import { feedTiming, packNotices } from './display.js';
 const escape = (s) =>
   String(s ?? '').replace(
     /[&<>"']/g,
@@ -33,6 +34,15 @@ export class FlowLane {
   accept(items) {
     this.queue.accept(items);
   }
+  settle() {
+    for (const card of this.cards) for (const animation of card.getAnimations()) animation.finish();
+    if (!this.queue.pending.length) return;
+    const pending = this.queue.pending.splice(0);
+    this.queue.skipped += Math.max(0, pending.length - 4);
+    const latest = pending.slice(-4);
+    for (const item of latest) this.add(item, false);
+    this.nextAt = 0;
+  }
   add(item, animate = true) {
     this.element.querySelector('.empty')?.remove();
     const card = document.createElement('button');
@@ -60,12 +70,24 @@ export class FlowLane {
     if (animate) requestAnimationFrame(place);
     else place();
   }
-  tick(now, frozen = false, reduced = false) {
+  tick(now, frozen = false, reduced = false, playing = true, rate = 1) {
+    const timing = feedTiming(this.queue.pending.length, rate);
+    this.element.style.setProperty(
+      '--flow-duration',
+      `${playing && !reduced ? timing.transition : 0}ms`,
+    );
+    this.element.style.setProperty(
+      '--flow-fade',
+      `${playing && !reduced && rate < 1000 ? (rate >= 100 ? 80 : 240) : 0}ms`,
+    );
+    if (!playing && !frozen) {
+      this.settle();
+      return;
+    }
     if (frozen || now < this.nextAt || !this.queue.pending.length) return;
     const item = this.queue.shift();
     this.add(item, !reduced);
-    this.nextAt =
-      now + (this.queue.pending.length > 12 ? 100 : this.queue.pending.length > 4 ? 150 : 280);
+    this.nextAt = now + timing.interval;
   }
 }
 export class MapNotices {
@@ -76,26 +98,33 @@ export class MapNotices {
     this.queue = new NotificationQueue({ capacity: 30 });
     this.cards = [];
     this.nextAt = 0;
+    this.lastTick = 0;
   }
   reset(items = []) {
     this.queue.reset(items);
     this.cards = [];
+    this.nextAt = 0;
     this.element.replaceChildren();
   }
   accept(items) {
     this.queue.accept(items);
   }
-  tick(now, enabled = true, reduced = false) {
+  tick(now, enabled = true, reduced = false, playing = true, rate = 1) {
     if (!enabled) {
       for (const c of this.cards) c.element.remove();
       this.cards = [];
       this.queue.pending = [];
       return;
     }
-    if (now >= this.nextAt && this.queue.pending.length) {
+    if (!playing) {
+      this.queue.pending = [];
+      for (const c of this.cards) c.exitAt ??= now + 220;
+    }
+    if (playing && now >= this.nextAt && this.queue.pending.length) {
       const item = this.queue.shift(),
         point = this.locate(item);
-      this.nextAt = now + (this.queue.pending.length > 10 ? 110 : 250);
+      this.nextAt =
+        now + (rate >= 1000 ? 35 : rate >= 100 ? 85 : this.queue.pending.length > 10 ? 110 : 250);
       if (point) {
         const el = document.createElement('button');
         el.className = `mapNotice ${item.tone}`;
@@ -107,24 +136,91 @@ export class MapNotices {
           el.dataset.kind = item.entity.kind;
         }
         this.element.append(el);
-        this.cards.push({ element: el, point, born: now, slot: this.cards.length % 4 });
+        const rect = el.getBoundingClientRect();
+        this.cards.push({
+          element: el,
+          point,
+          born: now,
+          width: rect.width,
+          height: rect.height,
+          screen: null,
+        });
       }
     }
     // Brief notifications at high speed; no animated backlog can grow without bound.
-    const lifespan = reduced ? 2200 : this.queue.pending.length > 8 ? 1400 : 2400;
-    while (this.cards.length > 9) this.cards.shift().element.remove();
+    const lifespan = reduced
+      ? 2200
+      : rate >= 1000
+        ? 900
+        : this.queue.pending.length > 8
+          ? 1400
+          : 2400;
+    while (this.cards.length > (rate >= 1000 ? 12 : 9)) this.cards.shift().element.remove();
     this.cards = this.cards.filter((c) => {
       const age = now - c.born;
-      if (age > lifespan) {
+      if (age > lifespan || now >= c.exitAt) {
         c.element.remove();
         return false;
       }
-      const p = this.project(c.point);
-      c.element.hidden = !p.visible;
-      c.element.style.left = `${p.x + (c.slot % 2 ? 20 : -20)}px`;
-      c.element.style.top = `${p.y - (c.slot % 3) * 10 - (reduced ? 0 : Math.min(12, age / 150))}px`;
-      c.element.style.opacity = String(Math.min(1, age / 140, (lifespan - age) / 350));
       return true;
     });
+    const newestFirst = this.cards.slice().reverse();
+    const layout = packNotices(
+      newestFirst.map((c) => ({ ...this.project(c.point), width: c.width, height: c.height })),
+      this.element.clientWidth,
+      this.element.clientHeight,
+    );
+    const dt = Math.min(100, now - (this.lastTick || now - 16));
+    const ease = reduced ? 1 : 1 - Math.exp(-dt / 45);
+    this.lastTick = now;
+    const movingLayout = packNotices(
+      newestFirst.map((c, i) => {
+        const p = layout[i];
+        c.screen ??= { x: p.x, y: p.y + (reduced ? 0 : 8) };
+        c.screen.x += (p.x - c.screen.x) * ease;
+        c.screen.y += (p.y - c.screen.y) * ease;
+        return {
+          x: c.screen.x + c.width / 2,
+          y: c.screen.y + c.height + 18,
+          width: c.width,
+          height: c.height,
+          visible: p.visible,
+        };
+      }),
+      this.element.clientWidth,
+      this.element.clientHeight,
+    );
+    newestFirst.forEach((c, i) => {
+      const p = movingLayout[i],
+        anchor = this.project(c.point);
+      if (!p.visible) {
+        c.element.remove();
+        c.culled = true;
+        return;
+      }
+      // Keep the moving rectangles apart as well as their destinations. A new
+      // card must push an older neighbour up immediately, even during a burst.
+      c.screen = { x: p.x, y: p.y };
+      c.element.style.transform = `translate(${c.screen.x}px, ${c.screen.y}px)`;
+      c.element.style.zIndex = String(newestFirst.length - i);
+      const age = now - c.born;
+      c.element.style.opacity = String(
+        Math.max(
+          0,
+          Math.min(
+            1,
+            rate >= 1000 ? 1 : age / 140,
+            (lifespan - age) / 250,
+            c.exitAt ? (c.exitAt - now) / 220 : 1,
+          ),
+        ),
+      );
+      const stem = c.element.querySelector('.noticeStem');
+      const dx = anchor.x - (c.screen.x + c.width / 2),
+        dy = anchor.y - (c.screen.y + c.height);
+      stem.style.height = `${Math.hypot(dx, dy)}px`;
+      stem.style.transform = `rotate(${-Math.atan2(dx, dy)}rad)`;
+    });
+    this.cards = this.cards.filter((c) => !c.culled);
   }
 }

@@ -51,37 +51,51 @@
             <i class="icon" data-icon="menu"></i>
           </button>
           <span class="brandIcon"><i class="icon" data-icon="activity"></i></span
-          ><strong>Disaster Response Simulator</strong><span class="badge">LAB</span>
+          ><strong>Disaster Response Simulator</strong>
         </div>
         <div class="headerRight">
           <label class="organizationSelect"
             >Organization data<select id="focusOrg" aria-label="Organization data"></select
           ></label>
-          <span id="runId"></span
-          ><a id="sourceLink" target="_blank" rel="noopener">Synthetic network ↗</a>
+          <button
+            id="openMeasurements"
+            class="measurementsButton"
+            aria-label="Open measurements"
+            aria-expanded="false"
+            aria-controls="measurementsDrawer"
+            title="Measurements"
+          >
+            <i class="icon" data-icon="activity"></i><span>Measurements</span>
+          </button>
         </div>
       </header>
       <section class="toolbar">
         <div class="clock">
-          <span class="eyebrow">SIMULATED TIME</span><strong id="clock">00:00:00</strong>
+          <strong id="clock" title="Simulated time">00:00:00</strong>
         </div>
-        <button id="play" class="runButton">Play</button><button id="step">Step</button
+        <button id="play" class="runButton">Play</button
         ><select id="speed" aria-label="Requested simulation speed">
           <option value="1">×1</option>
           <option value="10" selected>×10</option>
           <option value="100">×100</option>
-          <option value="1000">×1000</option></select
-        ><span id="effective" class="muted">paused</span>
+          <option value="1000">×1000</option>
+        </select>
         <div class="spacer"></div>
         <label class="mapViewLabel"
           >Map view<select id="perspective" aria-label="Perspective">
             <option value="truth">Observer · ground truth</option>
           </select></label
         >
-        <button id="openLayers" aria-expanded="false" aria-controls="layerPopover">
-          <i class="icon" data-icon="layers"></i><span>Layers</span>
+        <button
+          id="openLayers"
+          class="iconButton"
+          aria-label="Map layers and color key"
+          title="Layers & color key"
+          aria-expanded="false"
+          aria-controls="layerPopover"
+        >
+          <i class="icon" data-icon="layers"></i>
         </button>
-        <button id="openComparison">Compare A / B</button>
       </section>
       <div class="workspace">
         <aside
@@ -197,26 +211,25 @@
           <hr />
           <button id="toggleCommand">Actions & interventions</button>
           <div class="configTools">
-            <button id="openComparisonFromMenu">Compare A / B</button>
+            <button id="openComparison">Compare A / B</button><button id="step">Step</button>
             <button id="reset">Reset seed</button><button id="checkpoint">Save checkpoint</button
             ><label class="fileButton"
               >Restore checkpoint<input id="restore" type="file" accept=".json" hidden /></label
             ><button id="metricsExport">Export results</button>
+            <a id="sourceLink" target="_blank" rel="noopener">Synthetic network ↗</a>
           </div>
         </aside>
         <section class="scene">
           <div class="mapViewport">
             <div class="sceneHeading">
               <div>
-                <span id="scenarioTitle" class="eyebrow"></span>
-                <h2 id="sceneTitle">A region in motion.</h2>
+                <h2 id="scenarioTitle">Disaster simulation</h2>
               </div>
-              <span id="perspectiveLabel" class="badge">GROUND TRUTH</span>
             </div>
             <div id="canvas"></div>
             <div id="labels"></div>
+            <span id="selectionMarker" hidden aria-hidden="true"></span>
             <div id="mapNotices" aria-label="Live map reports"></div>
-            <span id="renderStats" class="renderStats"></span>
             <div class="mapTools">
               <button id="home" class="iconButton" aria-label="Fit region" title="Fit region">
                 <i class="icon" data-icon="map"></i></button
@@ -228,6 +241,15 @@
                 title="Map notifications"
               >
                 <i class="icon" data-icon="message-circle"></i>
+              </button>
+              <button
+                id="stopTracking"
+                class="iconButton"
+                hidden
+                aria-label="Stop camera tracking"
+                title="Stop camera tracking"
+              >
+                <i class="icon" data-icon="x"></i>
               </button>
             </div>
             <div id="layerPopover" class="layerPopover" hidden>
@@ -258,34 +280,49 @@
                 Traffic colors use measured occupancy. Organization views show only reported
                 closures.
               </p>
+              <details class="colorKey">
+                <summary>Color key</summary>
+                <div class="mapLegend">
+                  <span><i class="coral"></i> Help needed</span
+                  ><span><i class="blue"></i> Response vehicle</span
+                  ><span class="optionalLegend"><i class="violet"></i> Evacuation</span
+                  ><span class="optionalLegend"><i class="amber"></i> Vehicle blocked</span
+                  ><span><i class="slate"></i> Everyday traffic</span
+                  ><span><i class="mint"></i> Service operating</span
+                  ><span class="trafficLegend"><i class="trafficScale"></i> Clear → congested</span>
+                </div>
+              </details>
+              <p>Drag to pan · scroll to zoom. Moving the camera releases tracking.</p>
             </div>
-            <div class="mapLegend">
-              <span><i class="coral"></i> Help needed</span
-              ><span><i class="blue"></i> Response vehicle</span
-              ><span class="optionalLegend"><i class="violet"></i> Evacuation</span
-              ><span class="optionalLegend"><i class="amber"></i> Vehicle blocked</span
-              ><span><i class="slate"></i> Everyday traffic</span
-              ><span><i class="mint"></i> Service operating</span
-              ><span class="trafficLegend"><i class="trafficScale"></i> Clear → congested</span
-              ><span class="mapHint">Drag to pan · scroll to zoom</span>
-            </div>
-          </div>
-          <div class="summary">
-            <div><span>Pending water</span><strong id="pendingWater">—</strong></div>
-            <div><span>Water served</span><strong id="servedWater">—</strong></div>
-            <div><span>Published / downloaded</span><strong id="signals">—</strong></div>
-            <div><span>Active operations</span><strong id="operations">—</strong></div>
-            <div><span>Integrity</span><strong id="integrity">—</strong></div>
-          </div>
-          <div class="summary healthSummary">
-            <div><span>Simulated fatalities</span><strong id="fatalities">—</strong></div>
-            <div><span>Injured · remaining</span><strong id="injured">—</strong></div>
-            <div>
-              <span>Water deficit · person-hours</span><strong id="waterExposure">—</strong>
-            </div>
-            <div><span>Food deficit · person-hours</span><strong id="foodExposure">—</strong></div>
           </div>
         </section>
+        <aside
+          id="measurementsDrawer"
+          class="drawer inspector measurementsDrawer"
+          hidden
+          aria-label="Simulation measurements"
+        >
+          <div class="drawerHeading">
+            <h2>Measurements</h2>
+            <button id="closeMeasurements" class="iconButton" aria-label="Close measurements">
+              <i class="icon" data-icon="x"></i>
+            </button>
+          </div>
+          <p id="measurementScope"></p>
+          <div id="measurements"></div>
+          <details>
+            <summary>Information flow & diagnostics</summary>
+            <div id="informationStats"></div>
+            <div class="property">
+              <span>Effective simulation speed</span><strong id="effective"></strong>
+            </div>
+            <div class="property"><span>Rendering</span><strong id="renderStats"></strong></div>
+            <div class="property"><span>Run</span><strong id="runId"></strong></div>
+            <p id="feedCount" class="muted"></p>
+            <p id="presentationNote" class="muted"></p>
+          </details>
+          <button id="exportMeasurements">Export results</button>
+        </aside>
         <section id="inspector" class="drawer inspector" hidden aria-label="Selected entity">
           <div class="drawerHeading">
             <span class="eyebrow">SELECTED ENTITY</span
@@ -306,8 +343,7 @@
       <section class="streams">
         <div class="streamHeading">
           <div>
-            <span class="eyebrow">THE INFORMATION GAP</span
-            ><span id="feedCount" class="muted"></span>
+            <span class="eyebrow">THE INFORMATION GAP</span>
           </div>
           <button
             id="freeze"
@@ -327,19 +363,14 @@
           <article>
             <header>
               <span class="laneNumber">01</span>
-              <div>
-                <strong>What happens</strong><span id="realityCount">Observer · world events</span>
-              </div>
+              <div><strong>What happens</strong><span id="realityCount"></span></div>
             </header>
             <div id="reality" class="feed"></div>
           </article>
           <article>
             <header>
               <span class="laneNumber">02</span>
-              <div>
-                <strong>What spreads</strong
-                ><span id="communicationCount">Social posts · voices · news</span>
-              </div>
+              <div><strong>What spreads</strong><span id="communicationCount"></span></div>
             </header>
             <div id="communication" class="feed"></div>
           </article>
@@ -348,16 +379,11 @@
               <span class="laneNumber">03</span>
               <div>
                 <strong id="availableTitle">Data available to your team</strong
-                ><span id="availableCount">Public sources + received reports</span>
+                ><span id="availableCount"></span>
               </div>
             </header>
             <div id="ingestion" class="feed"></div>
           </article>
-        </div>
-        <div class="viewFootnote">
-          <span id="presentationNote"
-            >Live visual sample · full event history retained in the archive.</span
-          ><span>Population outcomes use experimental assumptions.</span>
         </div>
       </section>
       <dialog id="commandDialog">
