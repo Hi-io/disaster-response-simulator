@@ -16,6 +16,7 @@
     "benchmark": "node scripts/benchmark.mjs"
   },
   "dependencies": {
+    "lucide-static": "1.55.0",
     "three": "^0.186.1"
   },
   "devDependencies": {

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      lucide-static:
+        specifier: 1.55.0
+        version: 1.55.0
       three:
         specifier: ^0.186.1
         version: 0.186.1
@@ -18,6 +21,9 @@ importers:
 
 packages:
 
+  lucide-static@1.55.0:
+    resolution: {integrity: sha512-h18lunTFsIJWnY0FMRPjXeO9KcAtNi7fDqtqgWHOFbssfgUWsctn/pA7bpiyrd4g1DuBOJ24CsRnPfkYblwm/A==}
+
   prettier@3.9.10:
     resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==}
     engines: {node: '>=14'}
@@ -27,6 +33,8 @@ packages:
     resolution: {integrity: sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==}
 
 snapshots:
+
+  lucide-static@1.55.0: {}
 
   prettier@3.9.10: {}
 
