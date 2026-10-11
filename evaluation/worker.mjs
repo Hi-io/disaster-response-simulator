@@ -5,9 +5,13 @@ import { saveRun } from './runs.mjs';
 import { readFile } from 'node:fs/promises';
 import { setImmediate } from 'node:timers/promises';
 
-let cancelled = false;
+let cancelled = false,
+  cancelReason = null;
 parentPort.on('message', (m) => {
-  if (m === 'cancel') cancelled = true;
+  if (m === 'cancel') {
+    cancelled = true;
+    cancelReason = 'signal';
+  }
 });
 const start = performance.now();
 let w;
@@ -20,6 +24,7 @@ try {
       throw new Error('Batch run cannot continue without the external computation result');
     if (performance.now() - start > workerData.maxWallMs) {
       cancelled = true;
+      cancelReason = 'wall-time budget';
       break;
     }
     if (performance.now() > nextProgress) {
@@ -33,6 +38,7 @@ try {
     metrics: evaluate(w),
     wallMs: performance.now() - start,
     hash: w.stateHash(),
+    completion: { state: cancelled ? 'cancelled' : 'completed', reason: cancelReason },
   };
   const saved = await saveRun(result, workerData.directory);
   parentPort.postMessage({

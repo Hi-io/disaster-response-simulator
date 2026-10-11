@@ -78,6 +78,10 @@ export function replay(checkpoint) {
 export async function saveRun(result, directory) {
   await mkdir(directory, { recursive: true });
   const w = result.world;
+  const completion = result.completion ?? {
+    state: w.now === w.config.durationMs ? 'completed' : 'partial',
+    reason: null,
+  };
   const artifacts = {
     manifest: w.manifest,
     metrics: {
@@ -85,6 +89,7 @@ export async function saveRun(result, directory) {
       wallMs: result.wallMs,
       effectiveRate: w.now / result.wallMs,
       hash: result.hash,
+      completion,
     },
     inputs: w.inputs,
   };
@@ -121,6 +126,7 @@ export async function saveRun(result, directory) {
     wallMs: result.wallMs,
     effectiveRate: w.now / result.wallMs,
     metrics: result.metrics,
+    completion,
   };
 }
 export async function readJSON(file) {

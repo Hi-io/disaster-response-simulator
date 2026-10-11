@@ -66,6 +66,8 @@ pnpm benchmark --full
 
 Runs store a versioned manifest, actions/receipts, metrics, compressed event history and a checkpoint. Compact mode archives posts, messages and events in SQLite; portable saved checkpoints include their database files. Keep the bundle together. Batch jobs support bounded workers, memory/time budgets, cancellation and verified resume (`--resume`).
 
+Batch resume reuses only completed episodes with the same configuration and source build. A cancelled episode retains its artifacts and completion reason, and is rerun on the next resume. The per-episode wall budget is checked between event chunks; hashing/export time is separate from simulation time.
+
 Repeatability requires the **same engine source build, complete manifest and recorded inputs**. The manifest fingerprints causal source files, and checkpoints from a different build are rejected. Keep the recorded Git revision to restore an earlier build. Random streams are keyed by subsystem/entity/event, so extra tool calls do not consume a shared random generator. Running a new external inference is different from replaying its recorded output. CLI forks record their parent checkpoint and receive a distinct branch identity.
 
 For a paired comparison, split `batch.json` into one policy per file and run:

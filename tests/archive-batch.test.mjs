@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { World } from '../engine/world.mjs';
 import { replay, saveRun, readJSON } from '../evaluation/runs.mjs';
 import { batch } from '../evaluation/batch.mjs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 const config = {
@@ -78,9 +78,35 @@ test('isolated workers match a serial run and resume only matching completed man
       const w = new World(configs[i]);
       w.advance(180000);
       assert.equal(rows[i].hash, w.stateHash());
+      w.close();
     }
     const resumed = await batch(configs, { directory, workers: 2, resume: true });
     assert.ok(resumed.every((r) => r.resumed));
+    assert.ok(resumed.every((r) => r.manifest.engineBuild === rows[0].manifest.engineBuild));
+    const manifestFile = path.join(rows[0].directory, 'manifest.json');
+    const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
+    manifest.engineBuild = 'obsolete-implementation';
+    await writeFile(manifestFile, JSON.stringify(manifest));
+    const refreshed = await batch(configs, { directory, workers: 2, resume: true });
+    assert.equal(refreshed[0].resumed, undefined);
+    assert.equal(refreshed[0].hash, rows[0].hash);
+    assert.equal(refreshed[1].resumed, true);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+test('batch budgets retain cancelled episodes without treating them as resumable successes', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'disaster-budget-'));
+  try {
+    await assert.rejects(batch([config], { directory, maxWallMs: Infinity }), /Wall-time budget/);
+    const rows = await batch([config], { directory, workers: 1, maxWallMs: 1 });
+    assert.equal(rows[0].cancelled, true);
+    assert.equal(rows[0].completion.state, 'cancelled');
+    const saved = JSON.parse(await readFile(path.join(rows[0].directory, 'metrics.json'), 'utf8'));
+    assert.equal(saved.completion.reason, 'wall-time budget');
+    const retried = await batch([config], { directory, workers: 1, resume: true });
+    assert.equal(retried[0].resumed, undefined);
+    assert.equal(retried[0].completion.state, 'completed');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

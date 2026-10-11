@@ -46,7 +46,7 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Release verification
 
-At the documented 0.2.0 checkpoint, the automated suite has 74 passing tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+At the documented 0.2.0 checkpoint, the automated suite has 75 passing tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
 
 Browser QA covers the map, controls, selection, information streams, scoped perspectives and comparison surface. It does not substitute for headless causal tests. Measured scaling results and machine details are stored in `PERFORMANCE.md`; complete run artifacts stay under ignored `runs/`.
 
