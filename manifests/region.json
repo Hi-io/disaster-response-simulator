@@ -1,1 +1,13 @@
-{"seed":"regional-development","scenario":"S19","grid":35,"extentKm":80,"organizations":4,"hazard":"compound","postsPerHour":10000,"backgroundTraffic":120,"durationMs":14400000,"mode":"headless","maxEvents":5000000}
+{
+  "seed": "regional-development",
+  "scenario": "S19",
+  "grid": 35,
+  "extentKm": 80,
+  "organizations": 4,
+  "hazard": "compound",
+  "postsPerHour": 10000,
+  "backgroundTraffic": 120,
+  "durationMs": 14400000,
+  "mode": "headless",
+  "maxEvents": 5000000
+}

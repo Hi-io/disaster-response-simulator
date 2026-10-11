@@ -11,12 +11,23 @@ importers:
       three:
         specifier: ^0.186.1
         version: 0.186.1
+    devDependencies:
+      prettier:
+        specifier: ^3.9.10
+        version: 3.9.10
 
 packages:
+
+  prettier@3.9.10:
+    resolution: {integrity: sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==}
+    engines: {node: '>=14'}
+    hasBin: true
 
   three@0.186.1:
     resolution: {integrity: sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==}
 
 snapshots:
+
+  prettier@3.9.10: {}
 
   three@0.186.1: {}

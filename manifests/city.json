@@ -1,1 +1,12 @@
-{"seed":"city-development","scenario":"S09","grid":15,"extentKm":15,"hazard":"earthquake","postsPerHour":3000,"backgroundTraffic":60,"durationMs":7200000,"mode":"headless","maxEvents":2000000}
+{
+  "seed": "city-development",
+  "scenario": "S09",
+  "grid": 15,
+  "extentKm": 15,
+  "hazard": "earthquake",
+  "postsPerHour": 3000,
+  "backgroundTraffic": 60,
+  "durationMs": 7200000,
+  "mode": "headless",
+  "maxEvents": 2000000
+}

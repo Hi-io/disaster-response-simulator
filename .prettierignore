@@ -1,0 +1,9 @@
+node_modules
+runs
+.local
+private
+qa
+pnpm-lock.yaml
+docs/SIMULADOR.md
+docs/PLATAFORMA.md
+docs/DEMO.md

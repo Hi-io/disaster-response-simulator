@@ -1,9 +1,73 @@
-export function quantile(values,q) {if(!values.length)return null;const sorted=[...values].sort((a,b)=>a-b);return sorted[Math.max(0,Math.min(sorted.length-1,Math.ceil(sorted.length*q)-1))];}
+export function quantile(values, q) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.max(0, Math.min(sorted.length - 1, Math.ceil(sorted.length * q) - 1))];
+}
 export function evaluate(world) {
-  const events=world.log, needs=world.state.needs;
-  const services={};for(const n of needs){const row=services[n.type]??={unit:n.unit,demand:0,served:0,pending:0,overprovided:0,uncoveredUnitMs:0,onTime:0};row.demand+=n.quantity;row.served+=n.served;row.pending+=Math.max(0,n.quantity-n.served);row.overprovided+=Math.max(0,n.served-n.quantity);row.uncoveredUnitMs+=n.pendingIntegral+(world.now-n.integratedAt)*Math.max(0,n.quantity-n.served);if(n.completedAt!==null&&n.completedAt<=n.deadline)row.onTime++;}
-  const stages={};for(const op of world.state.operations)for(const [stage,at]of Object.entries(op.times??{})){if(!stages[stage])stages[stage]=[];stages[stage].push(at-op.createdAt);}
-  const latency={};for(const [stage,values]of Object.entries(stages))latency[stage]={p50:quantile(values,.5),p95:quantile(values,.95),samples:values.length};
-  const perCommunity=needs.map(n=>({id:n.id,building:n.building,type:n.type,quantity:n.quantity,served:n.served,completedAt:n.completedAt,deadline:n.deadline,silent:n.silent}));
-  return {simulatedMs:world.now,services,perCommunity,latency,posts:world.state.posts.length,ingested:world.state.ingestion.length,operations:world.state.operations.length,operatorReviewMs:events.filter(e=>e.type==='review_completed').reduce((s,e)=>s+(e.data.reviewMs??0),0),conflicts:events.filter(e=>e.type==='reservation_conflict').length,failedTrips:world.state.operations.filter(o=>o.state==='failed').length,staleOrders:world.state.messages.filter(m=>m.expired).length,queries:world.state.queryCount,cost:world.state.toolCost,events:world.eventCount,modelCalls:world.state.modelCalls??0,modelWallMs:world.state.modelWallMs??0,invalidActions:world.state.invalidActions,ledgerValid:world.invariants().length===0};
+  const events = world.log,
+    needs = world.state.needs;
+  const services = {};
+  for (const n of needs) {
+    const row = (services[n.type] ??= {
+      unit: n.unit,
+      demand: 0,
+      served: 0,
+      pending: 0,
+      overprovided: 0,
+      uncoveredUnitMs: 0,
+      onTime: 0,
+    });
+    row.demand += n.quantity;
+    row.served += n.served;
+    row.pending += Math.max(0, n.quantity - n.served);
+    row.overprovided += Math.max(0, n.served - n.quantity);
+    row.uncoveredUnitMs +=
+      n.pendingIntegral + (world.now - n.integratedAt) * Math.max(0, n.quantity - n.served);
+    if (n.completedAt !== null && n.completedAt <= n.deadline) row.onTime++;
+  }
+  const stages = {};
+  for (const op of world.state.operations)
+    for (const [stage, at] of Object.entries(op.times ?? {})) {
+      if (!stages[stage]) stages[stage] = [];
+      stages[stage].push(at - op.createdAt);
+    }
+  const latency = {};
+  for (const [stage, values] of Object.entries(stages))
+    latency[stage] = {
+      p50: quantile(values, 0.5),
+      p95: quantile(values, 0.95),
+      samples: values.length,
+    };
+  const perCommunity = needs.map((n) => ({
+    id: n.id,
+    building: n.building,
+    type: n.type,
+    quantity: n.quantity,
+    served: n.served,
+    completedAt: n.completedAt,
+    deadline: n.deadline,
+    silent: n.silent,
+  }));
+  return {
+    simulatedMs: world.now,
+    services,
+    perCommunity,
+    latency,
+    posts: world.state.posts.length,
+    ingested: world.state.ingestion.length,
+    operations: world.state.operations.length,
+    operatorReviewMs: events
+      .filter((e) => e.type === 'review_completed')
+      .reduce((s, e) => s + (e.data.reviewMs ?? 0), 0),
+    conflicts: events.filter((e) => e.type === 'reservation_conflict').length,
+    failedTrips: world.state.operations.filter((o) => o.state === 'failed').length,
+    staleOrders: world.state.messages.filter((m) => m.expired).length,
+    queries: world.state.queryCount,
+    cost: world.state.toolCost,
+    events: world.eventCount,
+    modelCalls: world.state.modelCalls ?? 0,
+    modelWallMs: world.state.modelWallMs ?? 0,
+    invalidActions: world.state.invalidActions,
+    ledgerValid: world.invariants().length === 0,
+  };
 }
