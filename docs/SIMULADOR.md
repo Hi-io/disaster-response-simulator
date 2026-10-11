@@ -1092,3 +1092,90 @@ El laboratorio está listo para evaluar el núcleo de NEXO cuando:
 Estos criterios buscan una contribución defendible en técnica, impacto, innovación y UX. No convierten el número de features, presets o agentes en garantía de 100/100 o primer puesto.
 
 **Primer corte para construir:** S01 y S02 con un pequeño grafo, una pérdida de conexión, una publicación engañosa y un recurso compartido. Deben recorrer señal → ingesta → investigación → autorización → viaje → servicio. Congelar contratos y verificar el motor; después extender los mismos mecanismos a región, incendio y carga masiva. El objetivo final sigue siendo el alcance completo descrito aquí.
+
+## 40. Requisitos adicionales: región irregular, deterioro y separación de NEXO
+
+Esta sección incorpora las aclaraciones del autor durante la construcción. Se suman al diseño anterior. El estado de implementación y sus límites se registran en [COVERAGE.md](COVERAGE.md); la documentación ejecutable es [README.md](../README.md), [API.md](API.md), [SCENARIOS.md](SCENARIOS.md) y [CALIBRATION.md](CALIBRATION.md).
+
+### 40.1 El simulador no utiliza Gemini
+
+- El mundo, su contenido sintético, sus desastres y las consecuencias de las acciones se generan con reglas y streams aleatorios deterministas.
+- NEXO es otro proyecto. Ahí se ejecutará Gemini para consumir información, investigar y proponer decisiones.
+- No agregar credenciales ni SDKs de proveedores de modelos al motor. Los controladores de referencia del laboratorio son algoritmos explícitos; nunca presentar sus resultados como resultados de Gemini.
+- El contrato permite que una plataforma externa informe tiempos, uso y respuestas. Esa instrumentación no ejecuta la inferencia dentro del simulador.
+- En modo vivo se utiliza tiempo de pared a ×1. En modo acelerado se declara y aplica la latencia modelada; esperar el resultado externo mediante una barrera. Una simulación a ×1000 no acredita inferencia real a ×1000.
+- La plataforma recibe fuentes públicas o autorizadas y acciones limitadas. No recibe la verdad privada, etiquetas de fake news, posiciones físicas ocultas ni métricas clínicas privadas instantáneas.
+
+### 40.2 Geografía que genere decisiones difíciles
+
+El mapa habitual no puede ser un grid de calles equivalentes que permita rodear cualquier obstáculo por la siguiente manzana. Usar un grafo irregular con comunidades, carreteras de diferente clase, redundancia limitada y accesos escasos.
+
+- Región predeterminada considerablemente mayor que 8 km: implementación inicial de **160 × 160 km**, ajustable hasta 200 km mediante configuración.
+- Densidad y extensión física se controlan por separado. El parámetro histórico `grid` indica densidad de asentamientos; no impone calles cuadradas en topología regional.
+- Río irregular con pocos cruces. El número de puentes es configurable; tres por defecto. Separar cierre de un puente de obstrucción de una carretera local.
+- Algunas comunidades tienen un acceso único; otras requieren cruzar uno de dos o tres puentes. Cerrar todos los accesos puede impedir el viaje por completo.
+- La variante predeterminada permite que cerrar el cruce central aumente el tiempo de transporte en varias horas. El mecanismo debe seguir siendo físico y no un número decorativo asignado para favorecer al candidato.
+- Velocidad, capacidad, almacenamiento de vehículos, headway, longitud, terreno, límite de peso y exposición al agua varían por tramo.
+- Los vehículos siguen la polilínea del tramo en el motor y en el visor. No atraviesan terreno para llegar al siguiente nodo más rápido que por la carretera.
+- Un cierre de puente afecta ambos sentidos. Una reparación necesita autoridad, equipo, acceso y tiempo; luego actualiza ambos sentidos y sus versiones.
+- Diferenciar la cartografía estática que puede conocer una organización de las condiciones dinámicas que aún no recibió. La ausencia de observación no significa que una carretera esté disponible.
+
+Pruebas: conectividad inicial, comunidades que realmente quedan aisladas, rutas alternativas de horas, ausencia de ruta, reparación bidireccional y consistencia entre posición del motor y posición dibujada.
+
+### 40.3 Necesidades que empeoran mientras llega la ayuda
+
+No basta mostrar una alerta fija de “necesita agua”. El mundo conserva población, suministros reales y exposición acumulada por cohorte/comunidad.
+
+- Agua y alimento se consumen a lo largo del tiempo. El consumo no termina cuando se cumple la primera solicitud.
+- Las entregas recibidas aumentan reservas reales; una propuesta, promesa o envío en tránsito no las aumenta.
+- Una comunidad sin suministros acumula privación. Una comunidad abastecida puede mejorar; después puede requerir otra entrega.
+- Cuando las reservas no alcanzan hasta la siguiente revisión, se pueden generar nuevas necesidades de abastecimiento. No crear pedidos ilimitados mientras sigue pendiente uno equivalente en la misma zona.
+- Hambre, falta de agua, exposición y lesiones sin atención son dimensiones distintas. Sus curvas, reservas iniciales y umbrales de riesgo son parámetros explícitos.
+- Contabilizar **bajas simuladas**, vivos, heridos y gente en tránsito. No convertir una fecha límite del pedido en una muerte automática ni usar un umbral universal de cuatro días.
+- Una evacuación conserva población, demanda vehículos y plazas, lleva reservas/estado de la cohorte y puede sufrir consecuencias durante una demora real. Llegar a un edificio que dejó de ser seguro no completa el servicio.
+- Las personas fallecidas permanecen en el registro de población. Una observación posterior debe poder informar que ya no hay supervivientes; no borrar esa comunidad de la evidencia.
+- Calibrar y hacer sensibilidad. Los coeficientes iniciales son hipótesis de laboratorio: no permiten concluir que un número concreto de personas reales habría sobrevivido.
+
+En el modelo inicial, la privación hídrica representa ingesta, no toda la demanda de agua doméstica/higiene. Nutrición, profesiones médicas y tratamientos se simplifican y se declaran. Revisar los supuestos antes de aumentar realismo agregando más gráficos.
+
+### 40.4 Organizaciones independientes y coordinación imperfecta
+
+- El mapa predeterminado debe incluir centros de respuesta y organizaciones con depósitos, flotas, recursos, operadores y permisos propios.
+- Deben existir demoras de información, revisión humana e instrucciones. Los vehículos no conocen las decisiones antes de que les llegue la orden.
+- Las organizaciones pueden asignar recursos duplicados a una zona mientras otra queda desatendida. Registrar esa situación y sus costes; no impedirla mágicamente mediante conocimiento global.
+- La cooperación es una posibilidad, no un supuesto universal. Permitir datos parciales, recursos no publicados, condiciones, vencimiento, desconexión y socios que no usen NEXO.
+- NEXO podrá conectar organizaciones por sus contratos; el simulador debe permitir medir la diferencia entre autonomía, intercambio parcial y coordinación.
+- Los controladores de referencia deben cumplir los mismos límites físicos y de autoridad. Su competencia operativa debe revisarse de forma independiente antes de atribuir el resultado a una mejora de Gemini.
+
+### 40.5 Métricas privadas, observables y consumidas
+
+| Dato | Quién puede verlo | Cómo puede llegar a NEXO |
+|---|---|---|
+| Daño, stock real, posición real, privación y bajas | Observador/evaluador | Evaluación final; no acceso directo desde sesión de plataforma |
+| Cartografía estática y fuentes publicadas | Público/plataforma según permisos | Scraping, API, documentos y consultas |
+| Inventario propio y compromisos propios | Organización dueña | Herramientas autorizadas, con versión y demora cuando corresponda |
+| Estado dinámico de acceso y población | Quien recibió una observación | Equipo de campo, radio, fuentes verificadas y compartidas |
+| Mensaje interno | Destinatarios autorizados | Inbox/canal del equipo; no aparece en la web pública |
+| Texto recibido/interpretado por plataforma | Plataforma y registro de acuses | Descarga y acuse versionado; interpretación es un estado declarado por la plataforma |
+
+Registrar por comunidad y globalmente: vivos/bajas/heridos, privación de agua y alimento en persona-horas, exposición, lesión sin atención, demanda/servicio/pendiente, servicio antes de plazo, latencia de cada etapa, recursos en tránsito, sobreabastecimiento por tipo, reservas vencidas, conflicto, viaje fallido, distancia/combustible, tiempo de revisión, queries, coste y fallos de integración. No sumar litros y raciones como si fuesen la misma unidad.
+
+La comparación de bajas es una métrica **simulada y condicionada a los supuestos**. Acompañarla con privación y atención efectiva para evitar que una curva arbitraria sea el único argumento del resultado.
+
+### 40.6 Reproducibilidad y rendimiento
+
+- Guardar configuración completa, seed/streams, build del motor, inputs, respuestas externas y trazas.
+- El manifiesto debe identificar el contenido del código causal, además de una versión comercial. Rechazar restauraciones de otro build; mantener el commit original para reproducir una ejecución antigua.
+- Un fork recibe identidad propia y conserva padre, hash del estado de partida y momento de bifurcación. No cambiar retrospectivamente la ejecución original.
+- Historial completo en almacenamiento; ventana de UI limitada. Que se dibujen menos tarjetas o menos objetos lejanos no debe borrar eventos ni posts del mundo.
+- Ejecución por eventos, sin dependencia del render. Batches con workers acotados, límites de memoria/eventos/tiempo, cancelación y reanudación verificada.
+- ×1000 es velocidad solicitada. Registrar velocidad efectiva y costes separados de generación, hashing/exportación, navegador e inferencia externa.
+- Repetir comparaciones con condiciones iniciales y presupuesto iguales. Guardar casos donde el candidato pierde; no seleccionar solamente la seed favorable.
+
+### 40.7 Condiciones de una demostración honesta
+
+El 3D sirve para entender la interacción: región, necesidad, acceso, quién puede ayudar, cuánto tarda una instrucción, dónde está el camión y cuándo se recibe el servicio. Representación simple; no convertir apariencia realista en evidencia científica.
+
+Para mostrar Gemini después, conectar NEXO de verdad, registrar sus respuestas y usar sus acciones en el mundo. No renombrar un algoritmo de referencia como Gemini ni representar como resultado medido un número inventado en la landing. Demostrar un caso concreto y un cambio inesperado; abrir el manifiesto y la traza para que puedan verificarse.
+
+Los documentos de cobertura y calibración conservan los límites actuales. Precisión operativa, revisión de operadores, validación clínica e impacto en terreno son evidencias diferentes y requieren trabajo separado.

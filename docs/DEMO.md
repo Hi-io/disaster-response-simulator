@@ -195,6 +195,8 @@ Mantener un dossier de pruebas para profundizar, sin meter todas las respuestas 
 
 El catálogo S01–S24 de [SIMULADOR.md](SIMULADOR.md) especifica qué debe ser visible y comprobable. Seleccionar una historia comprensible y una perturbación; no intentar exhibir todos los escenarios en una sola pantalla.
 
+El simulador no usa Gemini: la plataforma externa sí lo usará. Identificar siempre si la demo muestra una referencia algorítmica, NEXO conectado realmente o un replay de respuestas registradas. Las bajas son simuladas y dependen de curvas aún no calibradas clínicamente; no presentarlas como número real demostrado de vidas salvadas.
+
 - Vista isométrica simple, posibilidad de seguir un vehículo y distinguir necesidad, refugio candidato, instalación operativa y ayuda recibida.
 - Tres columnas para realidad, información comunicada y consumo real de NEXO. Mostrar una sola cadena seleccionada mientras el resto transmite volumen de fondo.
 - El observador puede ver que un post es falso; NEXO no recibe esa etiqueta. Identificar siempre desde qué perspectiva se mira.

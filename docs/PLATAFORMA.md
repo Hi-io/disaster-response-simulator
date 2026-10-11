@@ -277,4 +277,6 @@ El [diseño funcional del simulador](SIMULADOR.md) desarrolla el alcance complet
 
 La plataforma consume fuentes limitadas —incluida una red social ficticia que debe descubrir y scrapear— y emite acciones autorizadas. Nunca accede al estado privado del mundo. Instrumentar descarga, aceptación, interpretación, revisión y resultado para que el observatorio distinga lo publicado de lo realmente consumido.
 
+El simulador **no ejecuta Gemini**. NEXO lo ejecutará desde su propio proyecto. El laboratorio aplica reglas deterministas y puede registrar los tiempos/resultados de una computación externa, sin convertirla en parte de su motor. La extensión §40 detalla región irregular, cruces escasos, privación dinámica, bajas simuladas y separación entre verdad, observación y consumo.
+
 El visor 3D y las etiquetas de verdad pertenecen al observador. Las descripciones textuales de videos y notas de voz son sustitutos ligeros para evaluar interpretación; no acreditan percepción multimodal real. Los tiempos de Gemini, humanos y herramientas deben contabilizarse según el modo experimental explícito. Una reproducción a ×1000 no demuestra inferencia en vivo a esa velocidad.
