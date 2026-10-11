@@ -2,6 +2,17 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { renderComparison, stopComparison } from './comparison.js';
 import { pointAlong as roadPoint } from './geometry.js';
+import {
+  streamModels,
+  eventCard,
+  postCard,
+  humanize,
+  entityKind,
+  placeName,
+  trafficLevel,
+} from './presentation.js';
+import { MotionBuffer } from './motion.js';
+import { FlowLane, MapNotices, iconHTML, applyIcons } from './flow.js';
 
 const $ = (id) => document.getElementById(id);
 const escape = (s) =>
@@ -14,6 +25,7 @@ const clock = (ms) =>
     .map((v) => String(v).padStart(2, '0'))
     .join(':');
 const timelineCache = new Map();
+const eventCache = new Map();
 const number = (n) => new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(n ?? 0);
 let snapshot,
   catalog,
@@ -35,7 +47,29 @@ const layers = {
   routes: true,
   people: false,
   organizations: true,
+  traffic: true,
+  vehicles: true,
+  notifications: true,
 };
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const motion = new MotionBuffer();
+const flowLanes = {
+  reality: new FlowLane($('reality')),
+  communication: new FlowLane($('communication')),
+  available: new FlowLane($('ingestion')),
+};
+let feedScope,
+  mapScope,
+  trafficLines,
+  vehiclePoints,
+  vehicleIds = [],
+  dotTexture;
+let nodeIndex = new Map(),
+  buildingIndex = new Map(),
+  edgeIndex = new Map(),
+  operationIndex = new Map();
+const mapNotices = new MapNotices($('mapNotices'), locateNotice, projectNotice);
+applyIcons();
 const orgColors = ['#617ad0', '#9276be', '#639aaa', '#bf9469', '#7b9d82'];
 let snapshotReceivedAt = performance.now();
 let renderer,
@@ -100,7 +134,39 @@ function dispose(group) {
   scene.remove(group);
 }
 function position(node) {
-  return snapshot.state.map.nodes.find((n) => n.id === node);
+  return nodeIndex.get(node);
+}
+function locateNotice(item) {
+  const s = snapshot.state,
+    id = item.location;
+  if (!id) return null;
+  const b = buildingIndex.get(id);
+  if (b) return { x: b.x, z: b.z };
+  const org = s.map.organizations.find((o) => o.id === id);
+  if (org) return position(org.node);
+  const n = position(id);
+  if (n) return n;
+  const v = vehicleMeshes.get(id);
+  if (v) return { x: v.position.x, z: v.position.z };
+  if ($('perspective').value !== 'truth') return null;
+  const need = s.needs.find((n) => n.id === id);
+  if (need) return locateNotice({ location: need.building });
+  const cohort = s.cohorts.find((c) => c.id === id || c.sector === id);
+  if (cohort) return position(cohort.node);
+  const edge = edgeIndex.get(id);
+  if (edge) return roadPoint(edge.points ?? [position(edge.from), position(edge.to)], 0.5);
+  const op = operationIndex.get(id);
+  if (op) return position(op.destination);
+  return null;
+}
+function projectNotice(point) {
+  const p = new THREE.Vector3(point.x, extent * 0.004, point.z).project(camera);
+  const r = $('canvas').getBoundingClientRect();
+  return {
+    x: ((p.x + 1) * r.width) / 2,
+    y: ((-p.y + 1) * r.height) / 2,
+    visible: Math.abs(p.x) < 0.95 && Math.abs(p.y) < 0.92,
+  };
 }
 
 function initialize3D() {
@@ -143,6 +209,7 @@ function initialize3D() {
     if (!down || Math.hypot(down.x - e.clientX, down.y - e.clientY) > 6) return;
     const r = renderer.domElement.getBoundingClientRect(),
       ray = new THREE.Raycaster();
+    ray.params.Points.threshold = (extent * 0.009) / camera.zoom;
     ray.setFromCamera(
       new THREE.Vector2(
         ((e.clientX - r.left) / r.width) * 2 - 1,
@@ -155,10 +222,17 @@ function initialize3D() {
       .find((h) => h.object.visible && h.object.parent?.visible);
     if (hit)
       select(
-        pickMap.get(`${hit.object.uuid}:${hit.instanceId ?? ''}`) ?? hit.object.userData.entity,
+        pickMap.get(`${hit.object.uuid}:${hit.instanceId ?? hit.index ?? ''}`) ??
+          hit.object.userData.entity,
       );
   });
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeInspector();
+      setConfigOpen(false);
+      setLayersOpen(false);
+      return;
+    }
     if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
     const d = extent * 0.04;
     const v = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[
@@ -184,7 +258,7 @@ function initialize3D() {
       frames = 0;
       lastFrame = now;
     }
-    updateVehicles();
+    updateVehicles(now);
     if (following && selected?.kind === 'vehicle') {
       const mesh = vehicleMeshes.get(selected.id);
       if (mesh) {
@@ -207,6 +281,8 @@ function initialize3D() {
         Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1 || !layers.organizations;
     }
     controls.update();
+    for (const lane of Object.values(flowLanes)) lane.tick(now, frozen, reducedMotion.matches);
+    mapNotices.tick(now, layers.notifications, reducedMotion.matches);
     renderer.render(scene, camera);
   };
   requestAnimationFrame(animate);
@@ -215,8 +291,11 @@ function home() {
   const map = snapshot.state.map,
     mid = map.extentM / 2;
   const rect = $('canvas').getBoundingClientRect();
-  extent = map.extentM * Math.max(0.54, 0.82 / Math.max(0.1, rect.width / rect.height));
-  camera.position.set(mid + map.extentM, map.extentM * 1.1, mid + map.extentM);
+  const aspect = Math.max(0.1, rect.width / rect.height);
+  const rise = Math.max(0.45, Math.min(1.1, 1.6 / aspect));
+  const verticalProjection = rise / Math.sqrt(2 + rise * rise);
+  extent = map.extentM * Math.max(0.7072 * verticalProjection * 1.28, (0.7072 / aspect) * 1.16);
+  camera.position.set(mid + map.extentM, map.extentM * rise, mid + map.extentM);
   camera.far = map.extentM * 8;
   camera.zoom = 1;
   controls.target.set(mid, 0, mid);
@@ -289,6 +368,29 @@ function buildScene() {
   lines(vertices, '#c6d2e2', roads);
   lines(damaged, '#ce7a69', roads);
   lines(bridges, '#6a84a9', roads);
+  const trafficPositions = [];
+  const trafficRoadIds = [];
+  for (const edge of map.edges) {
+    if (edge.from > edge.to) continue;
+    const path = edge.points ?? [position(edge.from), position(edge.to)];
+    for (let i = 0; i < path.length - 1; i++) {
+      trafficPositions.push(path[i].x, 3, path[i].z, path[i + 1].x, 3, path[i + 1].z);
+      trafficRoadIds.push(edge.id, edge.id);
+    }
+  }
+  const trafficGeometry = new THREE.BufferGeometry();
+  trafficGeometry.setAttribute('position', new THREE.Float32BufferAttribute(trafficPositions, 3));
+  trafficGeometry.setAttribute(
+    'color',
+    new THREE.Float32BufferAttribute(new Float32Array(trafficPositions.length), 3),
+  );
+  trafficLines = new THREE.LineSegments(
+    trafficGeometry,
+    new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.62 }),
+  );
+  trafficLines.userData.edges = trafficRoadIds;
+  subgroup('traffic').add(trafficLines);
+  updateTraffic();
   if (map.river) {
     const p = map.river.points,
       verts = [];
@@ -367,25 +469,34 @@ function buildScene() {
   if (boxes.instanceColor) boxes.instanceColor.needsUpdate = true;
   buildings.add(boxes);
   rayTargets.push(boxes);
-  for (const n of obs ? Object.values(obs.needs) : snapshot.state.needs) {
-    if (n.served >= n.quantity) continue;
-    const b = map.buildings.find((b) => b.id === n.building);
-    if (!b) continue;
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(scale * 0.07, scale * 0.09, 24),
-      new THREE.MeshBasicMaterial({
-        color: '#dc8d78',
-        transparent: true,
-        opacity: 0.65,
-        side: THREE.DoubleSide,
-      }),
+  const visibleNeeds = (obs ? Object.values(obs.needs) : snapshot.state.needs).filter(
+    (n) => n.served < n.quantity && buildingIndex.has(n.building),
+  );
+  const rings = new THREE.InstancedMesh(
+    new THREE.RingGeometry(0.07, 0.09, 24),
+    new THREE.MeshBasicMaterial({
+      color: '#dc8d78',
+      transparent: true,
+      opacity: 0.65,
+      side: THREE.DoubleSide,
+    }),
+    visibleNeeds.length,
+  );
+  const ringRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+  visibleNeeds.forEach((n, i) => {
+    const b = buildingIndex.get(n.building);
+    const size = scale * (n.type === 'water' ? 1 : 1.24);
+    matrix.compose(
+      new THREE.Vector3(b.x, 3, b.z),
+      ringRotation,
+      new THREE.Vector3(size, size, size),
     );
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.set(b.x, 3, b.z);
-    ring.userData.entity = { kind: 'need', id: n.id };
-    needs.add(ring);
-    rayTargets.push(ring);
-  }
+    rings.setMatrixAt(i, matrix);
+    pickMap.set(`${rings.uuid}:${i}`, { kind: 'need', id: n.id });
+  });
+  rings.instanceMatrix.needsUpdate = true;
+  needs.add(rings);
+  rayTargets.push(rings);
   const positions = [];
   for (const b of map.buildings) if (!obs || obs.buildings[b.id]) positions.push(b.x, 3, b.z);
   const pointsGeometry = new THREE.BufferGeometry();
@@ -439,23 +550,28 @@ function buildScene() {
     organizations.add(lines);
   }
   const cohorts = (obs ? [] : snapshot.state.cohorts.filter((c) => c.population > 0)).slice(0, 500);
-  const bodies = new THREE.InstancedMesh(
-    new THREE.SphereGeometry(1, 6, 4),
-    new THREE.MeshStandardMaterial({ color: '#a3b0c7' }),
-    cohorts.length * 3,
-  );
-  cohorts.forEach((c, i) => {
+  const bodyPositions = [];
+  cohorts.forEach((c) => {
     const n = position(c.node);
     for (let j = 0; j < 3; j++) {
-      matrix.compose(
-        new THREE.Vector3(n.x + scale * (0.14 + j * 0.025), scale * 0.017, n.z - scale * 0.1),
-        quaternion,
-        new THREE.Vector3(scale * 0.01, scale * 0.017, scale * 0.01),
-      );
-      bodies.setMatrixAt(i * 3 + j, matrix);
+      bodyPositions.push(n.x + scale * (0.14 + j * 0.025), scale * 0.017, n.z - scale * 0.1);
     }
   });
-  people.add(bodies);
+  const bodies = new THREE.BufferGeometry();
+  bodies.setAttribute('position', new THREE.Float32BufferAttribute(bodyPositions, 3));
+  people.add(
+    new THREE.Points(
+      bodies,
+      new THREE.PointsMaterial({
+        color: '#a3b0c7',
+        size: 4,
+        sizeAttenuation: false,
+        map: getDotTexture(),
+        transparent: true,
+        alphaTest: 0.15,
+      }),
+    ),
+  );
   for (const s of map.sectors) {
     if (!obs && s.coverage === 0) {
       const dot = new THREE.Mesh(
@@ -490,66 +606,143 @@ function buildScene() {
     }
   for (const v of snapshot.state.vehicles) {
     if (obs && !obs.vehicles[v.id]) continue;
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(scale * (v.background ? 0.018 : 0.035), scale * 0.025, scale * 0.045),
-      new THREE.MeshStandardMaterial({ color: v.background ? '#b0bac9' : '#5e7fc7' }),
-    );
-    mesh.userData.entity = { kind: 'vehicle', id: v.id };
-    vehicleGroup.add(mesh);
-    rayTargets.push(mesh);
-    vehicleMeshes.set(v.id, mesh);
-    if (layers.routes && v.route?.length && !v.background && !obs) {
+    vehicleMeshes.set(v.id, { position: new THREE.Vector3(), index: vehicleMeshes.size });
+    if (
+      v.route?.length &&
+      !v.background &&
+      !obs &&
+      ['en_route', 'dispatched', 'queued', 'spillback', 'blocked'].includes(v.state)
+    ) {
       const ps = [];
-      for (const eid of v.route) {
-        const e = map.edges.find((e) => e.id === eid),
-          a = position(e.from),
-          b = position(e.to);
-        ps.push(a.x, 5, a.z, b.x, 5, b.z);
+      for (const eid of v.route.slice(v.routeIndex ?? 0)) {
+        const e = edgeIndex.get(eid);
+        const path = e.points ?? [position(e.from), position(e.to)];
+        for (let i = 0; i < path.length - 1; i++)
+          ps.push(path[i].x, 5, path[i].z, path[i + 1].x, 5, path[i + 1].z);
       }
       lines(ps, '#7c88c9', routes, 0.45);
     }
   }
-  for (const name of Object.keys(layers)) layerGroups[name].visible = layers[name];
+  vehicleIds = [...vehicleMeshes.keys()];
+  const dotGeometry = new THREE.BufferGeometry();
+  dotGeometry.boundingSphere = new THREE.Sphere(
+    new THREE.Vector3(map.extentM / 2, 0, map.extentM / 2),
+    map.extentM * 1.8,
+  );
+  dotGeometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(new Float32Array(vehicleIds.length * 3), 3),
+  );
+  dotGeometry.setAttribute(
+    'color',
+    new THREE.Float32BufferAttribute(new Float32Array(vehicleIds.length * 3), 3),
+  );
+  vehiclePoints = new THREE.Points(
+    dotGeometry,
+    new THREE.PointsMaterial({
+      vertexColors: true,
+      size: 7,
+      sizeAttenuation: false,
+      map: getDotTexture(),
+      transparent: true,
+      alphaTest: 0.15,
+      depthTest: false,
+    }),
+  );
+  vehiclePoints.frustumCulled = false;
+  vehicleGroup.add(vehiclePoints);
+  vehicleIds.forEach((id, i) => pickMap.set(`${vehiclePoints.uuid}:${i}`, { kind: 'vehicle', id }));
+  rayTargets.push(vehiclePoints);
+  for (const name of Object.keys(layers))
+    if (layerGroups[name]) layerGroups[name].visible = layers[name];
+  vehicleGroup.visible = layers.vehicles;
+  layerGroups.traffic.visible = layers.traffic && layers.roads;
   updateVehicles();
 }
-function updateVehicles() {
+function getDotTexture() {
+  if (dotTexture) return dotTexture;
+  const pixels = new Uint8Array(32 * 32 * 4);
+  for (let y = 0; y < 32; y++)
+    for (let x = 0; x < 32; x++) {
+      const i = (y * 32 + x) * 4,
+        d = Math.hypot(x - 15.5, y - 15.5);
+      pixels[i] = pixels[i + 1] = pixels[i + 2] = 255;
+      pixels[i + 3] = Math.max(0, Math.min(255, (15 - d) * 255));
+    }
+  dotTexture = new THREE.DataTexture(pixels, 32, 32);
+  dotTexture.needsUpdate = true;
+  return dotTexture;
+}
+function updateTraffic() {
+  if (!trafficLines) return;
+  const truth = $('perspective').value === 'truth',
+    obs = snapshot.state.observations[$('perspective').value];
+  const edges = new Map(snapshot.state.map.edges.map((e) => [e.id, e]));
+  const directions = new Map(snapshot.state.map.edges.map((e) => [`${e.from}:${e.to}`, e]));
+  const colors = {
+    clear: '#78aa96',
+    slow: '#d5ae5c',
+    heavy: '#cc7b6b',
+    closed: '#aa665d',
+    unknown: '#c6d2e2',
+  };
+  const attribute = trafficLines.geometry.attributes.color;
+  trafficLines.userData.edges.forEach((id, i) => {
+    const edge = edges.get(id),
+      reverse = directions.get(`${edge.to}:${edge.from}`);
+    const levels = ['unknown', 'clear', 'slow', 'heavy', 'closed'];
+    const forwardLevel = trafficLevel(edge, obs?.edges[id], truth);
+    const reverseLevel = reverse ? trafficLevel(reverse, obs?.edges[reverse.id], truth) : 'unknown';
+    const level = levels[Math.max(levels.indexOf(forwardLevel), levels.indexOf(reverseLevel))];
+    const color = new THREE.Color(colors[level]);
+    attribute.setXYZ(i, color.r, color.g, color.b);
+  });
+  attribute.needsUpdate = true;
+}
+function updateVehicles(now = performance.now()) {
   if (!snapshot) return;
   const truth = $('perspective').value === 'truth',
     obs = snapshot.state.observations[$('perspective').value];
   for (const v of snapshot.state.vehicles) {
     const mesh = vehicleMeshes.get(v.id);
     if (!mesh) continue;
-    const n = position(truth ? v.node : obs?.vehicles[v.id]?.node);
-    if (!n) continue;
-    let x = n.x,
-      z = n.z;
-    if (truth && v.edge) {
-      const edge = snapshot.state.map.edges.find((e) => e.id === v.edge),
-        to = position(edge.to),
-        t = Math.max(
-          0,
-          Math.min(
-            1,
-            (snapshot.now +
-              (snapshot.playing
-                ? (performance.now() - snapshotReceivedAt) * snapshot.effectiveRate
-                : 0) -
-              v.edgeStart) /
-              (v.edgeEnd - v.edgeStart),
-          ),
-        );
-      const point = roadPoint(edge.points ?? [n, to], t);
-      x = point.x;
-      z = point.z;
-      mesh.rotation.y = Math.atan2(to.x - n.x, to.z - n.z);
-    }
-    mesh.position.set(x, (snapshot.state.map.extentM / snapshot.manifest.config.grid) * 0.018, z);
+    const p = motion.point(v.id, now, {
+      paused: !snapshot.playing,
+      reducedMotion: reducedMotion.matches,
+    });
+    if (!p) continue;
+    const height = (snapshot.state.map.extentM / snapshot.manifest.config.grid) * 0.022;
+    mesh.position.set(p.x, height, p.z);
+    const known = truth ? v : obs?.vehicles[v.id];
+    const state = known?.state;
+    const operation = truth ? operationIndex.get(v.operation) : null;
+    const color = new THREE.Color(
+      v.background
+        ? '#9aa7b9'
+        : ['blocked', 'failed', 'spillback'].includes(state)
+          ? '#d99c57'
+          : operation?.type === 'evacuation'
+            ? '#9677c9'
+            : '#5a7ad5',
+    );
+    vehiclePoints.geometry.attributes.position.setXYZ(mesh.index, p.x, height, p.z);
+    vehiclePoints.geometry.attributes.color.setXYZ(mesh.index, color.r, color.g, color.b);
+  }
+  if (vehiclePoints) {
+    vehiclePoints.geometry.attributes.position.needsUpdate = true;
+    vehiclePoints.geometry.attributes.color.needsUpdate = true;
   }
 }
 function select(entity) {
   if (!entity) return;
   selected = entity;
   following = false;
+  $('inspector').hidden = false;
+  setConfigOpen(false);
+  if (entity.kind === 'organization') {
+    $('focusOrg').value = entity.id;
+    $('focusOrg').onchange();
+  }
   inspect();
 }
 function inspect() {
@@ -557,6 +750,25 @@ function inspect() {
   const s = snapshot.state,
     obs = $('perspective').value === 'truth' ? null : s.observations[$('perspective').value];
   let e;
+  if (selected.kind === 'event') {
+    const candidate = eventCache.get(selected.id);
+    e =
+      candidate &&
+      (!obs ||
+        candidate.data?.to === $('perspective').value ||
+        candidate.data?.org === $('perspective').value)
+        ? candidate
+        : null;
+    $('selectionTitle').textContent = e ? eventCard(e, s).title : 'Event details';
+    $('selectionHint').textContent = e
+      ? `${clock(e.at)} · ${obs ? 'Received by this team' : 'Recorded world event'}`
+      : 'This event is outside the recent preview.';
+    for (const id of ['follow', 'nextEntity', 'fullTimeline']) $(id).hidden = true;
+    $('selection').innerHTML = e
+      ? `<p>${escape(eventCard(e, s).body)}</p><details><summary>Recorded data</summary><pre>${escape(JSON.stringify(e.data, null, 2))}</pre></details>`
+      : '';
+    return;
+  }
   if (selected.kind === 'building')
     e = obs ? obs.buildings[selected.id] : s.map.buildings.find((x) => x.id === selected.id);
   if (selected.kind === 'vehicle')
@@ -576,7 +788,12 @@ function inspect() {
         ? p.public
         : null;
   }
-  $('selectionTitle').textContent = selected.id;
+  $('selectionTitle').textContent =
+    selected.kind === 'post'
+      ? (e?.authorName ?? 'Community report')
+      : selected.kind === 'building' || selected.kind === 'organization'
+        ? placeName(s, selected.id)
+        : humanize(selected.kind) + ' · ' + selected.id;
   $('selectionHint').textContent = e
     ? `${selected.kind} · ${obs ? 'Known observation' : 'Ground truth'}`
     : 'No observation available to this organization.';
@@ -619,8 +836,23 @@ function inspect() {
         ];
   let html = keys
     .filter((k) => e[k] !== undefined)
-    .map((k) => property(k, typeof e[k] === 'object' ? JSON.stringify(e[k]) : e[k]))
+    .map((k) =>
+      property(
+        humanize(k),
+        ['publishedAt', 'eta', 'deadline', 'at'].includes(k) && typeof e[k] === 'number'
+          ? clock(e[k])
+          : typeof e[k] === 'object'
+            ? JSON.stringify(e[k])
+            : e[k],
+      ),
+    )
     .join('');
+  if (selected.kind === 'post') {
+    html =
+      `<div class="inspectorPost"><div class="author"><span class="avatar">${iconHTML('user-round')}</span><div><strong>${escape(e.authorName)}</strong><div class="muted">${escape(e.format === 'audio' ? 'Voice note' : humanize(e.format))} · ${clock(e.publishedAt)}</div></div></div><p>${escape(e.text)}</p>${(e.attachments ?? []).map((a) => `<div class="mediaBlock">${iconHTML(a.kind === 'audio' ? 'mic' : a.kind === 'video' ? 'play' : 'file-text')}<span>${escape(humanize(a.kind))}${a.duration ? ` · ${a.duration}s` : ''}<br>${escape(a.description)}</span></div>`).join('')}</div>` +
+      property('Location reported', e.location ?? 'Not specified') +
+      property('Source version', e.version);
+  }
   if (e.dependencies)
     html +=
       '<h2>Dependencies</h2>' +
@@ -658,11 +890,12 @@ function inspect() {
   if (selected.kind === 'post' && !obs) {
     const p = s.posts.find((x) => x.public.id === selected.id);
     html +=
-      '<h2>Observer provenance</h2>' +
+      '<details><summary>Observer provenance · hidden from teams</summary>' +
       property('Truth category', p.private.truthCategory) +
       property('Causal event', p.private.causeEvent) +
       property('Physical location', p.private.actualLocation) +
-      property('Original source', p.private.original);
+      property('Original source', p.private.original) +
+      '</details>';
   }
   if (!obs) {
     const archive = timelineCache.get(selected.id);
@@ -684,46 +917,71 @@ function inspect() {
         .reverse()
         .map(
           (ev) =>
-            `<div class="timelineEntry">${clock(ev.at)} · ${escape(ev.type)}<br>${escape(JSON.stringify(ev.data))}</div>`,
+            `<div class="timelineEntry">${clock(ev.at)}<strong>${escape(eventCard(ev, s).title)}</strong>${escape(eventCard(ev, s).body)}<details><summary>Recorded data</summary><pre>${escape(JSON.stringify(ev.data, null, 2))}</pre></details></div>`,
         )
         .join('');
   }
   $('selection').innerHTML = html;
 }
 function showStreams() {
-  if (frozen) return;
-  const s = snapshot.state,
-    filter = $('feedFilter').value.toLowerCase(),
+  if (!snapshot) return;
+  const filter = $('feedFilter').value.toLowerCase(),
     truth = $('perspective').value === 'truth';
-  const matches = (e) => JSON.stringify(e).toLowerCase().includes(filter);
-  const cards = (items, fn) =>
-    items.slice(-80).reverse().filter(matches).map(fn).join('') ||
-    '<p class="empty">No events in this view yet.</p>';
-  $('reality').innerHTML = truth
-    ? cards(
-        snapshot.events,
-        (e) =>
-          `<div class="feedCard" data-kind="${e.entity?.startsWith('v-') ? 'vehicle' : e.entity?.startsWith('need-') ? 'need' : 'building'}" data-id="${escape(e.entity ?? e.data.building ?? '')}"><small><span>${escape(e.type)}</span><span>${clock(e.at)}</span></small><p>${escape(JSON.stringify(e.data))}</p></div>`,
-      )
-    : '<p class="empty">Ground truth is hidden in this perspective.</p>';
-  $('communication').innerHTML = cards(
-    s.posts.filter(
-      (p) =>
-        p.public.publishedAt !== null &&
-        (truth ||
-          p.private.audience === 'public' ||
-          p.private.audience.includes($('perspective').value)),
-    ),
-    (p) =>
-      `<div class="feedCard ${truth && p.private.false ? 'false' : ''}" data-kind="post" data-id="${p.public.id}"><small><span>${escape(p.public.authorName)} · ${escape(p.public.format)}</span><span>${clock(p.public.publishedAt)}</span></small><p>${escape(p.public.text)}</p>${p.public.attachments.map((a) => `<div class="media">${a.kind === 'video' ? '▶' : a.kind === 'audio' ? '◖' : '▧'} ${escape(a.kind)} · ${escape(a.description)}</div>`).join('')}${truth && p.private.false ? '<p>Observer label · inaccurate / misleading</p>' : ''}</div>`,
-  );
-  $('ingestion').innerHTML = cards(
-    s.ingestion.filter((r) => truth || r.org === $('perspective').value),
-    (r) =>
-      `<div class="feedCard" data-kind="post" data-id="${r.id}"><small><span>${escape(r.org)} · ${escape(r.stage)}</span><span>${clock(r.at)}</span></small><p>${escape(r.reason ?? r.id)}</p></div>`,
-  );
-  $('feedCount').textContent =
-    `${number(snapshot.totals.posts)} signals created · ${number(snapshot.metrics.eventCounts.post_published)} published · ${number(snapshot.totals.ingestion)} receipts · window: 80 per column`;
+  const org = $('focusOrg').value;
+  const models = streamModels(snapshot, org, truth);
+  for (const item of models.reality.concat(models.available))
+    if (item.raw?.type) {
+      eventCache.delete(eventCard(item.raw, snapshot.state).key);
+      eventCache.set(eventCard(item.raw, snapshot.state).key, item.raw);
+    }
+  while (eventCache.size > 500) eventCache.delete(eventCache.keys().next().value);
+  const name = snapshot.state.map.organizations.find((o) => o.id === org)?.name ?? 'your team';
+  const scope = `${snapshot.runId}:${$('perspective').value}:${org}:${filter}`;
+  const mapCards = truth
+    ? models.reality
+        .filter(
+          (m) => !['signal_created', 'post_published', 'ingestion_receipt'].includes(m.raw.type),
+        )
+        .concat(models.communication)
+        .sort((a, b) => a.at - b.at)
+    : models.available
+        .filter((m) => m.tag === 'Received by this organization')
+        .concat(models.communication)
+        .sort((a, b) => a.at - b.at);
+  for (const [id, lane] of Object.entries(flowLanes)) {
+    const items = models[id].filter(
+      (m) => !filter || JSON.stringify(m).toLowerCase().includes(filter),
+    );
+    if (scope !== feedScope)
+      lane.reset(
+        items,
+        id === 'reality' && !truth
+          ? 'World truth is hidden. Only received observations are shown on the map.'
+          : id === 'available'
+            ? 'No accessible sources or received reports yet.'
+            : 'No events in this recent window.',
+      );
+    else if (!frozen) lane.accept(items);
+  }
+  const nextMapScope = `${snapshot.runId}:${$('perspective').value}:${org}`;
+  if (nextMapScope !== mapScope) mapNotices.reset(mapCards);
+  else mapNotices.accept(mapCards);
+  mapScope = nextMapScope;
+  feedScope = scope;
+  $('availableTitle').textContent = `Data available to ${name}`;
+  $('availableCount').textContent = 'Accessible sources + known observations';
+  $('realityCount').textContent = truth
+    ? `${number(Object.values(snapshot.metrics.eventCounts).reduce((a, b) => a + b, 0))} world events · observer`
+    : 'Hidden in organization view';
+  $('communicationCount').textContent = truth
+    ? `${number(snapshot.metrics.source.published)} published · observer labels`
+    : `${number(models.communication.length)} recent sources · no truth labels`;
+  $('feedCount').textContent = truth
+    ? `${number(snapshot.totals.posts)} signals · ${number(snapshot.totals.ingestion)} connector receipts`
+    : `${number(models.communication.length)} recent sources · ${number(snapshot.state.ingestion.filter((r) => r.org === org).length)} recent team receipts`;
+  const skipped = Object.values(flowLanes).reduce((n, lane) => n + lane.queue.skipped, 0);
+  $('presentationNote').textContent =
+    `Live visual sample · ${skipped ? `${number(skipped)} updates omitted from animation · ` : ''}full history retained. Available ≠ downloaded ≠ understood.`;
 }
 let previousSceneHash;
 async function refresh() {
@@ -731,13 +989,22 @@ async function refresh() {
   busy = true;
   try {
     snapshot = await api('/api/state');
+    nodeIndex = new Map(snapshot.state.map.nodes.map((n) => [n.id, n]));
+    buildingIndex = new Map(snapshot.state.map.buildings.map((b) => [b.id, b]));
+    edgeIndex = new Map(snapshot.state.map.edges.map((e) => [e.id, e]));
+    operationIndex = new Map(snapshot.state.operations.map((o) => [o.id, o]));
     snapshotReceivedAt = performance.now();
     $('login').hidden = true;
     $('app').hidden = false;
     if (!renderer) initialize3D();
     const changed = snapshot.runId !== lastRun;
     if (changed) {
+      motion.reset();
+      feedScope = null;
+      mapScope = null;
+      closeInspector();
       timelineCache.clear();
+      eventCache.clear();
       const previous = $('perspective').value;
       $('perspective').innerHTML =
         '<option value="truth">Observer · ground truth</option>' +
@@ -750,14 +1017,23 @@ async function refresh() {
       $('actionOrg').innerHTML = snapshot.state.map.organizations
         .map((o) => `<option value="${o.id}">${escape(o.name)}</option>`)
         .join('');
+      const focus = $('focusOrg').value;
+      $('focusOrg').innerHTML = snapshot.state.map.organizations
+        .map((o) => `<option value="${o.id}">${escape(o.name)}</option>`)
+        .join('');
+      $('focusOrg').value = snapshot.state.map.organizations.some((o) => o.id === focus)
+        ? focus
+        : snapshot.state.map.organizations[0]?.id;
     }
+    motion.accept(snapshot, snapshotReceivedAt, $('perspective').value);
     lastRun = snapshot.runId;
     $('clock').textContent = clock(snapshot.now);
     $('play').textContent = snapshot.playing ? 'Pause' : 'Play';
     $('speed').value = snapshot.rate;
     $('runId').textContent = `run ${snapshot.runId.slice(0, 8)}`;
     $('sourceLink').href = snapshot.sourceUrl + '/feed';
-    $('effective').textContent = `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
+    $('effective').textContent =
+      `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
     const m = snapshot.metrics;
     const knowledge =
       $('perspective').value === 'truth'
@@ -767,19 +1043,42 @@ async function refresh() {
       ? Object.values(knowledge.needs).filter((n) => n.type === 'water')
       : null;
     $('pendingWater').textContent =
-      number(
-        knownWater
-          ? knownWater.reduce((t, n) => t + Math.max(0, n.quantity - n.served), 0)
-          : m.services.water?.pending,
-      ) + ' L';
+      knownWater && !knownWater.length
+        ? 'Not reported'
+        : number(
+            knownWater
+              ? knownWater.reduce((t, n) => t + Math.max(0, n.quantity - n.served), 0)
+              : m.services.water?.pending,
+          ) + ' L';
     $('servedWater').textContent =
-      number(
-        knownWater
-          ? knownWater.reduce((t, n) => t + Math.min(n.quantity, n.served), 0)
-          : m.services.water?.served,
-      ) + ' L';
-    $('signals').textContent =
-      `${number(m.source.published)} / ${number(m.information.downloaded)}`;
+      knownWater && !knownWater.length
+        ? 'Not reported'
+        : number(
+            knownWater
+              ? knownWater.reduce((t, n) => t + Math.min(n.quantity, n.served), 0)
+              : m.services.water?.served,
+          ) + ' L';
+    if (knowledge) {
+      const org = $('perspective').value;
+      const accessible = snapshot.state.posts.filter(
+        (p) =>
+          p.public.publishedAt !== null &&
+          p.indexAt <= snapshot.now &&
+          !p.deleted &&
+          (p.private.audience === 'public' || p.private.audience.includes(org)),
+      );
+      const downloads = new Set(
+        snapshot.state.ingestion
+          .filter((r) => r.org === org && r.stage === 'downloaded')
+          .map((r) => `${r.id}:${r.version}`),
+      );
+      $('signals').textContent = `${number(accessible.length)} / ${number(downloads.size)}`;
+      $('signals').parentElement.querySelector('span').textContent = 'Recent sources / downloads';
+    } else {
+      $('signals').textContent =
+        `${number(m.source.published)} / ${number(m.information.downloaded)}`;
+      $('signals').parentElement.querySelector('span').textContent = 'Published / downloaded';
+    }
     $('operations').textContent = number(
       (knowledge ? Object.values(knowledge.operations) : snapshot.state.operations).filter(
         (o) => !['completed', 'failed', 'cancelled'].includes(o.state),
@@ -818,6 +1117,9 @@ async function refresh() {
       snapshot.state.map.edges.filter((e) => !e.open).map((e) => e.id),
       snapshot.state.needs.map((n) => [n.id, n.served]),
       snapshot.state.vehicles.length,
+      snapshot.state.vehicles
+        .filter((v) => !v.background)
+        .map((v) => [v.id, v.state, v.route, v.routeIndex]),
       $('perspective').value,
       snapshot.state.observations[$('perspective').value],
     ]);
@@ -825,6 +1127,7 @@ async function refresh() {
       buildScene();
       previousSceneHash = sceneHash;
     }
+    updateTraffic();
     if (changed) {
       home();
       selected = null;
@@ -846,6 +1149,7 @@ async function refresh() {
         'backgroundTraffic',
         'policy',
         'topology',
+        'organizations',
       ])
         $(k).value = snapshot.manifest.config[k];
     }
@@ -916,16 +1220,16 @@ async function loadCatalog() {
   $('scenario').innerHTML = catalog.scenarios
     .map((s) => `<option value="${s.id}">${s.id} · ${escape(s.name)}</option>`)
     .join('');
-  $('actionOrg').innerHTML = ['org0', 'org1', 'org2', 'org3']
-    .map((o) => `<option>${o}</option>`)
-    .join('');
   $('actionType').innerHTML = Object.keys(examples)
     .map((k) => `<option>${k}</option>`)
     .join('');
   $('actionType').value = 'dispatch';
   $('actionParams').value = JSON.stringify(examples.dispatch, null, 2);
 }
-$('play').onclick = perform(() => api('/api/control', { play: !snapshot.playing }));
+$('play').onclick = perform(async () => {
+  setConfigOpen(false);
+  await api('/api/control', { play: !snapshot.playing });
+});
 $('step').onclick = perform(() => api('/api/control', { step: true }));
 $('speed').onchange = perform(() => api('/api/control', { rate: Number($('speed').value) }));
 $('home').onclick = home;
@@ -945,19 +1249,22 @@ $('configForm').onsubmit = perform(async () => {
     'backgroundTraffic',
     'policy',
     'topology',
+    'organizations',
   ];
   const overrides = JSON.parse($('advancedConfig').value);
   await api('/api/config', {
     ...Object.fromEntries(
       fields.map((k) => [
         k,
-        ['grid', 'extentKm', 'postsPerHour', 'backgroundTraffic'].includes(k)
+        ['grid', 'extentKm', 'postsPerHour', 'backgroundTraffic', 'organizations'].includes(k)
           ? Number($(k).value)
           : $(k).value,
       ]),
     ),
     ...overrides,
   });
+  lastRun = null;
+  setConfigOpen(false);
 });
 $('advanceForm').onsubmit = perform(async () => {
   const parts = $('advanceTime').value.split(':').map(Number);
@@ -996,6 +1303,7 @@ $('labels').onclick = (e) => {
 $('openComparison').onclick = () => {
   $('comparisonDialog').showModal();
 };
+$('openComparisonFromMenu').onclick = $('openComparison').onclick;
 $('closeComparison').onclick = () => {
   $('comparisonDialog').close();
   stopComparison();
@@ -1004,8 +1312,30 @@ $('comparisonForm').onsubmit = perform(() =>
   api('/api/comparison', { policyA: $('policyA').value, policyB: $('policyB').value }),
 );
 $('comparePlay').onclick = perform(() => api('/api/control', { play: !snapshot.playing }));
-for (const id of ['pendingWater', 'servedWater', 'signals', 'operations', 'integrity'])
-  $(id).parentElement.onclick = () => {
+for (const id of [
+  'pendingWater',
+  'servedWater',
+  'signals',
+  'operations',
+  'integrity',
+  'fatalities',
+  'injured',
+  'waterExposure',
+  'foodExposure',
+]) {
+  const tile = $(id).parentElement;
+  tile.setAttribute('role', 'button');
+  tile.tabIndex = 0;
+  tile.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      tile.click();
+    }
+  };
+  tile.onclick = () => {
+    selected = null;
+    following = false;
+    setConfigOpen(false);
     const rules = {
       pendingWater:
         'Pending water = demand minus effective service. Proposals and arrivals do not reduce this number.',
@@ -1016,12 +1346,22 @@ for (const id of ['pendingWater', 'servedWater', 'signals', 'operations', 'integ
       operations: 'Authorized operations outside completed, cancelled and failed states.',
       integrity:
         'Checks stock conservation, exclusive reservations, finite seats, population and milestone order.',
+      fatalities:
+        'Simulated deaths accumulate under configurable, experimental health assumptions. This number is not a clinical prediction or a count of real lives saved.',
+      injured:
+        'People still injured in the world, or in the latest reports actually received by the selected organization.',
+      waterExposure:
+        'People × hours spent with a water deficit. A longer delay or a larger affected community increases the total.',
+      foodExposure:
+        'People × hours spent with a food deficit. This captures suffering and unmet need even before a simulated death occurs.',
     };
     $('selectionTitle').textContent = 'How this metric is calculated';
     $('selectionHint').textContent = rules[id];
+    $('inspector').hidden = false;
     $('selection').innerHTML =
       '<p class="muted">Export results for per-community values, uncertainty and event counts. No value estimates lives saved.</p>';
   };
+}
 $('scenario').onchange = () =>
   ($('scenarioDescription').textContent =
     catalog.scenarios.find((s) => s.id === $('scenario').value)?.description ?? '');
@@ -1035,14 +1375,38 @@ $('metricsExport').onclick = perform(async () =>
   download(`metrics-${snapshot.runId}.json`, await api('/api/metrics')),
 );
 $('perspective').onchange = () => {
+  if ($('perspective').value !== 'truth') $('focusOrg').value = $('perspective').value;
+  motion.reset();
+  motion.accept(snapshot, performance.now(), $('perspective').value);
   buildScene();
   inspect();
+  feedScope = null;
   showStreams();
+  refresh();
+};
+$('focusOrg').onchange = () => {
+  if ($('perspective').value !== 'truth') {
+    $('perspective').value = $('focusOrg').value;
+    $('perspective').onchange();
+  } else {
+    feedScope = null;
+    showStreams();
+  }
 };
 $('layers').onchange = (e) => {
   const name = e.target.dataset.layer;
+  if (!name) return;
   layers[name] = e.target.checked;
   if (layerGroups[name]) layerGroups[name].visible = e.target.checked;
+  if (name === 'vehicles') vehicleGroup.visible = layers.vehicles;
+  if (name === 'notifications')
+    $('toggleEvents').setAttribute('aria-pressed', String(layers.notifications));
+  if (name === 'roads') {
+    layerGroups.traffic.visible = layers.traffic && layers.roads;
+  }
+  if (name === 'traffic') {
+    layerGroups.traffic.visible = layers.traffic && layers.roads;
+  }
 };
 $('follow').onclick = () => {
   following = !following;
@@ -1050,19 +1414,14 @@ $('follow').onclick = () => {
 };
 $('find').onchange = () => {
   const id = $('find').value,
-    kind =
-      id.startsWith('v-') || id.startsWith('traffic-')
-        ? 'vehicle'
-        : id.startsWith('need-')
-          ? 'need'
-          : id.startsWith('operation-')
-            ? 'operation'
-            : 'building';
+    kind = entityKind(id);
   select({ kind, id });
   const entity =
     kind === 'building'
       ? snapshot.state.map.buildings.find((b) => b.id === id)
-      : snapshot.state.vehicles.find((v) => v.id === id);
+      : $('perspective').value === 'truth'
+        ? snapshot.state.vehicles.find((v) => v.id === id)
+        : snapshot.state.observations[$('perspective').value]?.vehicles[id];
   const n = entity?.node ? position(entity.node) : entity;
   if (n) {
     const d = new THREE.Vector3(n.x, 0, n.z).sub(controls.target);
@@ -1072,13 +1431,46 @@ $('find').onchange = () => {
 };
 $('freeze').onclick = () => {
   frozen = !frozen;
-  $('freeze').textContent = frozen ? 'Resume feed view' : 'Freeze feed view';
+  $('freeze').innerHTML = iconHTML(frozen ? 'play' : 'pause');
+  $('freeze').setAttribute('aria-label', frozen ? 'Resume feed view' : 'Freeze feed view');
+  $('freeze').setAttribute('aria-pressed', String(frozen));
   showStreams();
 };
 $('feedFilter').oninput = showStreams;
 document.querySelector('.streamGrid').onclick = (e) => {
   const card = e.target.closest('[data-id]');
   if (card) select({ kind: card.dataset.kind, id: card.dataset.id });
+};
+$('mapNotices').onclick = (e) => {
+  const card = e.target.closest('[data-id]');
+  if (card) select({ kind: card.dataset.kind, id: card.dataset.id });
+};
+function setConfigOpen(open) {
+  $('configDrawer').hidden = !open;
+  $('toggleConfig').setAttribute('aria-expanded', String(open));
+  $('toggleConfig').setAttribute('aria-label', open ? 'Close configuration' : 'Open configuration');
+  if (open) {
+    closeInspector();
+    setLayersOpen(false);
+  }
+}
+function closeInspector() {
+  $('inspector').hidden = true;
+  selected = null;
+  following = false;
+}
+function setLayersOpen(open) {
+  $('layerPopover').hidden = !open;
+  $('openLayers').setAttribute('aria-expanded', String(open));
+}
+$('toggleConfig').onclick = () => setConfigOpen($('configDrawer').hidden);
+$('closeConfig').onclick = () => setConfigOpen(false);
+$('closeInspector').onclick = closeInspector;
+$('openLayers').onclick = () => setLayersOpen($('layerPopover').hidden);
+$('toggleEvents').onclick = () => {
+  layers.notifications = !layers.notifications;
+  $('layers').querySelector('[data-layer="notifications"]').checked = layers.notifications;
+  $('toggleEvents').setAttribute('aria-pressed', String(layers.notifications));
 };
 $('toggleCommand').onclick = () => $('commandDialog').showModal();
 $('closeCommand').onclick = () => $('commandDialog').close();

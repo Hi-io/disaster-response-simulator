@@ -41,19 +41,31 @@
     <main id="app" hidden>
       <header>
         <div>
-          <span class="brandIcon">◈</span><strong>Disaster Response Simulator</strong
-          ><span class="badge">LAB</span>
+          <button
+            id="toggleConfig"
+            class="iconButton"
+            aria-label="Open configuration"
+            aria-expanded="false"
+            aria-controls="configDrawer"
+          >
+            <i class="icon" data-icon="menu"></i>
+          </button>
+          <span class="brandIcon"><i class="icon" data-icon="activity"></i></span
+          ><strong>Disaster Response Simulator</strong><span class="badge">LAB</span>
         </div>
         <div class="headerRight">
+          <label class="organizationSelect"
+            >Organization data<select id="focusOrg" aria-label="Organization data"></select
+          ></label>
           <span id="runId"></span
-          ><a id="sourceLink" target="_blank" rel="noopener">Open synthetic network ↗</a>
+          ><a id="sourceLink" target="_blank" rel="noopener">Synthetic network ↗</a>
         </div>
       </header>
       <section class="toolbar">
         <div class="clock">
           <span class="eyebrow">SIMULATED TIME</span><strong id="clock">00:00:00</strong>
         </div>
-        <button id="play">▶ Run</button><button id="step">Step</button
+        <button id="play" class="runButton">Play</button><button id="step">Step</button
         ><select id="speed" aria-label="Requested simulation speed">
           <option value="1">×1</option>
           <option value="10" selected>×10</option>
@@ -61,15 +73,32 @@
           <option value="1000">×1000</option></select
         ><span id="effective" class="muted">paused</span>
         <div class="spacer"></div>
-        <button id="reset">Reset seed</button><button id="checkpoint">Save checkpoint</button
-        ><label class="fileButton"
-          >Restore<input id="restore" type="file" accept=".json" hidden /></label
-        ><button id="metricsExport">Export results</button>
+        <label class="mapViewLabel"
+          >Map view<select id="perspective" aria-label="Perspective">
+            <option value="truth">Observer · ground truth</option>
+          </select></label
+        >
+        <button id="openLayers" aria-expanded="false" aria-controls="layerPopover">
+          <i class="icon" data-icon="layers"></i><span>Layers</span>
+        </button>
         <button id="openComparison">Compare A / B</button>
       </section>
       <div class="workspace">
-        <aside>
-          <span class="eyebrow">WORLD CONFIGURATION</span>
+        <aside
+          id="configDrawer"
+          class="drawer configDrawer"
+          hidden
+          aria-label="World configuration"
+        >
+          <div class="drawerHeading">
+            <div>
+              <span class="eyebrow">LABORATORY</span>
+              <h2>World configuration</h2>
+            </div>
+            <button id="closeConfig" class="iconButton" aria-label="Close configuration">
+              <i class="icon" data-icon="x"></i>
+            </button>
+          </div>
           <form id="configForm">
             <label>Scenario<select id="scenario"></select></label
             ><label>Seed<input id="seed" value="response-lab-2026" /></label>
@@ -85,6 +114,14 @@
                 >Extent · km<input id="extentKm" type="number" min="1" max="200" value="160"
               /></label>
             </div>
+            <label
+              >Response organizations<input
+                id="organizations"
+                type="number"
+                min="1"
+                max="12"
+                value="4"
+            /></label>
             <label
               >Topology<select id="topology">
                 <option value="regional">Irregular region · scarce bridges</option>
@@ -146,30 +183,7 @@
           </form>
           <p id="scenarioDescription" class="muted"></p>
           <hr />
-          <span class="eyebrow">VIEW</span
-          ><label
-            >Perspective<select id="perspective">
-              <option value="truth">Observer · ground truth</option>
-              <option value="org0">Local Response · known state</option>
-              <option value="org1">Relief Team · known state</option>
-              <option value="org2">Medical Team · known state</option>
-              <option value="org3">Regional NGO · known state</option>
-            </select></label
-          >
-          <div id="layers">
-            <label><input type="checkbox" data-layer="needs" checked /> Needs</label
-            ><label><input type="checkbox" data-layer="roads" checked /> Roads & traffic</label
-            ><label><input type="checkbox" data-layer="hazards" checked /> Hazard exposure</label
-            ><label><input type="checkbox" data-layer="network" /> Communication coverage</label
-            ><label><input type="checkbox" data-layer="routes" checked /> Active trips</label>
-            <label><input type="checkbox" data-layer="people" /> Community cohorts</label>
-            <label
-              ><input type="checkbox" data-layer="organizations" checked /> Organizations &
-              exchange</label
-            >
-          </div>
-          <button id="home">Fit region</button
-          ><label
+          <label
             >Find entity<input id="find" placeholder="building, vehicle or operation ID"
           /></label>
           <form id="advanceForm">
@@ -182,30 +196,84 @@
           </form>
           <hr />
           <button id="toggleCommand">Actions & interventions</button>
+          <div class="configTools">
+            <button id="openComparisonFromMenu">Compare A / B</button>
+            <button id="reset">Reset seed</button><button id="checkpoint">Save checkpoint</button
+            ><label class="fileButton"
+              >Restore checkpoint<input id="restore" type="file" accept=".json" hidden /></label
+            ><button id="metricsExport">Export results</button>
+          </div>
         </aside>
         <section class="scene">
           <div class="mapViewport">
             <div class="sceneHeading">
               <div>
                 <span id="scenarioTitle" class="eyebrow"></span>
-                <h2 id="sceneTitle">Inspect the response.</h2>
+                <h2 id="sceneTitle">A region in motion.</h2>
               </div>
               <span id="perspectiveLabel" class="badge">GROUND TRUTH</span>
             </div>
             <div id="canvas"></div>
             <div id="labels"></div>
+            <div id="mapNotices" aria-label="Live map reports"></div>
             <span id="renderStats" class="renderStats"></span>
+            <div class="mapTools">
+              <button id="home" class="iconButton" aria-label="Fit region" title="Fit region">
+                <i class="icon" data-icon="map"></i></button
+              ><button
+                id="toggleEvents"
+                class="iconButton"
+                aria-label="Toggle map notifications"
+                aria-pressed="true"
+                title="Map notifications"
+              >
+                <i class="icon" data-icon="message-circle"></i>
+              </button>
+            </div>
+            <div id="layerPopover" class="layerPopover" hidden>
+              <span class="eyebrow">MAP LAYERS</span>
+              <div id="layers">
+                <label
+                  ><input type="checkbox" data-layer="needs" checked /> Requests for help</label
+                >
+                <label><input type="checkbox" data-layer="roads" checked /> Road network</label>
+                <label><input type="checkbox" data-layer="traffic" checked /> Traffic colors</label>
+                <label
+                  ><input type="checkbox" data-layer="vehicles" checked /> Moving vehicles</label
+                >
+                <label><input type="checkbox" data-layer="hazards" checked /> Disaster zones</label>
+                <label><input type="checkbox" data-layer="network" /> Connectivity gaps</label>
+                <label><input type="checkbox" data-layer="routes" checked /> Response routes</label>
+                <label><input type="checkbox" data-layer="people" /> Community groups</label>
+                <label
+                  ><input type="checkbox" data-layer="organizations" checked /> Organizations &
+                  exchange</label
+                >
+                <label
+                  ><input type="checkbox" data-layer="notifications" checked /> Map
+                  notifications</label
+                >
+              </div>
+              <p>
+                Traffic colors use measured occupancy. Organization views show only reported
+                closures.
+              </p>
+            </div>
             <div class="mapLegend">
-              <span><i class="coral"></i> Unmet need / damage</span
+              <span><i class="coral"></i> Help needed</span
+              ><span><i class="blue"></i> Response vehicle</span
+              ><span class="optionalLegend"><i class="violet"></i> Evacuation</span
+              ><span class="optionalLegend"><i class="amber"></i> Vehicle blocked</span
+              ><span><i class="slate"></i> Everyday traffic</span
               ><span><i class="mint"></i> Service operating</span
-              ><span><i class="blue"></i> Response capacity</span
-              ><span>Drag to pan · wheel to zoom · click to inspect</span>
+              ><span class="trafficLegend"><i class="trafficScale"></i> Clear → congested</span
+              ><span class="mapHint">Drag to pan · scroll to zoom</span>
             </div>
           </div>
           <div class="summary">
             <div><span>Pending water</span><strong id="pendingWater">—</strong></div>
             <div><span>Water served</span><strong id="servedWater">—</strong></div>
-            <div><span>Published / ingested</span><strong id="signals">—</strong></div>
+            <div><span>Published / downloaded</span><strong id="signals">—</strong></div>
             <div><span>Active operations</span><strong id="operations">—</strong></div>
             <div><span>Integrity</span><strong id="integrity">—</strong></div>
           </div>
@@ -217,13 +285,14 @@
             </div>
             <div><span>Food deficit · person-hours</span><strong id="foodExposure">—</strong></div>
           </div>
-          <p class="healthNote">
-            Experimental population model · adjustable assumptions, not clinical predictions.
-            Organization views show only received observations.
-          </p>
         </section>
-        <section class="inspector">
-          <span class="eyebrow">SELECTED ENTITY</span>
+        <section id="inspector" class="drawer inspector" hidden aria-label="Selected entity">
+          <div class="drawerHeading">
+            <span class="eyebrow">SELECTED ENTITY</span
+            ><button id="closeInspector" class="iconButton" aria-label="Close inspector">
+              <i class="icon" data-icon="x"></i>
+            </button>
+          </div>
           <h2 id="selectionTitle">Explore the world.</h2>
           <p id="selectionHint">
             Choose a building or vehicle. Its state, dependencies and timeline appear here.
@@ -237,33 +306,58 @@
       <section class="streams">
         <div class="streamHeading">
           <div>
-            <span class="eyebrow">THE INFORMATION GAP</span>
-            <h2>What happens. What spreads. What is consumed.</h2>
+            <span class="eyebrow">THE INFORMATION GAP</span
+            ><span id="feedCount" class="muted"></span>
           </div>
-          <button id="freeze">Freeze feed view</button
+          <button
+            id="freeze"
+            class="iconButton"
+            aria-label="Freeze feed view"
+            aria-pressed="false"
+            title="Freeze the feed"
+          >
+            <i class="icon" data-icon="pause"></i></button
           ><input
             id="feedFilter"
             aria-label="Filter streams"
             placeholder="Filter event, text or entity…"
-          /><span id="feedCount" class="muted"></span>
+          />
         </div>
         <div class="streamGrid">
           <article>
-            <header><strong>01 · Reality</strong><span>Observer only</span></header>
+            <header>
+              <span class="laneNumber">01</span>
+              <div>
+                <strong>What happens</strong><span id="realityCount">Observer · world events</span>
+              </div>
+            </header>
             <div id="reality" class="feed"></div>
           </article>
           <article>
             <header>
-              <strong>02 · Communication</strong><span>Truth labels hidden from agents</span>
+              <span class="laneNumber">02</span>
+              <div>
+                <strong>What spreads</strong
+                ><span id="communicationCount">Social posts · voices · news</span>
+              </div>
             </header>
             <div id="communication" class="feed"></div>
           </article>
           <article>
             <header>
-              <strong>03 · Platform ingestion</strong><span>Actual connector receipts</span>
+              <span class="laneNumber">03</span>
+              <div>
+                <strong id="availableTitle">Data available to your team</strong
+                ><span id="availableCount">Public sources + received reports</span>
+              </div>
             </header>
             <div id="ingestion" class="feed"></div>
           </article>
+        </div>
+        <div class="viewFootnote">
+          <span id="presentationNote"
+            >Live visual sample · full event history retained in the archive.</span
+          ><span>Population outcomes use experimental assumptions.</span>
         </div>
       </section>
       <dialog id="commandDialog">

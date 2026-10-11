@@ -25,15 +25,19 @@ The default earthquake runs for 48 simulated hours with disk-backed compact hist
 
 ## Inspect a scenario
 
-1. Select S01–S24, seed, disaster, topology and size. Advanced JSON exposes all validated parameters.
+1. Open the configuration menu. Select S01–S24, seed, disaster, topology and size. **Response organizations** accepts 1–12; four is the default, not a fixed limit. Advanced JSON exposes all other validated parameters.
 2. Use Play, Step, Advance world or the requested ×1/×10/×100/×1000 speed. Effective speed is measured separately.
-3. Drag to pan, scroll to zoom, use right-drag to rotate, or Fit region to return to the isometric overview. Click a building or truck, or search its ID. You can follow a truck and inspect its event history.
-4. Switch from observer truth to an organization's received knowledge. Unknown information stays unknown. Activate road, needs, communication, community and organization layers as needed.
-5. Inspect the three streams: physical reality, available communications and submitted platform ingestion receipts. Misleading-content labels appear only in observer truth.
+3. Drag to pan, scroll to zoom, use right-drag to rotate, or Fit region to return to the isometric overview. Vehicles are lightweight colored points: response blue, evacuation violet, ordinary traffic gray and blocked response amber. Click a building, point or notification to open the inspector; it stays closed otherwise. Follow a vehicle or browse its archived history.
+4. Switch **Map view** from observer truth to an organization's received knowledge. Unknown information stays unknown. **Organization data** selects the team represented in the third stream. **Layers** controls traffic colors, vehicles, requests, disaster zones, connectivity, communities, routes, organizations and map notifications. Green/amber/coral road colors represent occupancy and queues; an organization view never borrows hidden live congestion.
+5. The three stacked lanes show world events, communication, and **data available to the selected organization**. The last combines accessible indexed sources, known observations and actual connector receipts. Available is not downloaded, and downloaded is not understood. Misleading-content labels appear only in observer truth. Select a card for its full contents. Freeze the feed to read it while the world and map continue running.
 6. Use Actions & interventions to submit proposals, review decisions, dispatch resources or introduce disruptions. Agent sessions cannot authorize physical interventions.
 7. Compare A / B creates independent worlds with identical initial conditions and synchronized cameras. The built-in comparison uses scripted references, not Gemini.
 
-Simple buildings, vehicles and cohort markers illustrate state; camera movement and frame rate never advance the simulation. The model represents operational interactions, not photorealistic physics.
+The complete operating view fits the viewport. Configuration and inspection are drawers; metrics stay visible and can be selected for an explanation. The animated lanes keep finite queues, unmount off-screen cards and disclose visual sampling during bursts. Full world history remains archived. Map notifications are brief, bounded and anchored to actual locations rather than fictional activity.
+
+Motion is buffered between confirmed snapshots, follows the known road shape and never extrapolates past the latest world state. GPS-only organization views retain reported positions instead of inventing travel between reports. Camera movement, visual interpolation and frame rate never advance the simulation. The model represents operational interactions, not photorealistic physics.
+
+“The reference controller did not recognize an actionable request” is a discard explanation, not a runtime error or an AI verdict. It means the scripted controller did not support the post's statement; the source and receipt remain recorded. Interface icons use Lucide under the license in `viewer/icons/LICENSE`.
 
 ## What has physical consequences
 

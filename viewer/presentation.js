@@ -130,14 +130,20 @@ export function eventCard(event, state) {
         : d.target
           ? humanize(d.target)
           : placeName(state, event.entity ?? d.org ?? d.to);
-  const entity =
+  let entity =
     event.type.includes('post') || event.type === 'signal_created'
       ? { kind: 'post', id: d.id }
       : event.entity
         ? { kind: entityKind(event.entity), id: event.entity }
         : null;
+  const eventKey = `event:${event.index}:${event.at}:${event.type}:${event.entity ?? ''}:${JSON.stringify(d)}`;
+  if (
+    !entity ||
+    (entity.kind === 'building' && !state.map.buildings.some((b) => b.id === entity.id))
+  )
+    entity = { kind: 'event', id: eventKey };
   return {
-    key: `event:${event.index}:${event.at}:${event.type}:${event.entity ?? ''}:${JSON.stringify(d)}`,
+    key: eventKey,
     at: event.at,
     title,
     body,
@@ -145,7 +151,11 @@ export function eventCard(event, state) {
     tone,
     entity,
     location:
-      event.type === 'query_completed' ? d.org : (d.building ?? d.target ?? event.entity ?? d.org),
+      event.type === 'query_completed'
+        ? d.org
+        : event.type === 'message_delivered'
+          ? (d.target ?? d.to)
+          : (d.building ?? d.target ?? event.entity ?? d.org),
     tag: 'World event',
     raw: event,
   };
@@ -256,10 +266,42 @@ export function streamModels(snapshot, org, truth) {
       tag: 'Received by this organization',
     }));
   const receipts = s.ingestion.filter((r) => r.org === org).map((r) => receiptCard(r, s));
+  const known = s.observations?.[org] ?? {};
+  const observations = [];
+  for (const [collection, kind, icon, title] of [
+    ['resources', 'resource', 'package', 'Inventory available'],
+    ['needs', 'need', 'circle-alert', 'Reported need'],
+    ['vehicles', 'vehicle', 'truck', 'Last received vehicle position'],
+    ['buildings', 'building', 'house', 'Known facility'],
+    ['operations', 'operation', 'truck', 'Received operation status'],
+  ])
+    for (const e of Object.values(known[collection] ?? {})) {
+      const at = e.at ?? e.observedAt ?? 0;
+      let body = `${e.id} · ${humanize(e.state ?? e.type ?? kind)}`;
+      if (kind === 'resource')
+        body = `${number(e.quantity)} ${e.type === 'water' ? 'L of water' : humanize(e.type).toLowerCase()} · ${number(e.reserved)} reserved`;
+      if (kind === 'need')
+        body = `${number(Math.max(0, e.quantity - e.served))} ${e.unit} ${e.type} still needed · ${placeName(s, e.building)}`;
+      observations.push({
+        key: `known:${org}:${kind}:${e.id}:${JSON.stringify(e)}`,
+        at,
+        title,
+        body,
+        icon,
+        tone: kind === 'need' ? 'urgent' : 'response',
+        tag: 'Known observation · timestamp is observation time',
+        entity: ['vehicle', 'building', 'need', 'operation'].includes(kind)
+          ? { kind, id: e.id }
+          : null,
+        location: e.building ?? e.node ?? e.id,
+      });
+    }
   return {
     reality: truth ? snapshot.events.map((e) => eventCard(e, s)) : [],
     communication,
-    available: [...available, ...received, ...receipts].sort((a, b) => a.at - b.at),
+    available: [...available, ...received, ...receipts, ...observations].sort(
+      (a, b) => a.at - b.at,
+    ),
   };
 }
 // A finite presentation queue. Full history lives in the world archive, not the DOM.
@@ -271,8 +313,12 @@ export class NotificationQueue {
     this.skipped = 0;
   }
   accept(items) {
-    const fresh = items.filter((item) => !this.seen.has(item.key));
-    for (const item of fresh) this.seen.add(item.key);
+    const fresh = [];
+    for (const item of items)
+      if (!this.seen.has(item.key)) {
+        this.seen.add(item.key);
+        fresh.push(item);
+      }
     if (this.seen.size > 1600) this.seen = new Set([...this.seen].slice(-800));
     this.pending.push(...fresh);
     const excess = Math.max(0, this.pending.length - this.capacity);

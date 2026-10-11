@@ -98,6 +98,22 @@ test('old receipts retain their own versioned content and the reference skip is 
   );
   assert.match(skipped.body, /reference controller did not recognize/);
 });
+test('initial organization inventory is available without fabricating a download', () => {
+  const s = state();
+  s.observations = {
+    org0: {
+      resources: {
+        r0: { id: 'r0', type: 'water', quantity: 2400, reserved: 100, node: 'n0', at: 0 },
+      },
+    },
+    org1: { resources: { secret: { id: 'secret', type: 'water', quantity: 99999 } } },
+  };
+  const view = streamModels({ now: 0, state: s, events: [] }, 'org0', false);
+  assert.equal(view.available.length, 1);
+  assert.match(view.available[0].body, /2,400 L of water/);
+  assert.ok(!JSON.stringify(view).includes('99999'));
+  assert.equal(s.ingestion.length, 0);
+});
 test('presentation queues deduplicate updates and remain bounded during bursts', () => {
   const q = new NotificationQueue({ capacity: 30 });
   const items = Array.from({ length: 200 }, (_, i) => ({ key: `event-${i}`, at: i }));
@@ -106,6 +122,11 @@ test('presentation queues deduplicate updates and remain bounded during bursts',
   assert.equal(q.skipped, 170);
   assert.equal(q.accept(items).length, 0);
   assert.equal(q.shift().key, 'event-170');
+  assert.equal(
+    q.accept([{ key: 'one' }, { key: 'one' }]).length,
+    1,
+    'duplicates within a single chunk also collapse',
+  );
   q.reset(items);
   assert.equal(q.pending.length, 0);
   assert.equal(q.accept(items).length, 0);
@@ -192,6 +213,14 @@ test('buffered motion never runs ahead of the world or invents GPS-only movement
   later.observations.org0.vehicles.v1.node = 'b';
   b.accept({ now: 100, state: later }, 2000, 'org0');
   assert.deepEqual(b.point('v1', 2010), { x: 10, z: 10 });
+});
+test('the first confirmed trip animates from its actual departure node', () => {
+  const before = { id: 'v1', node: 'a', edge: null, route: [], routeIndex: 0, state: 'idle' };
+  assert.deepEqual(confirmedPath(before, v1, 0, 150, nodes, edges), [
+    { x: 0, z: 0 },
+    { x: 10, z: 0 },
+    { x: 10, z: 5 },
+  ]);
 });
 test('plain-language world events distinguish arrival from service and simulated mortality', () => {
   const s = state();

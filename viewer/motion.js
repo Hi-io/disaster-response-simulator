@@ -15,24 +15,25 @@ export function confirmedPath(previous, next, before, after, nodes, edges) {
     b = currentPoint(next, after, nodes, edges);
   if (!a || !b) return null;
   if (a.x === b.x && a.z === b.z) return [a, b];
-  const oldIndex = previous.routeIndex ?? 0,
+  const startingTrip = !previous.edge && edges.get(next.route?.[0])?.from === previous.node;
+  const oldIndex = startingTrip ? 0 : (previous.routeIndex ?? 0),
     newIndex = next.routeIndex ?? 0;
   if (
-    !previous.edge ||
+    (!previous.edge && !startingTrip) ||
     newIndex < oldIndex ||
-    JSON.stringify(previous.route) !== JSON.stringify(next.route)
+    (!startingTrip && JSON.stringify(previous.route) !== JSON.stringify(next.route))
   )
     return null;
   const path = [a];
   for (let i = oldIndex; i <= newIndex; i++) {
-    const edge = edges.get(previous.route?.[i]);
+    const edge = edges.get((startingTrip ? next.route : previous.route)?.[i]);
     if (!edge) {
       if (i === newIndex && !next.edge) break;
       return null;
     }
     const points = edge.points ?? [nodes.get(edge.from), nodes.get(edge.to)];
     const start =
-      i === oldIndex
+      i === oldIndex && !startingTrip
         ? clamp((before - previous.edgeStart) / Math.max(1, previous.edgeEnd - previous.edgeStart))
         : 0;
     const end =

@@ -1179,3 +1179,37 @@ El 3D sirve para entender la interacción: región, necesidad, acceso, quién pu
 Para mostrar Gemini después, conectar NEXO de verdad, registrar sus respuestas y usar sus acciones en el mundo. No renombrar un algoritmo de referencia como Gemini ni representar como resultado medido un número inventado en la landing. Demostrar un caso concreto y un cambio inesperado; abrir el manifiesto y la traza para que puedan verificarse.
 
 Los documentos de cobertura y calibración conservan los límites actuales. Precisión operativa, revisión de operadores, validación clínica e impacto en terreno son evidencias diferentes y requieren trabajo separado.
+
+## 41. Vista de operación e información en movimiento
+
+### 41.1 Jerarquía y controles
+
+- El mapa, las métricas operativas y los tres carriles de información deben caber en el viewport sin scroll de página. El historial y los formularios largos pueden desplazarse dentro de sus paneles.
+- Configuración detrás de una hamburguesa, que se cierra al iniciar. El inspector derecho aparece al seleccionar un objeto, tarjeta o métrica y se puede cerrar. Nada debe reducir permanentemente el espacio del mapa.
+- Selector explícito de organización: cuatro por defecto, entre una y doce configurables. Cambiar la organización actualiza el carril de datos y, en modo de conocimiento recibido, también la perspectiva del mapa.
+- Capas independientes para vehículos, tráfico, necesidades, zonas de desastre, rutas, conectividad, grupos de población, organizaciones y notificaciones. Conservar el acceso a comparaciones, acciones, checkpoints y exportación.
+
+### 41.2 Tres niveles distintos
+
+1. **Lo que ocurre:** eventos físicos y operativos del mundo; solo observador. Texto legible, icono de categoría, hora y posibilidad de consultar el registro original.
+2. **Lo que se comunica:** publicaciones, videos descriptivos, notas de voz, noticias y documentos. Avatar por defecto o icono reconocible del formato. Etiquetas de falsedad exclusivamente del observador; nunca transferirlas a NEXO como resultado de su propio análisis.
+3. **Datos disponibles para la organización elegida:** fuentes publicadas, indexadas y accesibles a ese equipo; sus observaciones recibidas, inventario propio y recibos del conector. No mostrar mensajes privados de otro equipo ni fuentes futuras o eliminadas como disponibles.
+
+Disponibilidad, descarga, aceptación, interpretación y descarte son etapas diferentes. Un recibo conserva la versión descargada aunque después cambie la fuente. Un descarte del controlador de referencia debe explicarse como una limitación del controlador; no como veredicto de Gemini ni como excepción del servidor. Los estados iniciales conocidos son datos disponibles aunque todavía no haya publicaciones descargadas. La hora de una observación no se debe confundir con su recepción.
+
+### 41.3 Ritmo, volumen y memoria
+
+- Tres carriles apilados verticalmente; las nuevas tarjetas entran por la izquierda y desplazan las anteriores hacia la derecha. Identidades estables, no reemplazar todo el DOM en cada actualización.
+- Distribuir secuencialmente los lotes en una cola de presentación. A gran velocidad, representar una muestra explícita y mantener todos los registros en el archivo causal. Nunca ralentizar o alterar la simulación para acomodar la animación.
+- Ventana de render finita: como máximo ocho tarjetas por carril y 36 pendientes; máximo nueve notificaciones en el mapa y 30 pendientes. Desmontar lo que salga del área visible y descartar de la cola visual lo que ya no pueda mostrarse oportunamente. Estas cotas no eliminan historia del mundo.
+- Notificaciones del mapa breves, con entrada y salida suaves, ubicación real, categoría visual y acceso al detalle. Pueden resultar abrumadoras bajo carga, pero no tapar de forma permanente controles ni métricas.
+- Congelar los carriles para lectura sin detener el reloj ni la actividad del mapa. Filtrar una ventana reciente debe estar identificado como filtro de vista, no como una consulta sobre todo el archivo.
+- Respetar `prefers-reduced-motion`; controles con teclado, nombres accesibles y significado de los colores explicado en la leyenda.
+
+### 41.4 Movimiento y render ligero
+
+- Vehículos y grupos de población como puntos, no mallas tridimensionales individuales. Colores separados para tráfico cotidiano, respuesta, evacuación y vehículo de respuesta bloqueado. Los puntos de población representan grupos, no personas individuales.
+- Necesidades y edificios mediante instancias compartidas; búsquedas indexadas y geometría de carretera reutilizable. El render visual no debe dominar el coste de un experimento acelerado.
+- Tráfico verde/ámbar/coral según ocupación y colas. Considerar ambos sentidos. La vista de una organización conserva cierres reportados y muestra desconocido el tráfico que no haya recibido; no consultar la verdad oculta para colorearlo.
+- Interpolar entre posiciones confirmadas por el reloj del mundo y siguiendo curvas y trayectos confirmados. No inventar atajos cuando cambie una ruta ni adelantar una llegada. La posición de una organización con GPS discontinuo permanece en la última observación, sin reconstruir un recorrido desconocido.
+- Probar ×1000, cambios de alcance, selección, seguimiento, interrupciones, grandes ráfagas, pausa y reanudación. Validar tanto el estado causal como límites de DOM/GPU y la legibilidad; una animación convincente no sustituye esas comprobaciones.

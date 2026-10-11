@@ -46,7 +46,9 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Release verification
 
-At the documented 0.2.0 checkpoint, the automated suite has 76 passing tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+The current automated suite has 85 tests and zero skipped tests: 76 causal/integration tests and 9 presentation-model tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+
+`viewer.test.mjs` checks indexed and scoped source availability, receipt-version fidelity, initial organization inventory, bounded/deduplicated visual queues, traffic colors without hidden-state leakage, confirmed curved paths, new departures, paused motion and GPS-only views. These are view-model checks; browser QA separately verifies the viewport layout, drawers, clickable cards, notifications, layer toggles, freeze/filter controls and responsive states. Animations do not execute Gemini or establish an operational advantage.
 
 Browser QA covers the map, controls, selection, information streams, scoped perspectives and comparison surface. It does not substitute for headless causal tests. Measured scaling results and machine details are stored in `PERFORMANCE.md`; complete run artifacts stay under ignored `runs/`.
 
