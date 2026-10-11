@@ -14,8 +14,10 @@ import {
   serviceRows,
   selectionPoint,
   trackingStep,
+  mapVisualKey,
 } from '../viewer/display.js';
 import { FlowLane } from '../viewer/flow.js';
+import { englishText } from '../viewer/english.js';
 
 const post = (id, audience, options = {}) => ({
   public: {
@@ -333,7 +335,7 @@ test('map notifications push older neighbours upward and cull overflow instead o
 
 test('feed pacing follows pending work rather than the simulation speed selector', () => {
   assert.deepEqual(feedTiming(0, 1), feedTiming(0, 10));
-  assert.equal(feedTiming(0, 1).interval, 280);
+  assert.equal(feedTiming(0, 1).interval, 160);
   assert.ok(
     feedTiming(30, 1000).interval * 36 < 1000,
     'a large backlog gets fast arrivals instead of a rate-dependent delay',
@@ -350,14 +352,129 @@ test('a new backlog accelerates a lane before its earlier slow deadline expires'
   lane.add = (item) => seen.push(item.key);
   lane.accept([{ key: 'first' }]);
   lane.tick(1000, false, false, true, 1);
-  assert.equal(lane.nextAt, 1280);
+  assert.equal(lane.nextAt, 1160);
   lane.accept(Array.from({ length: 30 }, (_, i) => ({ key: `burst-${i}` })));
   lane.tick(1030, false, false, true, 1);
-  assert.equal(seen.length, 2, 'does not wait for the old 280 ms interval');
+  assert.ok(seen.length >= 2, 'does not wait for the old sparse-arrival interval');
   assert.equal(vars.get('--flow-fade'), '0ms', 'short-lived burst cards remain opaque');
-  for (let now = 1046; now <= 2534; now += 16) lane.tick(now, false, false, true, 1);
+  for (let now = 1046; now <= 1900; now += 16) lane.tick(now, false, false, true, 1);
   assert.equal(lane.queue.pending.length, 0, 'a 30-card burst drains at normal world speed');
   assert.equal(seen.length, 31);
+  assert.deepEqual(
+    seen,
+    ['first', ...Array.from({ length: 30 }, (_, i) => `burst-${i}`)],
+    'catch-up preserves card order and contents',
+  );
+});
+
+test('English cards preserve original bilingual sources and version-specific download evidence', () => {
+  const texts = [
+    ['En b0, 60 personas necesitan 120 L de water.', 'At b0, 60 people need 120 L of water.'],
+    ['En b0 seguimos esperando 120 L de water.', 'At b0 we are still waiting for 120 L of water.'],
+    [
+      'La ayuda ya llegó a b0. No hace falta enviar nada más.',
+      'All the aid has arrived at b0. No more help is needed.',
+    ],
+    [
+      'Hay daños visibles en b0; la seguridad aún requiere inspección.',
+      'Visible damage at b0; safety still needs an inspection.',
+    ],
+    [
+      'Pensando en los equipos y familias afectados cerca de b0.',
+      'Thinking of teams and families affected near b0.',
+    ],
+    [
+      'El edificio b0 está intacto y todos sus servicios funcionan.',
+      'The building at b0 is intact and all its services work.',
+    ],
+    ['Video: b0 se derrumbó hoy.', 'Video: b0 has collapsed today.'],
+  ];
+  const s = state();
+  s.posts = texts.map(([text], i) =>
+    post(`p${i}`, 'public', {
+      public: {
+        id: `p${i}`,
+        version: 2,
+        publishedAt: 10,
+        text,
+        language: 'es',
+        format: 'text',
+        location: 'b0',
+      },
+    }),
+  );
+  const original = structuredClone(s);
+  const view = streamModels({ state: s, now: 50, events: [] }, 'org0', true);
+  assert.deepEqual(
+    view.communication.map((c) => c.body),
+    texts.map(([, english]) => english),
+  );
+  assert.deepEqual(s, original);
+  const old = receiptCard(
+    {
+      id: 'p0',
+      version: 1,
+      org: 'org0',
+      stage: 'downloaded',
+      at: 5,
+      content: { text: 'En b0, 60 personas necesitan 240 L de water.' },
+    },
+    s,
+  );
+  assert.equal(old.body, 'At b0, 60 people need 240 L of water.');
+  const event = eventCard({ type: 'post_published', at: 10, data: { id: 'p0' }, entity: 'b0' }, s);
+  assert.equal(event.body, texts[0][1]);
+  assert.equal(englishText('An explicit external statement.'), 'An explicit external statement.');
+});
+
+test('GPS and timestamps do not rebuild a map, while visible changes still invalidate it', () => {
+  const s = {
+    map: {
+      hash: 'same-map',
+      buildings: [{ id: 'b0', state: 'intact', damage: 0 }],
+      edges: [{ id: 'e0', open: true }],
+      sectors: [{ id: 's0', coverage: 1 }],
+      organizations: [],
+    },
+    vehicles: [
+      { id: 'v0', background: false, node: 'n0', state: 'en_route', route: ['e0'], routeIndex: 0 },
+    ],
+    needs: [{ id: 'need-0', building: 'b0', type: 'water', served: 0, quantity: 100 }],
+    observations: {
+      org0: {
+        buildings: { b0: { id: 'b0', state: 'intact', damage: 0, at: 0 } },
+        edges: { e0: { open: true } },
+        vehicles: { v0: { id: 'v0', node: 'n0', at: 0 } },
+        needs: {},
+        resources: {},
+      },
+    },
+    cohorts: [{ id: 'c0', node: 'n0', population: 60 }],
+    hazards: [],
+    sharingEvents: [],
+  };
+  const snapshot = { runId: 'run', state: s };
+  const truth = mapVisualKey(snapshot),
+    known = mapVisualKey(snapshot, 'org0');
+  s.vehicles[0].node = 'n1';
+  s.observations.org0.vehicles.v0.at = 10;
+  s.observations.org0.vehicles.v0.node = 'n1';
+  s.observations.org0.buildings.b0.at = 10;
+  s.needs[0].served = 20;
+  assert.equal(mapVisualKey(snapshot), truth);
+  assert.equal(mapVisualKey(snapshot, 'org0'), known);
+  s.map.buildings[0].damage = 1;
+  assert.notEqual(mapVisualKey(snapshot), truth);
+  assert.equal(
+    mapVisualKey(snapshot, 'org0'),
+    known,
+    'hidden damage must not leak into an organization view',
+  );
+  s.observations.org0.buildings.b0.damage = 1;
+  assert.notEqual(mapVisualKey(snapshot, 'org0'), known);
+  s.map.buildings[0].damage = 0;
+  s.needs[0].served = 100;
+  assert.notEqual(mapVisualKey(snapshot), truth, 'completed requests remove their map rings');
 });
 
 test('the received lane requires delivery or a receipt and collapses connector stages, not reposts', () => {
@@ -475,7 +592,7 @@ test('pausing a feed immediately settles to recent items instead of replaying a 
   lane.tick(1200, false, false, true, 1000);
   assert.equal(vars.get('--flow-fade'), '0ms', 'high-speed cards enter at full opacity');
   lane.tick(1300, false, false, true, 10);
-  assert.equal(vars.get('--flow-fade'), '240ms', 'normal-speed fades remain available');
+  assert.equal(vars.get('--flow-fade'), '100ms', 'normal-speed fades stay brief but available');
 });
 
 test('camera focus uses public report locations and known vehicle positions, never hidden truth', () => {

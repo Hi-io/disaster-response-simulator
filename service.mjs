@@ -1,13 +1,13 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLabServers } from './sources/server.mjs';
+import { createLab } from './lab.mjs';
 
 // API-only hosting reuses the laboratory's authoritative engine and gateways.
 // The fictional social network remains a source to scrape; the 3D observer UI
 // is the optional component disabled here. No browser or rendering runtime is loaded.
 export async function createService({ autoPlay = false, ...options } = {}) {
   if (typeof autoPlay !== 'boolean') throw new TypeError('autoPlay must be a boolean');
-  const lab = await createLabServers(options);
+  const lab = await createLab(options);
   const [observerHandler] = lab.observer.listeners('request');
   lab.observer.removeListener('request', observerHandler);
   lab.observer.on('request', (req, res) => {

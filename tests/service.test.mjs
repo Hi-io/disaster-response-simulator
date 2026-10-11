@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createService } from '../service.mjs';
-import { createLabServers } from '../sources/server.mjs';
+import { createLab } from '../lab.mjs';
 
 const options = {
   observerPort: 0,
@@ -76,7 +76,7 @@ test('API-only service advances without a browser, source consumer or observer p
 
 test('enabling the optional 3D viewer does not change a seeded world or its results', async (t) => {
   const headless = await createService(options);
-  const visual = await createLabServers(options);
+  const visual = await createLab(options);
   t.after(() => Promise.all([headless.close(), visual.close()]));
   assert.equal(headless.world.stateHash(), visual.world.stateHash());
   const origin = `http://127.0.0.1:${visual.observerPort}`;

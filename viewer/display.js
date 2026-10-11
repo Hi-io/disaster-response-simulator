@@ -1,12 +1,52 @@
 // Presentation rules only. These never advance time or change the simulated world.
 export function feedTiming(backlog) {
   const queued = Math.max(0, backlog);
-  if (queued <= 1) return { interval: 280, transition: 520, fade: 240 };
+  if (queued <= 1) return { interval: 160, transition: 300, fade: 100 };
   return {
-    interval: Math.max(18, Math.round(140 / (queued - 1))),
-    transition: Math.max(90, Math.round(440 / Math.sqrt(queued))),
-    fade: queued > 3 ? 0 : 70,
+    interval: Math.max(10, Math.round(85 / (queued - 1))),
+    transition: Math.max(65, Math.round(260 / Math.sqrt(queued))),
+    fade: queued > 3 ? 0 : 40,
   };
+}
+
+// Changes that alter geometry, visibility or color. Timestamps, stock counts,
+// GPS and messages update separately and must not rebuild the entire 3D map.
+export function mapVisualKey(snapshot, perspective = 'truth') {
+  const s = snapshot.state,
+    obs = perspective === 'truth' ? null : s.observations[perspective];
+  const needs = obs ? Object.values(obs.needs ?? {}) : s.needs;
+  return JSON.stringify([
+    snapshot.runId,
+    s.map.hash,
+    perspective,
+    s.map.buildings.map((b) => {
+      const known = obs ? obs.buildings?.[b.id] : b;
+      return [b.id, !!known, known?.state, known?.damage];
+    }),
+    s.map.edges.filter((e) => (obs ? obs.edges?.[e.id]?.open === false : !e.open)).map((e) => e.id),
+    needs.filter((n) => n.served < n.quantity).map((n) => [n.id, n.building, n.type]),
+    s.vehicles.filter((v) => !obs || obs.vehicles?.[v.id]).map((v) => v.id),
+    obs
+      ? []
+      : s.vehicles
+          .filter(
+            (v) =>
+              !v.background &&
+              v.route?.length &&
+              ['en_route', 'dispatched', 'queued', 'spillback', 'blocked'].includes(v.state),
+          )
+          .map((v) => [v.id, v.route.slice(v.routeIndex ?? 0)]),
+    obs ? [] : s.hazards,
+    obs ? [] : s.map.sectors.map((sector) => [sector.id, sector.coverage === 0]),
+    obs
+      ? []
+      : s.cohorts
+          .filter((c) => c.population > 0)
+          .slice(0, 500)
+          .map((c) => [c.id, c.node]),
+    s.sharingEvents,
+    s.map.organizations.map((o) => [o.id, o.node, o.name, o.usesPlatform]),
+  ]);
 }
 
 // Newest notices keep their anchor. Older neighbours move upward, never onto each other.

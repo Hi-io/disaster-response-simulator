@@ -13,8 +13,9 @@ import {
 } from './presentation.js';
 import { MotionBuffer } from './motion.js';
 import { FlowLane, MapNotices, iconHTML, applyIcons } from './flow.js';
-import { serviceRows, selectionPoint, trackingStep } from './display.js';
+import { serviceRows, selectionPoint, trackingStep, mapVisualKey } from './display.js';
 import { mapTheme } from './theme.js';
+import { englishText } from './english.js';
 
 const $ = (id) => document.getElementById(id);
 const escape = (s) =>
@@ -30,6 +31,9 @@ const timelineCache = new Map();
 const eventCache = new Map();
 const number = (n) => new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(n ?? 0);
 let snapshot,
+  activity,
+  activityBusy = false,
+  activitySupported = true,
   catalog,
   selected = null,
   following = false,
@@ -934,7 +938,7 @@ function inspect() {
     e = obs ? obs.operations[selected.id] : s.operations.find((x) => x.id === selected.id);
   if (selected.kind === 'organization') e = s.map.organizations.find((x) => x.id === selected.id);
   if (selected.kind === 'post') {
-    const p = s.posts.find((x) => x.public.id === selected.id);
+    const p = feedSnapshot().state.posts.find((x) => x.public.id === selected.id);
     e =
       p &&
       (!obs ||
@@ -1004,9 +1008,12 @@ function inspect() {
     .join('');
   if (selected.kind === 'post') {
     html =
-      `<div class="inspectorPost"><div class="author"><span class="avatar">${iconHTML('user-round')}</span><div><strong>${escape(e.authorName)}</strong><div class="muted">${escape(e.format === 'audio' ? 'Voice note' : humanize(e.format))} · ${clock(e.publishedAt)}</div></div></div><p>${escape(e.text)}</p>${(e.attachments ?? []).map((a) => `<div class="mediaBlock">${iconHTML(a.kind === 'audio' ? 'mic' : a.kind === 'video' ? 'play' : 'file-text')}<span>${escape(humanize(a.kind))}${a.duration ? ` · ${a.duration}s` : ''}<br>${escape(a.description)}</span></div>`).join('')}</div>` +
+      `<div class="inspectorPost"><div class="author"><span class="avatar">${iconHTML('user-round')}</span><div><strong>${escape(e.authorName)}</strong><div class="muted">${escape(e.format === 'audio' ? 'Voice note' : humanize(e.format))} · ${clock(e.publishedAt)}</div></div></div><p>${escape(englishText(e.text))}</p>${(e.attachments ?? []).map((a) => `<div class="mediaBlock">${iconHTML(a.kind === 'audio' ? 'mic' : a.kind === 'video' ? 'play' : 'file-text')}<span>${escape(humanize(a.kind))}${a.duration ? ` · ${a.duration}s` : ''}<br>${escape(englishText(a.description))}</span></div>`).join('')}</div>` +
       property('Location reported', e.location ?? 'Not specified') +
-      property('Source version', e.version);
+      property('Source version', e.version) +
+      (englishText(e.text) !== e.text
+        ? `<details><summary>Original source text</summary><p lang="${escape(e.language ?? 'es')}">${escape(e.text)}</p></details>`
+        : '');
   }
   if (e.dependencies)
     html +=
@@ -1098,20 +1105,72 @@ function inspect() {
   }
   $('selection').innerHTML = html;
 }
+function feedSnapshot() {
+  if (
+    !activity ||
+    !snapshot ||
+    activity.runId !== snapshot.runId ||
+    activity.now < snapshot.now ||
+    activity.org !== $('focusOrg').value ||
+    activity.perspective !== $('perspective').value
+  )
+    return snapshot;
+  return {
+    ...snapshot,
+    ...activity,
+    state: {
+      ...snapshot.state,
+      ...activity.state,
+      observations: { ...snapshot.state.observations, ...activity.state.observations },
+    },
+  };
+}
+async function refreshActivity() {
+  if (!snapshot || activityBusy || !activitySupported || document.hidden) return;
+  const org = $('focusOrg').value,
+    perspective = $('perspective').value;
+  activityBusy = true;
+  try {
+    const response = await fetch(
+      `/api/activity?org=${encodeURIComponent(org)}&perspective=${encodeURIComponent(perspective)}`,
+    );
+    if (response.status === 404 || response.status === 405) {
+      activitySupported = false; // Older API servers still support the full observer.
+      return;
+    }
+    if (!response.ok) return;
+    const data = await response.json();
+    if (
+      data.runId !== snapshot.runId ||
+      org !== $('focusOrg').value ||
+      perspective !== $('perspective').value
+    )
+      return;
+    activity = { ...data, org, perspective };
+    showStreams();
+    if (selected?.kind === 'post') inspect();
+  } catch {
+    // The full observer keeps working; retry the lightweight channel next tick.
+  } finally {
+    activityBusy = false;
+  }
+}
 function showStreams() {
+  const current = feedSnapshot();
   if (!snapshot) return;
   const filter = $('feedFilter').value.toLowerCase(),
     truth = $('perspective').value === 'truth';
   const org = $('focusOrg').value;
   const telemetry = $('showTelemetry').checked;
   const discoverable = $('showDiscoverable').checked;
-  const models = streamModels(snapshot, org, truth, { telemetry });
+  const models = streamModels(current, org, truth, { telemetry });
   const teamItems = discoverable ? models.available : models.received;
   const visibleModels = { ...models, available: teamItems };
   for (const item of models.reality.concat(models.available))
     if (item.raw?.type) {
-      eventCache.delete(eventCard(item.raw, snapshot.state).key);
-      eventCache.set(eventCard(item.raw, snapshot.state).key, item.raw);
+      const key = eventCard(item.raw, current.state).key;
+      eventCache.delete(key);
+      eventCache.set(key, item.raw);
     }
   while (eventCache.size > 500) eventCache.delete(eventCache.keys().next().value);
   const name = snapshot.state.map.organizations.find((o) => o.id === org)?.name ?? 'your team';
@@ -1157,8 +1216,8 @@ function showStreams() {
   $('realityCount').textContent = truth ? '' : 'Ground truth hidden';
   $('communicationCount').textContent = '';
   $('feedCount').textContent = truth
-    ? `${number(snapshot.totals.posts)} signals · ${number(snapshot.totals.ingestion)} connector receipts`
-    : `${number(models.communication.length)} recent sources · ${number(snapshot.state.ingestion.filter((r) => r.org === org).length)} recent team receipts`;
+    ? `${number(current.totals.posts)} signals · ${number(current.totals.ingestion)} connector receipts`
+    : `${number(models.communication.length)} recent sources · ${number(current.state.ingestion.filter((r) => r.org === org).length)} recent team receipts`;
   const skipped = Object.values(flowLanes).reduce((n, lane) => n + lane.queue.skipped, 0);
   $('presentationNote').textContent =
     `Live visual sample · ${skipped ? `${number(skipped)} updates omitted from animation · ` : ''}full history retained. Available ≠ downloaded ≠ understood.`;
@@ -1180,6 +1239,7 @@ async function refresh() {
     if (!renderer) initialize3D();
     const changed = snapshot.runId !== lastRun;
     if (changed) {
+      activity = null;
       motion.reset();
       feedScope = null;
       mapScope = null;
@@ -1218,17 +1278,7 @@ async function refresh() {
       `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
     renderMeasurements();
     $('scenarioTitle').textContent = `${humanize(snapshot.manifest.config.hazard)} simulation`;
-    const sceneHash = JSON.stringify([
-      snapshot.state.map.buildings.map((b) => [b.state, b.damage]),
-      snapshot.state.map.edges.filter((e) => !e.open).map((e) => e.id),
-      snapshot.state.needs.map((n) => [n.id, n.served]),
-      snapshot.state.vehicles.length,
-      snapshot.state.vehicles
-        .filter((v) => !v.background)
-        .map((v) => [v.id, v.state, v.route, v.routeIndex]),
-      $('perspective').value,
-      snapshot.state.observations[$('perspective').value],
-    ]);
+    const sceneHash = mapVisualKey(snapshot, $('perspective').value);
     if (changed || sceneHash !== previousSceneHash) {
       buildScene();
       previousSceneHash = sceneHash;
@@ -1370,6 +1420,7 @@ $('configForm').onsubmit = perform(async () => {
   ];
   const overrides = JSON.parse($('advancedConfig').value);
   await api('/api/config', {
+    language: 'en',
     ...Object.fromEntries(
       fields.map((k) => [
         k,
@@ -1452,6 +1503,7 @@ $('perspective').onchange = () => {
   renderMeasurements();
   feedScope = null;
   showStreams();
+  refreshActivity();
   refresh();
 };
 $('focusOrg').onchange = () => {
@@ -1461,6 +1513,7 @@ $('focusOrg').onchange = () => {
   } else {
     feedScope = null;
     showStreams();
+    refreshActivity();
   }
 };
 $('layers').onchange = (e) => {
@@ -1587,3 +1640,8 @@ try {
 } catch {}
 await refresh();
 setInterval(refresh, 1000);
+async function pollActivity() {
+  await refreshActivity();
+  if (activitySupported) setTimeout(pollActivity, document.hidden ? 1000 : isPlaying() ? 150 : 500);
+}
+pollActivity();

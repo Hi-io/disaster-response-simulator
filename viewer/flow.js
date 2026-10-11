@@ -22,6 +22,13 @@ export class FlowLane {
     this.nextAt = 0;
     this.lastShownAt = 0;
     this.emptyText = 'No reports yet.';
+    this.laneWidth = element.clientWidth || 1024;
+    this.cardWidth = null;
+    if (typeof ResizeObserver !== 'undefined')
+      new ResizeObserver(([entry]) => {
+        this.laneWidth = entry.contentRect.width;
+        this.cardWidth = null;
+      }).observe(element);
   }
   reset(items, emptyText = this.emptyText) {
     this.queue.reset(items);
@@ -61,8 +68,9 @@ export class FlowLane {
     this.element.append(card);
     this.cards.unshift(card);
     // Unmount everything outside the visible strip; history stays in the archive.
-    const width = card.getBoundingClientRect().width || 254;
-    const keep = Math.min(8, Math.max(2, Math.ceil(this.element.clientWidth / (width + 8)) + 1));
+    // Card width is fixed by CSS. Measure once per resize, not once per arrival.
+    const width = (this.cardWidth ??= card.getBoundingClientRect().width || 254);
+    const keep = Math.min(8, Math.max(2, Math.ceil(this.laneWidth / (width + 8)) + 1));
     while (this.cards.length > keep) this.cards.pop().remove();
     const place = () =>
       this.cards.forEach((el, i) => {
@@ -86,12 +94,18 @@ export class FlowLane {
       this.settle();
       return;
     }
-    const dueAt = Math.min(this.nextAt, this.lastShownAt + timing.interval);
+    let dueAt = this.lastShownAt
+      ? Math.max(now - 50, Math.min(this.nextAt, this.lastShownAt + timing.interval))
+      : now;
     if (frozen || now < dueAt || !this.queue.pending.length) return;
-    const item = this.queue.shift();
-    this.add(item, !reduced);
-    this.lastShownAt = now;
-    this.nextAt = now + timing.interval;
+    // Catch up a few arrivals after a slow frame without an unbounded DOM task.
+    for (let count = 0; count < 4 && this.queue.pending.length && now >= dueAt; count++) {
+      const item = this.queue.shift();
+      this.add(item, !reduced);
+      this.lastShownAt = dueAt;
+      this.nextAt = dueAt + feedTiming(this.queue.pending.length).interval;
+      dueAt = this.nextAt;
+    }
   }
 }
 export class MapNotices {
@@ -115,7 +129,9 @@ export class MapNotices {
     this.element.replaceChildren();
   }
   accept(items) {
-    this.queue.accept(items);
+    // Unlocated records still belong to the lanes/archive. They should not
+    // consume an on-map animation slot and delay a report with a real location.
+    this.queue.accept(items.filter((item) => this.locate(item)));
   }
   tick(now, enabled = true, reduced = false, playing = true, rate = 1) {
     if (!enabled) {

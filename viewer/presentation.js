@@ -1,3 +1,4 @@
+import { englishText } from './english.js';
 // View models only. These descriptions never change the simulated world.
 export const humanize = (text) =>
   String(text ?? '')
@@ -146,7 +147,7 @@ export function eventCard(event, state) {
     key: eventKey,
     at: event.at,
     title,
-    body,
+    body: englishText(body),
     icon,
     tone,
     entity,
@@ -176,7 +177,7 @@ export function postCard(post, { truth = false, available = false } = {}) {
     key: `post:${p.id}:${p.version}`,
     at: p.publishedAt,
     title: p.authorName ?? 'Community report',
-    body: p.text,
+    body: englishText(p.text),
     icon,
     tone: truth && post.private?.false ? 'urgent' : 'social',
     tag:
@@ -216,7 +217,9 @@ export function receiptCard(receipt, state) {
     key: `receipt:${receipt.org}:${receipt.id}:${receipt.version}:${receipt.stage}:${receipt.at}`,
     at: receipt.at,
     title: labels[receipt.stage] ?? humanize(receipt.stage),
-    body: reason ?? p?.text ?? `Report ${receipt.id.slice(0, 8)} · version ${receipt.version}`,
+    body: englishText(
+      reason ?? p?.text ?? `Report ${receipt.id.slice(0, 8)} · version ${receipt.version}`,
+    ),
     icon: receipt.stage === 'discarded' ? 'circle-help' : 'download',
     tone: 'response',
     tag: receipt.connector?.startsWith('reference:')
@@ -264,7 +267,7 @@ function receivedSources(receipts, state, org) {
       ...card,
       key,
       title: 'Source received',
-      body: content?.text ?? card.body,
+      body: englishText(content?.text ?? card.body),
       location: content?.location,
       media: content?.format && content.format !== 'text' ? content.format : null,
       tag: `Actual connector receipt · ${[...new Set(stages.map((r) => r.stage))].join(' → ')}`,

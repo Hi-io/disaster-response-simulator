@@ -38,12 +38,12 @@
   --map-ground: #151b2e;
   --map-road: #495474;
   --map-river: #263c5e;
-  --map-building: #4d5879;
-  --map-depot: #7180b2;
-  --map-shelter: #8979b5;
-  --map-plant: #63878f;
-  --map-operating: #71ae9b;
-  --map-damaged: #c08b8e;
+  --map-building: #5e698a;
+  --map-depot: #8290bf;
+  --map-shelter: #9a8ac3;
+  --map-plant: #74989f;
+  --map-operating: #82bcaa;
+  --map-damaged: #cd9b9e;
   --map-light: #dce4ff;
   --traffic-clear: #62948a;
   --traffic-slow: #d9b57a;
@@ -789,8 +789,8 @@ summary {
   white-space: normal;
   will-change: transform;
   transition:
-    transform var(--flow-duration, 520ms) cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity var(--flow-fade, 240ms);
+    transform var(--flow-duration, 300ms) cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity var(--flow-fade, 100ms);
   overflow: hidden;
 }
 .feedCard:hover {
