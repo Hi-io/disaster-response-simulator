@@ -13,6 +13,8 @@ export function validateAction(request) {
   requireCondition(typeof request.idempotencyKey==='string' && request.idempotencyKey.length>=3 && request.idempotencyKey.length<=180,'IDEMPOTENCY_REQUIRED','Provide an idempotencyKey');
   requireCondition(request.params && typeof request.params==='object' && !Array.isArray(request.params),'INVALID_PARAMS','Provide params');
   requireCondition(!('actor' in request) && !('role' in request),'IDENTITY_SPOOF','Identity is provided by the authenticated session',403);
+  requireCondition(Object.keys(request).every(k=>['type','params','idempotencyKey','expectedVersion'].includes(k)),'ACTION_SCHEMA','Unexpected action envelope field');
+  requireCondition(request.expectedVersion===undefined||Number.isSafeInteger(request.expectedVersion)&&request.expectedVersion>=0,'VERSION','Version must be a nonnegative integer');
   return request;
 }
 export function requireRole(actor,roles) {requireCondition(actor && roles.includes(actor.role),'FORBIDDEN','Insufficient authority',403);}

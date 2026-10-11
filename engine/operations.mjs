@@ -15,7 +15,7 @@ export function installActions(w){
   w.onAction('query',(a,p)=>{
     check(!w.state.toolFault,'TOOL_UNAVAILABLE','Tool dependency is unavailable',503);
     const minute=Math.floor(w.now/60000),key=`${a.org}-${minute}`,count=w.state.toolQuota[key]??0;check(count<w.config.toolQuota,'RATE_LIMIT','Tool quota exhausted',429);w.state.toolQuota[key]=count+1;w.state.queryCount++;w.state.toolCost+=1;
-    check(['inventory','vehicles','roads','documents','facility','policy','sources'].includes(p.target),'TARGET','Unknown query target');
+    check(['inventory','vehicles','roads','documents','facility','policy','sources','capabilities','map'].includes(p.target),'TARGET','Unknown query target');
     let result;
     if(p.target==='inventory')result=w.state.resources.filter(r=>r.owner===a.org||(r.public&&w.organization(r.owner)?.sharing==='public')).map(r=>({id:r.id,owner:r.owner,node:r.node,type:r.type,quantity:r.quantity,reserved:r.reserved,floor:r.floor,compatibility:r.compatibility,version:r.version,observedAt:w.now}));
     if(p.target==='vehicles')result=w.state.vehicles.filter(v=>v.owner===a.org||(!v.background&&w.organization(v.owner)?.sharing==='public')).map(v=>w.vehicleView(v));
@@ -23,12 +23,15 @@ export function installActions(w){
     if(p.target==='facility')result=clone(known(a).buildings[p.id]??null);
     if(p.target==='policy')result=clone(w.organization(a.org).policy);
     if(p.target==='sources')result=w.publicFeed(p).posts;
-    if(p.target==='documents')result=[{id:'operations-catalogue',text:'Water measured in litres. A venue needs assessment, permission, water, sanitation, staff and energy before opening.'}];
+    if(p.target==='documents')result=[{id:'operations-catalogue',version:1,format:'text',text:'Water is measured in litres. A venue needs assessment, permission, water, sanitation, staff and energy before opening.'},{id:'power-catalogue',version:1,format:'csv',text:'equipment,voltage,connector,power_kW\npump,230,A,10\ngenerator,230,A,12\nlegacy_generator,120,B,8'},{id:'place-aliases',version:1,format:'table',text:'Location names may repeat. Confirm the road node and organization jurisdiction before converting drum counts into litres.'}];
+    if(p.target==='capabilities'){const org=w.organization(p.org);check(org,'NOT_FOUND','Unknown partner');result={org:org.id,name:org.name,sharing:org.sharing,capabilities:w.state.resources.filter(r=>r.owner===org.id&&r.public).map(r=>({id:r.id,type:r.type,...(org.sharing==='public'||org.id===a.org?{available:available(r),node:r.node,compatibility:r.compatibility}:{availability:'requires_owner_confirmation'})}))};}
+    if(p.target==='map')result={nodes:w.state.map.nodes.map(n=>({...n})),roads:w.state.map.edges.map(e=>({id:e.id,from:e.from,to:e.to,lengthM:e.lengthM,speedMps:e.speedMps,maxWeight:e.maxWeight})),places:w.state.map.buildings.map(b=>({id:b.id,node:b.node,x:b.x,z:b.z,use:b.use}))};
     const id=w.nextId('query');w.state.queries??=[];const q={id,org:a.org,target:p.target,state:'pending',createdAt:w.now,readyAt:w.now+w.config.queryLatencyMs};w.state.queries.push(q);w.schedule(q.readyAt,'query_result',{id,result},2,`query-${id}`);return clone(q);
   });
-  w.on('query_result',({id,result})=>{const q=w.state.queries.find(x=>x.id===id);if(!q)return;q.state='ready';q.result=result;q.completedAt=w.now;if(q.target==='inventory')for(const r of result)w.state.observations[q.org].resources[r.id]={...r,at:q.createdAt};if(q.target==='vehicles')for(const v of result)w.state.observations[q.org].vehicles[v.id]=v;w.record('query_completed',{id,org:q.org,target:q.target});});
+  w.on('query_result',({id,result})=>{const q=w.state.queries.find(x=>x.id===id);if(!q)return;w.send({kind:'query_result',id,result,observedAt:q.createdAt},q.org,{sector:w.sectorForNode(w.organization(q.org).node)});});
+  w.completeQuery=({id,result,observedAt})=>{const q=w.state.queries.find(x=>x.id===id);if(!q)return;q.state='ready';q.result=result;q.completedAt=w.now;if(q.target==='inventory')for(const r of result){const old=w.state.observations[q.org].resources[r.id];if(!old||r.version>=old.version)w.state.observations[q.org].resources[r.id]={...r,at:observedAt};}if(q.target==='vehicles')for(const v of result){const old=w.state.observations[q.org].vehicles[v.id];if(!old||v.at>=old.at)w.state.observations[q.org].vehicles[v.id]=v;}w.record('query_completed',{id,org:q.org,target:q.target});};
   w.onAction('capabilities',(a,p)=>{
-    const org=w.organization(p.org);check(org,'NOT_FOUND','Organization not found');return {org:org.id,name:org.name,sharing:org.sharing,capabilities:w.state.resources.filter(r=>r.owner===org.id&&r.public).map(r=>({id:r.id,type:r.type,...(org.sharing==='public'||org.id===a.org?{available:available(r),node:r.node,compatibility:r.compatibility}:{availability:'requires_owner_confirmation'})}))};
+    return w.actionHandlers.get('query')(a,{target:'capabilities',org:p.org});
   });
   w.onAction('verify',(a,p)=>{
     check(['building','need','road','resource'].includes(p.target),'TARGET','Invalid verification');
@@ -78,9 +81,10 @@ export function installActions(w){
   w.on('expire_commitment',({id})=>{const c=w.state.commitments.find(x=>x.id===id);if(!c||!['offered','reserved','confirmed'].includes(c.state))return;const previous=c.state;c.state='expired';c.version++;if(['reserved','confirmed'].includes(previous))release(w.resource(c.resource),c.quantity);w.record('commitment_expired',{id});});
   w.onAction('dispatch',(a,p)=>{
     requireRole(a,commandRoles);const v=w.vehicle(p.vehicle),n=w.need(p.need),r=w.resource(p.resource);check(v&&r,'NOT_FOUND','Vehicle or resource not found');requireOwner(a,v.owner);requireOwner(a,r.owner);check(['idle','arrived'].includes(v.state)&&!v.load,'VEHICLE_BUSY','Vehicle unavailable');positive(p.quantity);check(p.quantity<=v.capacity,'CAPACITY','Vehicle cannot carry that quantity');
-    const destination=p.destination??(n?w.building(n.building).node:null);check(w.node(destination),'DESTINATION','Destination required');check(v.node===r.node,'LOCATION','Vehicle must be at the loading site');check(r.type===(n?.type??p.type??r.type),'RESOURCE_TYPE','Resource does not meet this need');
+    const destination=p.destination??(n?w.building(n.building).node:null);check(w.node(destination),'DESTINATION','Destination required');check(route(w.state.map,v.node,r.node,v,known(a).edges),'LOCATION','No known route to pickup');check(r.type===(n?.type??p.type??r.type),'RESOURCE_TYPE','Resource does not meet this need');
+    check(p.quantity*(r.type==='water'?1:r.type==='energy'?150:1)<=v.maxCargoKg,'WEIGHT','Cargo weight limit exceeded');check(p.quantity*(r.type==='water'?.001:r.type==='energy'?.2:.001)<=v.volumeM3,'VOLUME','Cargo volume limit exceeded');
     let c;if(p.commitment){c=w.state.commitments.find(x=>x.id===p.commitment);check(c&&c.resource===r.id&&c.state==='confirmed'&&c.quantity>=p.quantity,'COMMITMENT','Confirmed commitment required');check(c.owner===a.org&&c.requester===a.org,'AUTHORIZATION','Commitment owner/requester must authorize dispatch');check(c.quantity===p.quantity,'PARTIAL_RESERVATION','Split the commitment before partial dispatch');}
-    else {reserve(r,p.quantity);c={id:w.nextId('commitment'),owner:a.org,requester:a.org,resource:r.id,quantity:p.quantity,state:'confirmed',expiresAt:w.now+900000,conditions:[],createdAt:w.now,version:1,authorizedBy:a.id};w.state.commitments.push(c);}
+    else {reserve(r,p.quantity);c={id:w.nextId('commitment'),owner:a.org,requester:a.org,resource:r.id,quantity:p.quantity,state:'confirmed',expiresAt:w.now+900000,conditions:[],createdAt:w.now,version:1,authorizedBy:a.id};w.state.commitments.push(c);w.schedule(c.expiresAt,'expire_commitment',{id:c.id},1,c.id);}
     const op={id:w.nextId('operation'),org:a.org,type:'delivery',need:n?.id??null,building:p.building??n?.building??null,resource:r.id,resourceType:r.type,quantity:p.quantity,vehicle:v.id,destination,commitment:c.id,state:'reserved',createdAt:w.now,version:1,times:{authorized:w.now,reserved:w.now},received:0};w.state.operations.push(op);v.state='preparing';v.operation=op.id;
     w.send({kind:'command',operation:op.id},a.org,{sector:w.sectorForNode(v.node),target:v.id});return clone(op);
   });
@@ -94,7 +98,7 @@ export function installActions(w){
     w.record('delivery_received',{quantity:op.received,type:op.resourceType,building:op.building},op.id);
     w.generateSignal('P21',{building:op.building??w.state.map.shelterId,text:`The receiving team confirms ${op.received} ${destination.unit} of ${op.resourceType}.`,false:false,causeEvent:`receipt-${op.id}`});
     if(op.need){destination.quantity-=op.received;destination.consumed+=op.received;w.serveNeed(op.need,op.received);op.state='completed';op.times.service=w.now;}else op.state='completed';
-    w.observeResource(op.org,w.resource(op.resource));
+    w.observeResource(op.org,w.resource(op.resource));w.reportOperation(op);
   });
   w.onAction('transfer',(a,p)=>{requireRole(a,commandRoles);const r=writable(w,a,p.resource);positive(p.quantity);check(p.quantity<=available(r),'INSUFFICIENT_RESOURCE','Not available');check(w.organization(p.to),'NOT_FOUND','Recipient not found');const transfer={id:w.nextId('transfer'),from:a.org,to:p.to,resource:r.id,quantity:p.quantity,state:'offered',createdAt:w.now};w.state.transfers??=[];w.state.transfers.push(transfer);return clone(transfer);});
   w.onAction('reroute',(a,p)=>{requireRole(a,commandRoles);const v=w.vehicle(p.vehicle);check(v,'NOT_FOUND','Vehicle not found');requireOwner(a,v.owner);check(w.node(p.destination),'DESTINATION','Unknown destination');w.send({kind:'reroute',vehicle:v.id,destination:p.destination},a.org,{sector:w.sectorForNode(v.node),target:v.id});return {state:'instruction_pending',vehicle:v.id};});

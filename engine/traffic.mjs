@@ -6,15 +6,15 @@ export function installTraffic(w){
     const path=route(w.state.map,v.node,destination,v,known);
     if(!path){v.state='blocked';if(operation){operation.state='failed';operation.failure='no_known_route';}w.record('trip_failed',{vehicle:v.id,reason:'no_known_route'},operation?.id);return false;}
     v.route=path.edges;v.routeIndex=0;v.destination=destination;v.operation=operation?.id??null;v.state='en_route';v.version++;v.eta=w.now+path.freeTimeMs;
-    if(operation){operation.state='dispatched';operation.times.dispatched=w.now;operation.eta=v.eta;}
+    if(operation){operation.state='dispatched';operation.times[operation.phase==='pickup'?'pickupDispatched':'dispatched']=w.now;operation.eta=v.eta;w.reportOperation(operation);}
     w.record('vehicle_dispatched',{destination,distanceM:path.distanceM,eta:v.eta},v.id);
     w.schedule(w.now,'vehicle_enter',{vehicle:v.id},3,`enter-${v.id}-${v.version}`);return true;
   };
   w.on('vehicle_enter',({vehicle:id})=>{
     const v=w.vehicle(id);if(!v||['idle','arrived','failed','cancelled'].includes(v.state))return;
     if(v.edge)return;
-    if(v.pendingDestination){v.route=route(w.state.map,v.node,v.pendingDestination,v,w.state.observations[v.owner]?.edges)?.edges??[];v.routeIndex=0;v.destination=v.pendingDestination;delete v.pendingDestination;}
-    if(v.routeIndex>=v.route.length){v.state='arrived';w.record('vehicle_arrived',{node:v.node},v.id);if(v.operation){const op=w.state.operations.find(o=>o.id===v.operation);if(op&&!['cancelled','failed'].includes(op.state)){op.state='arrived';op.times.arrived=w.now;w.schedule(w.now+w.config.unloadMs,'unload',{operation:op.id},4,`unload-${op.id}`);}}else if(v.background){v.state='idle';}return;}
+    if(v.pendingDestination){const path=route(w.state.map,v.node,v.pendingDestination,v,w.state.observations[v.owner]?.edges);if(!path){v.state='blocked';w.record('trip_failed',{vehicle:v.id,reason:'no_known_reroute'},v.operation);return;}v.route=path.edges;v.routeIndex=0;v.destination=v.pendingDestination;delete v.pendingDestination;}
+    if(v.routeIndex>=v.route.length){v.state='arrived';w.record('vehicle_arrived',{node:v.node},v.id);if(v.operation){const op=w.state.operations.find(o=>o.id===v.operation);if(op&&!['cancelled','failed'].includes(op.state)){op.state='arrived';if(op.phase==='pickup'&&['delivery','transfer'].includes(op.type)){op.times.pickupArrived=w.now;op.phase=null;w.schedule(w.now+w.config.loadMs,'load',{operation:op.id},4,`pickup-load-${op.id}`);}else{op.times.arrived=w.now;w.schedule(w.now+(['delivery','transfer'].includes(op.type)?w.config.unloadMs:0),['delivery','transfer'].includes(op.type)?'unload':'task_arrival',{operation:op.id},4,`arrival-${op.id}-${w.now}`);}w.reportOperation(op);}}else if(v.background){v.state='idle';}return;}
     const e=w.edge(v.route[v.routeIndex]);
     if(!e?.open||e.waterDepth>v.maxWaterDepth||v.weightKg>e.maxWeight){v.state='blocked';w.record('vehicle_blocked',{edge:e?.id??null},v.id);w.reportRoad?.(e,v.owner);return;}
     if(w.now>=v.shiftEnd||v.fuel<Math.ceil(e.lengthM/500)){v.state='failed';const op=w.state.operations.find(o=>o.id===v.operation);if(op){op.state='failed';op.failure='fuel_or_shift';}w.record('trip_failed',{reason:'fuel_or_shift'},v.id);return;}
@@ -27,7 +27,7 @@ export function installTraffic(w){
     const v=w.vehicle(id),e=w.edge(idEdge);if(!v||v.edge!==idEdge)return;
     e.occupants=e.occupants.filter(x=>x!==id);v.node=e.to;v.routeIndex++;v.fuel-=Math.ceil(e.lengthM/500);v.fuelUsed+=Math.ceil(e.lengthM/500);v.edge=null;v.edgeStart=null;v.edgeEnd=null;
     w.send({kind:'telemetry',vehicle:id,node:v.node,observedAt:w.now},v.owner,{sector:w.sectorForNode(v.node),target:id});
-    if(v.pendingCancel){v.state='cancelled';w.record('vehicle_stopped',{node:v.node},id);delete v.pendingCancel;return;}
+    if(v.pendingCancel){v.state='idle';v.operation=null;w.record('vehicle_stopped',{node:v.node},id);delete v.pendingCancel;return;}
     w.schedule(w.now,'vehicle_enter',{vehicle:id},3,`continue-${id}-${w.now}`);
   });
   w.on('background_trip',({index})=>{
