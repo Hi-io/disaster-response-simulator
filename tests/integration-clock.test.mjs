@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../engine/world.mjs';
-import { replay, pairedComparison } from '../evaluation/runs.mjs';
+import { replay, pairedComparison, runWorld } from '../evaluation/runs.mjs';
 import { SourceClient } from '../adapters/client.mjs';
 import { createLabServers } from '../sources/server.mjs';
 const config = {
@@ -148,4 +148,38 @@ test('an omitted external duration defaults to zero without corrupting measureme
   w.finishModelCall(actor, { id: r.id });
   assert.equal(w.state.modelWallMs, 0);
   assert.equal(replay(w.checkpoint()).matches, true);
+});
+
+test('a checkpoint pins the causal source build and forks carry a new identity and replayable lineage', () => {
+  const w = new World({ ...config, durationMs: 120000 });
+  w.advance(60000);
+  const cp = w.checkpoint(),
+    corrupted = structuredClone(cp);
+  corrupted.manifest.engineBuild = 'another-implementation';
+  assert.throws(() => new World(w.config, corrupted), /implementation mismatch/);
+  assert.throws(() => replay(corrupted), /implementation mismatch/);
+  const fork = runWorld(
+    w.config,
+    [
+      {
+        at: 60000,
+        actor,
+        request: {
+          type: 'abstain',
+          params: { reason: 'Wait for evidence' },
+          idempotencyKey: 'branch-wait',
+        },
+      },
+    ],
+    cp,
+    { fork: true },
+  );
+  assert.notEqual(fork.world.runId, w.runId);
+  assert.equal(fork.world.manifest.lineage.parentRunId, w.runId);
+  assert.equal(fork.world.manifest.lineage.forkAt, 60000);
+  const replayed = replay(fork.world.checkpoint());
+  assert.equal(replayed.matches, true);
+  replayed.world.close();
+  fork.world.close();
+  w.close();
 });

@@ -175,7 +175,8 @@ function draw(v, s) {
     group.add(box);
   }
   if (!v.initialized || v.mapHash !== map.hash) {
-    v.extent = map.extentM * 0.65;
+    v.extent =
+      map.extentM * Math.max(0.54, 0.82 / Math.max(0.1, v.el.clientWidth / v.el.clientHeight));
     v.camera.position.set(map.extentM * 1.5, map.extentM * 1.1, map.extentM * 1.5);
     v.controls.target.set(map.extentM / 2, 0, map.extentM / 2);
     v.camera.lookAt(v.controls.target);

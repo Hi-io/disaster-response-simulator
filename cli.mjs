@@ -82,6 +82,7 @@ try {
         wallMs: result.wallMs,
         metrics: result.metrics,
         config: result.config,
+        manifest: result.manifest,
         cancelled: result.cancelled ?? false,
       };
       rows.push(row);
@@ -101,7 +102,9 @@ try {
     const cp = await readJSON(opts.checkpoint);
     out(
       await saveRun(
-        runWorld(cp.manifest.config, opts.inputs ? await readJSON(opts.inputs) : [], cp),
+        runWorld(cp.manifest.config, opts.inputs ? await readJSON(opts.inputs) : [], cp, {
+          fork: true,
+        }),
         output,
       ),
     );

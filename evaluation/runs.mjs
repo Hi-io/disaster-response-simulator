@@ -8,9 +8,20 @@ import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { gzipSync, gunzipSync, createGzip } from 'node:zlib';
 
-export function runWorld(config = {}, inputs = [], checkpoint = null) {
+export function runWorld(config = {}, inputs = [], checkpoint = null, { fork = false } = {}) {
   const start = performance.now(),
     w = new World(config, checkpoint);
+  if (fork) {
+    if (!checkpoint) throw new Error('A fork requires an existing checkpoint');
+    w.manifest.lineage = {
+      parentRunId: checkpoint.runId,
+      parentStateHash: w.stateHash(),
+      forkAt: w.now,
+      forkEventCount: w.eventCount,
+      branch: digest(inputs).slice(0, 16),
+    };
+    w.runId = digest(w.manifest).slice(0, 24);
+  }
   for (const input of inputs) {
     w.advance(input.at);
     try {
@@ -33,6 +44,10 @@ export function runWorld(config = {}, inputs = [], checkpoint = null) {
 }
 export function replay(checkpoint) {
   const w = new World(checkpoint.manifest.config);
+  if (checkpoint.manifest.engineBuild !== w.manifest.engineBuild)
+    throw new Error('Replay implementation mismatch: use the recorded simulator code');
+  w.manifest = clone(checkpoint.manifest);
+  w.runId = checkpoint.runId;
   for (const input of checkpoint.inputs ?? []) {
     while (w.eventCount < input.afterEventCount) {
       const next = w.step();
@@ -128,7 +143,9 @@ export function pairedComparison(rowsA, rowsB) {
     return digest(rest);
   };
   for (const { a, b } of pairs)
-    if (a.config && b.config && comparable(a.config) !== comparable(b.config))
+    if (a.manifest && b.manifest && a.manifest.engineBuild !== b.manifest.engineBuild)
+      throw new Error('Paired worlds use different simulator implementations');
+    else if (a.config && b.config && comparable(a.config) !== comparable(b.config))
       throw new Error('Paired worlds have different initial parameters, resources or budgets');
   const measures = ['served', 'pending', 'overprovided', 'uncoveredUnitMs', 'onTime'];
   const summarize = (differences) => {

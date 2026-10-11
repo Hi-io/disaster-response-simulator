@@ -37,6 +37,7 @@ try {
     result: {
       name: workerData.name,
       config: w.config,
+      engineBuild: w.manifest.engineBuild,
       wallMs,
       hashWallMs,
       effectiveRate: w.now / wallMs,

@@ -1,5 +1,24 @@
 import { clone, digest } from '../engine/determinism.mjs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 export const VERSION = '0.2.0';
+// Pin behavior, not only a manually maintained version label. Normalize Git line endings.
+const implementationFiles = ['contracts', 'engine', 'generators', 'content', 'scenarios', 'sources']
+  .flatMap((dir) =>
+    readdirSync(fileURLToPath(new URL(`../${dir}/`, import.meta.url)))
+      .filter((name) => name.endsWith('.mjs'))
+      .map((name) => `${dir}/${name}`),
+  )
+  .concat(['adapters/reference.mjs', 'evaluation/metrics.mjs', 'viewer/geometry.js'])
+  .sort();
+export const ENGINE_BUILD = digest(
+  Object.fromEntries(
+    implementationFiles.map((file) => [
+      file,
+      readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').replaceAll('\r\n', '\n'),
+    ]),
+  ),
+);
 export const DEFAULT_CONFIG = {
   seed: 'response-lab-2026',
   scenario: 'S01',
@@ -35,7 +54,7 @@ export const DEFAULT_CONFIG = {
   clockLatency: 'modeled',
   split: 'development',
   language: 'mixed',
-  logMode: 'full',
+  logMode: 'compact',
   maxEvents: 2_000_000,
   maxPosts: 1_000_000,
   topology: 'regional',
@@ -181,6 +200,7 @@ export function manifest(config, extra = {}) {
   return {
     schemaVersion: 1,
     engineVersion: VERSION,
+    engineBuild: ENGINE_BUILD,
     randomVersion: 'fnv-avalanche-v1',
     runtimeMajor: 24,
     config: validateConfig(config),

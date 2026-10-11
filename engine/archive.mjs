@@ -109,6 +109,22 @@ export class RecordArchive {
     }
     return undefined;
   }
+  some(fn) {
+    let index = 0;
+    for (const row of this) if (fn(row, index++)) return true;
+    return false;
+  }
+  every(fn) {
+    let index = 0;
+    for (const row of this) if (!fn(row, index++)) return false;
+    return true;
+  }
+  reduce(fn, initial) {
+    let result = initial,
+      index = 0;
+    for (const row of this) result = fn(result, row, index++);
+    return result;
+  }
   filter(fn) {
     const result = [];
     let index = 0;

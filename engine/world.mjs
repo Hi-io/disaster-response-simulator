@@ -539,6 +539,8 @@ export class World {
       throw new Error('Invalid checkpoint structure or scheduled event');
     if (snapshot.manifest.engineVersion !== VERSION)
       throw new Error('Checkpoint engine version mismatch');
+    if (snapshot.manifest.engineBuild !== this.manifest.engineBuild)
+      throw new Error('Checkpoint implementation mismatch: restore with the same simulator code');
     if (digest(snapshot.manifest.config) !== digest(this.config))
       throw new Error('Checkpoint configuration mismatch');
     this.manifest = clone(snapshot.manifest);

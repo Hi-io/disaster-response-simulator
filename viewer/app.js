@@ -214,7 +214,8 @@ function initialize3D() {
 function home() {
   const map = snapshot.state.map,
     mid = map.extentM / 2;
-  extent = map.extentM * 0.65;
+  const rect = $('canvas').getBoundingClientRect();
+  extent = map.extentM * Math.max(0.54, 0.82 / Math.max(0.1, rect.width / rect.height));
   camera.position.set(mid + map.extentM, map.extentM * 1.1, mid + map.extentM);
   camera.far = map.extentM * 8;
   camera.zoom = 1;
