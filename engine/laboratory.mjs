@@ -1,6 +1,7 @@
 import { clone } from './determinism.mjs';
 import { requireCondition as check, requireRole, requireOwner } from '../contracts/actions.mjs';
 import { release, available } from './ledger.mjs';
+import { consumeStaff } from './staff.mjs';
 
 // Experimental facilities, source access and operator shifts are world rules.
 // None of these methods exposes observer truth to a platform session.
@@ -306,10 +307,11 @@ export function installLaboratory(w) {
         for (const c of w.state.commitments.filter(
           (c) => c.resource === r.id && ['confirmed', 'reserved'].includes(c.state),
         )) {
-          release(r, c.quantity);
+          release(r, c.quantity, c.staffReservation);
           c.state = 'withdrawn';
           w.invalidateDependency(c.id);
         }
+        consumeStaff(r, r.quantity);
         r.lost += r.quantity;
         r.quantity = 0;
         r.condition = p.expired ? 'expired' : 'damaged';

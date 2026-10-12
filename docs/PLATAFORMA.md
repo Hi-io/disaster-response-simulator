@@ -1233,3 +1233,117 @@ Las metas de esta especificación no cambian por haber construido los instrument
 La revisión de requisitos cerró los mecanismos del alcance finito local y ejecutó **120 pruebas de plataforma y 120 del simulador**, con proveedor Gemma real en los ensayos aparte. [VALIDACION §13](VALIDACION.md#13-resultados-finales-de-la-entrega-local--13-de-octubre-de-2026-tokio) detalla campañas, huellas, comparación convencional/mismo modelo, pérdidas y objetivos no alcanzados. [CIERRE_LOCAL.md](CIERRE_LOCAL.md) relaciona funciones, UI y contratos con pruebas.
 
 Los checklists §38 permanecen como gates del proyecto completo: la instrucción de esta fase sustituye Gemini por Gemma y excluye GCP; no sustituye un estudio humano, holdout independiente ni calibración por tests sintéticos. La evidencia ejecutada obliga a limitar el claim de ventaja, tal como permite §38.2. Composición finita, reparación física, ingesta semántica, red/propiedad, recuperación y retención funcionan localmente; no se anuncian capacidades universales ni todos los porcentajes objetivos cumplidos.
+
+## 42. Replanteamiento de la respuesta después del contraste convencional
+
+### 42.1 Causas observadas en el producto y en la comparación
+
+El objetivo de esta iteración es demostrar una mejora sustancial de tiempo hasta ayuda útil, manteniendo cobertura, seguridad y coste visibles. Las referencias anteriores se conservan y no se cambia una fórmula para convertir una pérdida en éxito. Los porcentajes de §31 siguen siendo metas orientativas; una muestra pequeña positiva no sustituye la revisión humana ni un holdout independiente.
+
+| Causa verificable | Efecto | Cambio necesario |
+|---|---|---|
+| B5 y B6 reciben necesidades operacionales estructuradas y compilan con el mismo asignador; B6 solicita `plan_allocations` y luego `prepare_allocation` al modelo | Se paga latencia para repetir un procedimiento determinista ya resuelto | Camino compilado directo para el caso estructurado. Reservar GenAI para interpretar datos, investigar dependencias y descubrir información útil |
+| En `physical-scale-02-B6`, el payload vacío de `plan_allocations` falló en las tres rondas | Cada ronda gastó una llamada extra y tiempo sin nueva evidencia | Aceptar `{}` para contratos completamente opcionales; seguir rechazando JSON roto y campos obligatorios ausentes |
+| En ese mismo episodio, el modelo restringió las asignaciones a 2, 2 y 1 necesidades de las 100 concurrentes | Un caso destacado monopolizó el foco de la respuesta automática | Compilar alcance concurrente por defecto; conservar una selección manual específica cuando el operador la solicita |
+| Cualquier acción de una propuesta activa bloqueaba la necesidad completa | Una ayuda parcial impedía preparar el déficit restante, aunque hubiera medios disponibles | Holds por cantidad, recurso y vehículo; descontar operaciones ya observadas una sola vez; mantener el déficit residual accionable |
+| El coordinador conservaba propuestas de socios sin una proyección operacional consistente del recibo físico | Una necesidad podía seguir apareciendo pendiente y volver a planificarse después de la entrega del socio | Ledger de operaciones recibidas por dueño e ID fuente, ligado al paso exacto; cantidades efectivas reconciliadas con el snapshot |
+| La prueba ofrece información estructurada antes de exigir comprensión de fuentes desorganizadas | Mide principalmente cálculo/logística; aporta poca oportunidad causal al mecanismo semántico | Añadir un escenario de información parcial realista, con las mismas fuentes y vías de consulta para todas las referencias |
+| La evaluación limita oportunidades y usa latencias declaradas | Capacidad o verificaciones disponibles después de la última ronda pueden no utilizarse | Comparar políticas recurrentes con oportunidades iguales; separar reloj modelado, wall time, atención y disponibilidad física |
+
+El artefacto causal de la carga se conserva en [physical-scale-02-B6](https://github.com/Hi-io/nexo-platform/blob/main/reports/physical-load/1791811244239/physical-scale-02-B6.json). Los hallazgos no significan que agregar más edificios, animación 3D o más agentes resuelva el cuello de botella.
+
+### 42.2 Mecanismo híbrido que debe demostrar la nueva iteración
+
+1. **Información operacional ya recibida:** `compile_response` prepara una asignación comprobada sin turno adicional de modelo. Sigue siendo un borrador, con evidencia exacta y revisión del dueño. Es automatización determinista, no una contribución semántica del LLM.
+2. **Fuente pública o de campo no estructurada:** `discover_response` interpreta un lote finito; conserva origen, versión, ubicación, unidades, tiempo y contradicciones. No usa etiquetas de verdad ni necesidades del evaluador.
+3. **Aclaración dirigida:** el mecanismo solicita información que pueda convertir la inferencia en una observación operacional; conserva pendiente, inconcluso y coste de la vía disponible. Un post repetido no se convierte en varios testigos.
+4. **Observación recibida:** el plan usa el dato confirmado por la fuente operacional, capacidad y proyecciones consentidas. Ni una inferencia ni una aclaración sin respuesta habilitan cantidades inventadas.
+5. **Propuesta y revisión:** una acción autorizada por un humano mantiene dueño, versión, condiciones y recursos; cada socio revisa su parte. Se rechaza una asignación si otra propuesta o proyección cambió durante la preparación.
+6. **Trabajo físico y recibo:** se mide llegada, cantidad útil, ventana, backlog, ocupación o servicio sostenido. El coordinador reconcilia recibos de socios sin sumarlos de nuevo cuando llega un snapshot más reciente.
+7. **Cambios de situación:** nueva necesidad, recibo, disponibilidad o evidencia puede reabrir un alcance aplazado. Reparación conserva la operación original y el trabajo ya realizado.
+
+### 42.3 Holds de planificación y límites de autoridad
+
+Una propuesta en revisión retiene temporalmente su cantidad al calcular nuevas opciones, y su vehículo no se promete de nuevo mientras el paso siga pendiente. El hold solo evita solapamiento en planificación: no crea una reserva en el inventario del socio ni sustituye aprobación. Al observar una operación, su carga en tránsito sustituye ese hold; no se descuentan ambas cantidades. La necesidad fuente permanece intacta y el operador puede seguir viendo todo el déficit, incluidas propuestas que todavía no entregaron ayuda.
+
+Una necesidad de 600 L con 100 L en un borrador conserva 500 L planificables. Si además hay 100 L de otra operación en tránsito, conserva 400 L. Rechazar el borrador libera su hold; concluir el transporte no declara un servicio diferente ni una vida salvada. Las claves por dueño evitan que dos organizaciones con el mismo ID local compartan accidentalmente un vehículo o recurso.
+
+### 42.4 Qué deben comprobar los ensayos
+
+- Mismos mundos, fuentes disponibles, permisos, capacidades, plazos de campo y revisiones de dueño en los brazos comparados.
+- Referencia convencional competente con atención finita explícita y análisis de sensibilidad; no sabotearla ni asignarle una aprobación artificialmente lenta para hacer ganar al candidato.
+- Separar una ventaja del camino compilado de la ventaja incremental de interpretar información antes que la vía convencional.
+- Registro de fuente disponible → interpretada → consulta → observación operacional → propuesta → autorización → servicio útil. Medir todas las etapas; una reducción del tiempo del draft no basta.
+- Casos parciales, silenciosos, contradictorios, sin capacidad y bajo desconexión; conservación de falsos negativos, falsos positivos, información no recibida y episodios fallidos.
+- Repeticiones por seed, cantidades nativas, incertidumbre y resultados sin ventaja; no sustituir automáticamente Gemma por Gemini en los claims.
+- Freeze de candidato/evaluador/simulador antes de comparar. Una edición durante una ejecución invalida su comparación y exige una nueva prueba, conservando el registro anterior.
+
+Las pruebas de mecanismo añadidas comprueban déficit residual, protección de stock/vehículos, payload vacío válido, rechazo de parámetros ausentes/mal formados, foco manual frente a cola automática y carrera entre cálculo y preparación. **Estas pruebas no son los KPI de impacto.** La ventaja real debe aparecer en las comparaciones físicas posteriores.
+
+## 43. Aceptación del ciclo de descubrimiento y cierre de la nueva iteración
+
+El camino `discover_response` debe cumplir las mismas obligaciones de parada, borrado, recuperación y evidencia que la investigación previa. Añadir un flujo más rápido no permite heredar automáticamente los resultados de seguridad de otro flujo. Estas condiciones amplían la aplicación de T05/T10/T17/T18/T24 al ciclo fuente → interpretación → comprobación → compilación.
+
+### 43.1 Parada, corrección y retención
+
+- Una parada antes de empezar evita nuevas inferencias y consultas. Una parada durante una llamada puede dejar que esa llamada ya enviada termine y tenga coste; después no se solicitan más herramientas ni se prepara una propuesta.
+- Se comprueba la parada antes y después de una acción de campo, después de la sincronización y antes de persistir un borrador. Una actividad esperando evidencia o capacidad también puede detenerse desde la UI; no se transforma en `ready` por un resultado tardío.
+- El estado del `discovery_run` y sus continuaciones queda cancelado o borrado cuando corresponda. Un polling posterior no vuelve a encolarlo; el estado visible explica la causa, y las operaciones físicas ya autorizadas conservan su ledger.
+- Los IDs y versiones de las fuentes se revalidan después de recibir una aclaración y antes de preparar la propuesta. Una corrección durante ese intervalo exige reinterpretar la versión actual. La interpretación anterior no se reutiliza como si fuera evidencia vigente.
+- La retención incluye `discovery_run` como derivado de fuentes. Su tombstone conserva los mínimos de auditoría, no el contenido, candidatos ni ubicaciones de una interpretación borrada. Se cancelan jobs en cola, ejecución y retry de `discover_response`, `compile_response` e `interpret_sources`, además de los caminos anteriores.
+- La compilación estructurada comprueba cancelación y erasure aunque no invoque el modelo. No reanuda trabajo automáticamente después de un borrado aprobado o una parada del operador.
+
+### 43.2 Recuperación y estados parciales
+
+- Reiniciar el proceso con un recibo semántico persistido no vuelve a llamar al modelo sobre la misma versión. Una comprobación de campo usa su clave idempotente original y no crea una segunda inspección.
+- Al recuperar una lease vencida, un worker anterior no puede marcar el job de otro worker como terminado ni fallido. La continuación trabaja sobre el mismo episodio y recibos; no sobre un nuevo ID de inferencia.
+- Un error de lectura, versión, capacidad o comprobación permanece visible y recuperable. No deja indefinidamente la actividad en `reading` o `checking` cuando el job agotó su retry.
+- Una necesidad cubierta por cantidad ya en tránsito o por un borrador no se etiqueta como carencia de capacidad por comparar únicamente `quantity` con `served`. Se mantiene separada la espera de recepción, revisión, nueva evidencia y capacidad útil para el déficit residual.
+- Un borrador tiene que seguir siendo factible al prepararse: revalidar restricciones, permisos, ofertas y holds después del cálculo. La revisión posterior continúa siendo obligatoria, pero no debe recibir sistemáticamente conflictos que ya se conocen al compilar.
+- Los contadores de actividad no atribuyen una nueva inferencia a cada continuación determinista. El gasto real se deriva de recibos de proveedor; interpretaciones, queries y recompilaciones se informan por separado.
+
+### 43.3 Pruebas mínimas de esta iteración
+
+`tests/discovery-lifecycle.test.mjs` cubre parada antes de empezar, durante la primera comprobación y después del sync; fuente corregida durante comprobación; continuación tras restart con una sola inferencia/consulta; reclaim de lease; ausencia de nueva programación de un episodio cancelado/borrado; y retención del nuevo derivado y los tres jobs. La primera ejecución diagnóstica de esos ocho casos pasó dos y falló seis. Ese resultado documenta defectos de integración; no se debe anunciar esta iteración como cerrada hasta corregirlos y repetir la suite.
+
+Después de corregir fuentes, volver a ejecutar también discovery funcional, percepción, retención, leases/checkpoints, intake y asignación concurrente. Congelar las huellas y repetir las comparaciones pertinentes: las pruebas de seguridad no sustituyen una mejora física significativa frente a una referencia competente.
+
+### 43.4 Objetivos locales que aún necesitan evidencia
+
+La ganancia primaria que pidió el usuario es una reducción sustancial del tiempo hasta ayuda útil, con las mismas fuentes, recursos y condiciones de revisión. El ensayo de descubrimiento debe identificar qué etapa reduce tiempo y traducirlo a K01/K02/K03/K15, conservando escenarios sin ganancia. No se exige convertir un porcentaje conceptual en un umbral obligatorio nuevo.
+
+También se pueden comprobar localmente guardrails de K06/K08/K09/K13/K25/K26: sin dobles consumos, sin perjuicio oculto a comunidades silenciosas o desconectadas, costes nativos visibles, correcciones que no eliminan una necesidad y recuperación sin duplicar consultas. La ventaja de consulta activa (K14), composición fuera de una receta preparada (C1), reparación (K07) y calidad bajo carga semántica necesitan comparaciones específicas si se anuncian como ganancias adicionales. No se infieren del resultado del camino de descubrimiento.
+
+Un simulador más rico puede aumentar la validez de una prueba interna, pero no convierte por sí solo una prueba interna en validación independiente. Estudios humanos, revisión institucional, corpus independiente, holdout externo, Gemini y GCP siguen separados de esta fase, como se especifica en §41.
+
+## 44. Correcciones del ciclo temporal y evaluación delegada
+
+### 44.1 Una prioridad operativa, muchas tandas de información
+
+Cada interpretación conserva sus fuentes y versiones. Las tandas no reciben flotas privadas ni pueden desplazar la política de prioridad aprobada por su orden de llegada. Al preparar una respuesta se consideran todas las necesidades recibidas y cantidades aún planificables. Un foco manual explícito conserva su alcance; la automatización global no queda encerrada en el primer caso que aparece en pantalla.
+
+Dos tandas independientes que apuntan al mismo lugar/canal reutilizan la comprobación física ya pendiente. Esto ahorra trabajo de campo sin fusionar testigos independientes. Una inspección fallida, cancelada, inconclusa o vencida termina con un recibo y una causa visibles; no produce una espera infinita ni un retry automático ilimitado. El operador decide un reintento o canal alternativo.
+
+La actividad distingue espera de evidencia, capacidad para déficit residual, revisión de dueño y recepción física de una carga ya en tránsito. En estos estados no se repite la inferencia sobre fuentes idénticas ni se prepara un segundo envío de la cantidad comprometida. Cambios materiales pueden reanudar el cálculo; una parada o borrado lo impiden.
+
+### 44.2 Asignación de vehículos por información disponible
+
+Con la prioridad del operador intacta, comparar tiempo recibido de viaje del vehículo al stock y del stock al destino. Usar solo mapa y vías observadas, combustible, turno, masa, volumen, capacidad, propiedad y holds. Una carga todavía física en el vehículo sigue ocupando capacidad aunque un acuse diga que la acción anterior terminó. Desempatar de forma estable para poder reproducir el cálculo.
+
+La misma asignación determinista está disponible para las referencias. Su ganancia se atribuye a la ingeniería de planificación; la contribución incremental del modelo se mide por interpretar e investigar fuentes antes de que llegue el canal formal. Un ETA es una estimación condicionada a datos recibidos, no una ruta garantizada ni conocimiento de un bloqueo aún no comunicado.
+
+### 44.3 Seguridad de instalaciones y equipos compartidos
+
+La aclaración de un edificio puede entregar ubicación, requisitos y versión actual. No certifica seguridad. Radio, nota de voz, bandera `safe` aislada o firma de un mensaje no sustituyen una evaluación física competente y vigente.
+
+`plan_assessment` busca personal realmente cualificado para `field_assessment` y un vehículo disponible de su mismo dueño, propios o compartidos explícitamente. `prepare_assessment` revalida versión del objetivo, capacidad y versiones de permiso/oferta. Produce una propuesta solo de evaluación, pendiente de revisión; no autoriza, envía ni activa.
+
+Si el equipo pertenece a otra organización, ambos responsables autorizan su alcance. La fuente comprueba solicitud exacta, propietario, equipo, vehículo, versión, finalidad y vigencia; reserva recursos finitos, modela el viaje, trabajo y comunicaciones. El recibo de evaluación está separado del recibo de entrega de cantidades. El coordinador exige identificación de inspección/operación, organización inspectora, cualificación, método, versión y tiempos observados antes de habilitar `plan_service`.
+
+Una réplica, cambio material del objetivo o vencimiento invalida el uso de la evaluación anterior. Desconexión, retirada, incompatibilidad o ausencia de personal dejan el trabajo pendiente; no se reemplazan con certeza inventada. El resultado es una evaluación operacional modelada, no certificación estructural profesional de una instalación real.
+
+### 44.4 Evidencia que debe acompañar estos mecanismos
+
+Probar el recorrido completo con un responsable sin inspectores propios: metadatos recibidos → oferta consentida → dos aprobaciones → viaje y trabajo finitos → recibo vigente → abastecimiento y servicio ocupado. Conservar negativos de falta de competencia, ruta bloqueada, rechazo, desconexión, versión, vencimiento y replay.
+
+Para la ganancia temporal, conservar todos los mundos de la campaña predeclarada, incluidos fallos/censurados. Informar primera ayuda útil y ayuda suficiente, déficit por unidad nativa, cobertura, sobreprovisión, viajes, combustible, coste y consultas. Remuestrear semillas independientes para incertidumbre; treinta tweets del mismo incidente no son treinta réplicas. Añadir controles de lectura convencional cero/rápida, reportes formales inmediatos, comunidades silenciosas y pérdida de conexión. Los resultados de esta iteración se registran en [MEJORA_RESPUESTA.md](MEJORA_RESPUESTA.md), sin borrar los pilotos negativos previos.

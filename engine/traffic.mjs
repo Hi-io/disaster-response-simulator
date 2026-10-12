@@ -135,9 +135,11 @@ export function installTraffic(w) {
       if (op) {
         op.state = 'failed';
         op.failure = 'fuel_or_shift';
+        op.times.failed = w.now;
       }
       w.record('trip_failed', { reason: 'fuel_or_shift' }, v.id);
       if (op) w.reportOperation(op);
+      w.reportVehicle(v);
       return;
     }
     if (e.occupants.length >= e.storage || w.now < e.nextEntryAt) {

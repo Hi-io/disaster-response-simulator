@@ -3,6 +3,7 @@ import { validateConfig, manifest, VERSION } from '../contracts/config.mjs';
 import { SimError, validateAction } from '../contracts/actions.mjs';
 import { generateMap } from '../generators/map.mjs';
 import { createResource, checkResource } from './ledger.mjs';
+import { staffSnapshot } from './staff.mjs';
 import { installTraffic } from './traffic.mjs';
 import { installCommunications } from './communications.mjs';
 import { installInformation } from '../generators/information.mjs';
@@ -478,8 +479,8 @@ export class World {
     this.updateNeed(id, { served: n.served + quantity }, { physicalService: useful > 0 });
     this.record('service_delivered', { quantity, type: n.type, building: n.building }, id);
   }
-  observeResource(org, r) {
-    this.state.observations[org].resources[r.id] = {
+  resourceView(r) {
+    return {
       id: r.id,
       owner: r.owner,
       node: r.node,
@@ -489,10 +490,12 @@ export class World {
       floor: r.floor,
       unit: r.unit,
       compatibility: clone(r.compatibility),
-      qualifications: clone(r.qualifications ?? []),
+      ...staffSnapshot(r),
       version: r.version,
-      at: this.now,
     };
+  }
+  observeResource(org, r) {
+    this.state.observations[org].resources[r.id] = { ...this.resourceView(r), at: this.now };
   }
   observeNeed(org, n) {
     this.state.observations[org].needs[n.id] = {

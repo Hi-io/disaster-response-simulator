@@ -62,7 +62,7 @@ export function installCooperation(w) {
         'EXPIRY',
         'Invalid validity window',
       );
-      if (c.state === 'reserved') reserve(r, c.quantity);
+      if (c.state === 'reserved') c.staffReservation = reserve(r, c.quantity);
       w.state.commitments.push(c);
       w.schedule(c.expiresAt, 'expire_commitment', { id: c.id }, 1, c.id);
       w.observeResource(a.org,r);
@@ -74,7 +74,7 @@ export function installCooperation(w) {
     const r = w.resource(c.resource);
     if (p.action === 'reserve') {
       check(c.state === 'offered' && c.expiresAt > w.now, 'STATE', 'Offer is not reservable');
-      reserve(r, c.quantity);
+      c.staffReservation = reserve(r, c.quantity);
       transition(c, 'reserved', COMMITMENT_STATES);
     } else if (p.action === 'confirm') {
       check(c.expiresAt > w.now && c.state === 'reserved', 'STATE', 'Reservation required');
@@ -87,7 +87,7 @@ export function installCooperation(w) {
     } else if (['release', 'withdraw'].includes(p.action)) {
       const previous = c.state;
       transition(c, p.action === 'release' ? 'released' : 'withdrawn', COMMITMENT_STATES);
-      if (['reserved', 'confirmed'].includes(previous)) release(r, c.quantity);
+      if (['reserved', 'confirmed'].includes(previous)) release(r, c.quantity, c.staffReservation);
       w.invalidateDependency(c.id);
       w.record('commitment_withdrawn', { id: c.id, resource: r.id });
     } else if (p.action === 'reject') {
@@ -161,7 +161,7 @@ export function installCooperation(w) {
       transition(c, 'confirmed', COMMITMENT_STATES);
     } else if (p.action === 'reject') {
       t.state = 'rejected';
-      release(w.resource(t.resource), t.quantity);
+      release(w.resource(t.resource), t.quantity, c.staffReservation);
       c.state = 'released';
     } else check(false, 'TRANSFER_ACTION', 'Unknown transfer action');
     return clone(t);
@@ -228,6 +228,7 @@ export function installCooperation(w) {
     if (b && (b.unloading >= b.unloadCapacity || !b.receiverAvailable || b.damage >= 3)) {
       op.state = 'waiting_to_unload';
       w.record('unloading_queued', { building: b.id }, op.id);
+      w.reportOperation(op);
       if (w.now + 30000 <= w.config.durationMs)
         w.schedule(w.now + 30000, 'request_unload', p, 4, `unload-queue-${op.id}-${w.now}`);
       return;
@@ -236,6 +237,7 @@ export function installCooperation(w) {
     op.unloadingSlot = !!b;
     op.state = 'unloading';
     op.times.unloadingStarted = w.now;
+    w.reportOperation(op);
     w.schedule(w.now + w.config.unloadMs, 'unload', p, 4, `unload-${op.id}-${w.now}`);
   });
   w.on('unload', (p) => {
@@ -262,6 +264,7 @@ export function installCooperation(w) {
             ? 'no_receiver'
             : 'storage_or_unloading_capacity';
       w.record('unloading_blocked', { reason: op.waitingReason }, op.id);
+      w.reportOperation(op);
       if (w.now + 30000 <= w.config.durationMs)
         w.schedule(w.now + 30000, 'request_unload', p, 4, `unload-wait-${op.id}-${w.now}`);
       return;
@@ -274,6 +277,7 @@ export function installCooperation(w) {
       ) {
         op.state = 'waiting_for_compatible_equipment';
         w.record('equipment_incompatible', { resource: r.id, building: b.id }, op.id);
+        w.reportOperation(op);
         return;
       }
     }
@@ -283,7 +287,7 @@ export function installCooperation(w) {
         r = w.resource(op.destinationStock);
       r.owner = t.to;
       r.loanOf = t.loan ? t.id : null;
-      w.observeResource(t.to, r);
+      if (r.type !== 'staff') w.observeResource(t.to, r);
       t.state = 'received';
       t.receivedAt = w.now;
       w.record(

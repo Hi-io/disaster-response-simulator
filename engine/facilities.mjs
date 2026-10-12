@@ -1,7 +1,19 @@
 import { requireCondition as check, requireRole, requireOwner } from '../contracts/actions.mjs';
 import { available, reserve, release, createResource } from './ledger.mjs';
 import { clone } from './determinism.mjs';
+import { qualifiedStaffAvailable } from './staff.mjs';
 export function installFacilities(w) {
+  // Unloading keeps stocks separate when two organizations receive goods at
+  // the same node. A service site may use only stock owned by its owner; a
+  // public or previously consumed foreign stock is never a dependency.
+  const facilityStock = (b, type) => {
+    const owner = b.ownerOrg ?? 'org0';
+    for (const id of [`stock-${b.node}-${type}`, `stock-${b.node}-${type}-${owner}`]) {
+      const stock = w.resource(id);
+      if (stock?.owner === owner && stock.node === b.node && stock.type === type) return stock;
+    }
+    return null;
+  };
   w.integrateFacility=(b)=>{const elapsed=Math.max(0,w.now-(b.serviceIntegratedAt??w.now));if(b.state==='operating'){b.operatingMs=(b.operatingMs??0)+elapsed;if(b.use==='shelter')b.servedPlaceMs=(b.servedPlaceMs??0)+(b.occupancy??0)*elapsed;}b.serviceIntegratedAt=w.now;};
   w.reportFacility=(b)=>w.send({kind:'facility_status',observedAt:w.now,building:{id:b.id,node:b.node,use:b.use,state:b.state,openAt:b.openAt??null,capacity:b.capacity,occupancy:b.occupancy,provisioned:clone(b.provisioned),dependencies:clone(b.dependencies),requiredPower:clone(b.requiredPower),requiredStaffSkills:clone(b.requiredStaffSkills??[]),version:b.version,...(b.state==='closed'?{safe:false}:{}),ownerOrg:b.ownerOrg??'org0'}},b.ownerOrg??'org0',{sector:b.sector});
   w.onAction('activate', (a, p) => {
@@ -30,12 +42,13 @@ export function installFacilities(w) {
     check(!['operating', 'provisioning'].includes(b.state), 'STATE', 'Already active');
     for (const [type, amount] of Object.entries(b.dependencies)) {
       check((b.provisioned[type] ?? 0) >= amount, 'DEPENDENCY', `Missing ${type}`);
-      const stock = w.resource(`stock-${b.node}-${type}`);
+      const stock = facilityStock(b, type);
       check(stock && available(stock) >= amount, 'DEPENDENCY', `Physical ${type} is unavailable`);
     }
-    const power = w.resource(`stock-${b.node}-energy`);
-    const staff = w.resource(`stock-${b.node}-staff`);
-    for (const skill of b.requiredStaffSkills ?? []) check((staff?.qualificationCounts?.[skill] ?? 0) >= (b.dependencies.staff ?? 0), 'QUALIFICATION', `Qualified ${skill} staff have not reached the facility`);
+    const power = facilityStock(b, 'energy');
+    const staff = facilityStock(b, 'staff');
+    check(qualifiedStaffAvailable(staff, b.requiredStaffSkills ?? []) >= (b.dependencies.staff ?? 0),
+      'QUALIFICATION', 'Enough staff with all required skills must be physically available');
     if (power)
       check(
         power.compatibility?.connector === b.requiredPower.connector &&
@@ -49,8 +62,8 @@ export function installFacilities(w) {
     for (const [type, quantity] of Object.entries(b.dependencies).filter(
       ([type]) => type !== 'water',
     )) {
-      const r = w.resource(`stock-${b.node}-${type}`);
-      reserve(r, quantity);
+      const r = facilityStock(b, type);
+      const staffReservation = reserve(r, quantity, type === 'staff' ? (b.requiredStaffSkills ?? []) : []);
       const c = {
         id: w.nextId('commitment'),
         owner: r.owner,
@@ -64,6 +77,7 @@ export function installFacilities(w) {
         version: 1,
         task: `facility-${b.id}`,
         authorizedBy: a.id,
+        staffReservation,
       };
       w.state.commitments.push(c);
       b.activeReservations.push(c.id);
@@ -89,7 +103,7 @@ export function installFacilities(w) {
     for (const id of b.activeReservations ?? []) {
       const c = w.state.commitments.find((c) => c.id === id);
       if (c?.state === 'confirmed') {
-        release(w.resource(c.resource), c.quantity);
+        release(w.resource(c.resource), c.quantity, c.staffReservation);
         c.state = 'released';
       }
     }
@@ -152,7 +166,7 @@ export function installFacilities(w) {
     if (b?.state !== 'operating') return;
     w.integrateFacility(b);
     b.waterConsumptionRemainder=(b.waterConsumptionRemainder??0)+(b.occupancy??0)*w.config.waterMlPerPersonDay;
-    const water = w.resource(`stock-${b.node}-water`),
+    const water = facilityStock(b, 'water'),
       amount = Math.floor(b.waterConsumptionRemainder/1440000);
     b.waterConsumptionRemainder%=1440000;
     if (b.damage >= 2 || !water || water.quantity < amount) {
@@ -188,10 +202,6 @@ export function installFacilities(w) {
         source = w.resource(op.resource),
         dest = w.resource(op.destinationStock);
       if (source?.compatibility) dest.compatibility = clone(source.compatibility);
-      if (op.resourceType === 'staff') {
-        dest.qualificationCounts ??= {};
-        for (const skill of source?.qualifications ?? []) dest.qualificationCounts[skill] = (dest.qualificationCounts[skill] ?? 0) + op.received;
-      }
       if (op.resourceType === 'fuel') b.generatorFuel = (b.generatorFuel ?? 0) + op.received * 5;
     }
   });

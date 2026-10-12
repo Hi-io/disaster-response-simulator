@@ -1,3 +1,5 @@
+import { digest } from './determinism.mjs';
+
 export function installCommunications(w) {
   w.sectorForNode = (node) => w.state.map.sectors.find((s) => s.node === node)?.id;
   w.connected = (sector, channel = 'internet') => {
@@ -204,9 +206,15 @@ export function installCommunications(w) {
       w.state.partnerOffers ??= {};
       (w.state.partnerOffers[m.to] ??= []).push(p.transfer);
       w.record('transfer_offer_received', { from: p.transfer.from, to: m.to, id: p.transfer.id });
+    } else if (p.kind === 'resource_status') {
+      const old = w.state.observations[m.to].resources[p.resource.id];
+      if (!old || p.resource.version > old.version ||
+        p.resource.version === old.version && p.observedAt >= (old.at ?? -1))
+        w.state.observations[m.to].resources[p.resource.id] = { ...p.resource, at: p.observedAt };
     } else if (p.kind === 'operation_status') {
       const old = w.state.observations[m.to].operations[p.operation.id];
-      if (!old || p.observedAt >= (old.observedAt ?? 0))
+      if (!old || p.observedAt > (old.observedAt ?? -1) ||
+        p.observedAt === (old.observedAt ?? -1) && (p.operation.version ?? 0) >= (old.version ?? 0))
         w.state.observations[m.to].operations[p.operation.id] = {
           ...p.operation,
           observedAt: p.observedAt,
@@ -217,6 +225,9 @@ export function installCommunications(w) {
         w.state.observations[m.to].buildings[p.building.id]={...prior,...p.building,statusObservedAt:p.observedAt};
     } else if (p.kind === 'query_result') w.completeQuery(p);
   });
+  w.reportResource = (resource, org) => w.send({ kind: 'resource_status',
+    resource: w.resourceView(resource), observedAt: w.now }, org,
+    { sector: w.sectorForNode(resource.node) });
   w.reportRoad = (edge, org) => {
     if (edge)
       w.send(
@@ -233,8 +244,21 @@ export function installCommunications(w) {
       );
   };
   w.reportOperation = (op) => {
+    // Version the material lifecycle, never the number of polls. Tracking is
+    // private simulator state and is not included in any actor observation.
+    const material = structuredClone(op);
+    delete material.version;
+    delete material.observedAt;
+    const signature = digest(material);
+    w.state.operationReportVersions ??= {};
+    const previous = w.state.operationReportVersions[op.id];
+    const version = previous?.signature === signature
+      ? previous.version
+      : Math.max(previous?.version ?? 0, op.version ?? 0) + 1;
+    op.version = version;
+    w.state.operationReportVersions[op.id] = { signature, version };
     const v = w.vehicle(op.vehicle);
-    w.send(
+    return w.send(
       { kind: 'operation_status', operation: structuredClone(op), observedAt: w.now },
       op.org,
       { sector: v ? w.sectorForNode(v.node) : null },

@@ -1,9 +1,10 @@
 import { requireCondition } from '../contracts/actions.mjs';
+import { reserveStaff, releaseStaffHold, loadStaff, checkStaff } from './staff.mjs';
 
 export function available(resource) {
   return resource.quantity - resource.reserved - resource.floor;
 }
-export function reserve(resource, quantity) {
+export function reserve(resource, quantity, skills = []) {
   requireCondition(
     Number.isSafeInteger(quantity) && quantity > 0,
     'QUANTITY',
@@ -14,20 +15,25 @@ export function reserve(resource, quantity) {
     'INSUFFICIENT_RESOURCE',
     'Insufficient unreserved stock',
   );
+  const staffReservation = reserveStaff(resource, quantity, skills);
   resource.reserved += quantity;
   resource.version++;
+  return staffReservation;
 }
-export function release(resource, quantity) {
+export function release(resource, quantity, staffReservation) {
   requireCondition(quantity <= resource.reserved, 'RESERVATION', 'Invalid release');
+  releaseStaffHold(resource, quantity, staffReservation);
   resource.reserved -= quantity;
   resource.version++;
 }
-export function load(resource, quantity) {
+export function load(resource, quantity, staffReservation) {
   requireCondition(quantity <= resource.reserved, 'RESERVATION', 'Stock was not reserved');
+  const staffCargo = loadStaff(resource, quantity, staffReservation);
   resource.reserved -= quantity;
   resource.quantity -= quantity;
   resource.transferred += quantity;
   resource.version++;
+  return staffCargo;
 }
 export function checkResource(resource) {
   return (
@@ -35,7 +41,7 @@ export function checkResource(resource) {
     resource.quantity >= 0 &&
     resource.reserved >= 0 &&
     resource.reserved <= resource.quantity &&
-    resource.initial + resource.produced + resource.received ===
+    checkStaff(resource) && resource.initial + resource.produced + resource.received ===
       resource.quantity + resource.consumed + resource.lost + resource.transferred
   );
 }

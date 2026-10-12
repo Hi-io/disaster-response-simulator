@@ -1,4 +1,5 @@
 import { clone } from './determinism.mjs';
+import { staffSnapshot, qualifiedStaffAvailable, staffReservation, receiveStaff } from './staff.mjs';
 import {
   available,
   reserve,
@@ -18,11 +19,11 @@ const terminal = (o) => ['completed', 'cancelled', 'failed'].includes(o.state);
 
 export function installTasks(w) {
   // Personnel assignments use the same reservation ledger as deliveries.
-  w.allocateStaff = (org, quantity, task, resourceId = `r-${org}-staff`) => {
+  w.allocateStaff = (org, quantity, task, resourceId = `r-${org}-staff`, skills = []) => {
     const r = w.resource(resourceId);
     check(r?.owner === org && r.type === 'staff', 'STAFF', 'Only owned staff may be assigned');
     check(available(r) >= quantity, 'STAFF', 'No staff available');
-    reserve(r, quantity);
+    const reservation = reserve(r, quantity, skills);
     const c = {
       id: w.nextId('commitment'),
       owner: org,
@@ -36,6 +37,7 @@ export function installTasks(w) {
       createdAt: w.now,
       version: 1,
       authorizedBy: `task-${org}`,
+      staffReservation: reservation,
     };
     w.state.commitments.push(c);
     return c.id;
@@ -43,7 +45,7 @@ export function installTasks(w) {
   w.releaseStaff = (id) => {
     const c = w.state.commitments.find((c) => c.id === id);
     if (c && c.state === 'confirmed') {
-      release(w.resource(c.resource), c.quantity);
+      release(w.resource(c.resource), c.quantity, c.staffReservation);
       transition(c, 'released', COMMITMENT_STATES);
     }
   };
@@ -163,7 +165,7 @@ export function installTasks(w) {
       i.state = 'timeout';
       return;
     }
-    if (i.purpose === 'facility_safety' && !r?.qualifications?.includes('field_assessment')) {
+    if (i.purpose === 'facility_safety' && qualifiedStaffAvailable(r, ['field_assessment']) < 1 && available(r) > 0) {
       i.state = 'inconclusive';
       i.failure = 'qualified_field_assessor_unavailable';
       w.record('verification_inconclusive', { inspection: id, reason: i.failure });
@@ -196,7 +198,10 @@ export function installTasks(w) {
       w.record('verification_inconclusive', { inspection: id, reason: i.failure });
       return;
     }
-    i.staff = w.allocateStaff(i.org, 1, id, i.staffResource);
+    i.staff = w.allocateStaff(i.org, 1, id, i.staffResource,
+      i.purpose === 'facility_safety' ? ['field_assessment'] : []);
+    const assigned = w.state.commitments.find(c => c.id === i.staff);
+    i.staffQualifications = staffReservation(r, assigned.staffReservation)?.qualifications ?? [];
     i.state = 'traveling';
     i.vehicle = v.id;
     i.startedAt = w.now;
@@ -243,7 +248,7 @@ export function installTasks(w) {
       };
       if (i.purpose === 'facility_safety') result.assessment = {
         purpose: 'facility_safety', method: 'field', competent: true,
-        inspectorOrg: i.org, staffResource: i.staffResource, qualifications: clone(w.resource(i.staffResource).qualifications),
+        inspectorOrg: i.org, staffResource: i.staffResource, qualifications: clone(i.staffQualifications),
         vehicle: i.vehicle, operation: i.operation, observedAt: w.now,
         targetVersion: b.version, validUntil: w.now + i.validForMs,
       };
@@ -293,7 +298,7 @@ export function installTasks(w) {
         floor: r.floor,
         available: available(r),
         compatibility: clone(r.compatibility),
-        qualifications: clone(r.qualifications ?? []),
+        ...staffSnapshot(r),
         version: r.version,
       };
     }
@@ -308,6 +313,7 @@ export function installTasks(w) {
       v.state = 'idle';
       v.operation = null;
       w.reportVehicle(v);
+      w.reportOperation(op);
     }
     w.send({ kind: 'verification', inspection: id, result, observedAt: w.now }, i.org, {
       sector,
@@ -430,10 +436,13 @@ export function installTasks(w) {
     w.releaseStaff(t.staff);
     const op = operation(w, t.operation);
     op.state = t.state;
+    if (t.failure) { op.failure = t.failure; op.times.failed = w.now; }
+    else op.times.service = w.now;
     const v = w.vehicle(op.vehicle);
     v.state = 'idle';
     v.operation = null;
     w.reportVehicle(v);
+    w.reportOperation(op);
   });
 
   w.onAction('evacuate', (a, p) => {
@@ -514,12 +523,15 @@ export function installTasks(w) {
       cohort = w.state.cohorts.find((c) => c.sector === w.building(task.from).sector);
     if (!cohort || cohort.population < task.quantity) {
       op.state = 'failed';
+      op.failure = 'population_changed_before_pickup';
+      op.times.failed = w.now;
       task.state = 'failed';
       w.need(task.need).inTransit -= task.quantity;
       w.building(task.to).reservedPlaces -= task.quantity;
       v.state = 'idle';
       v.operation = null;
       w.reportVehicle(v);
+      w.reportOperation(op);
       return;
     }
     task.health = w.takePopulationGroup(cohort, task.quantity);
@@ -544,6 +556,7 @@ export function installTasks(w) {
       t.state = 'waiting_for_safe_destination';
       op.state = 'waiting_for_safe_destination';
       w.record('evacuation_blocked', { to: to.id, quantity: v.passengers }, t.id);
+      w.reportOperation(op);
       return;
     }
     to.reservedPlaces -= t.quantity;
@@ -606,10 +619,12 @@ export function installTasks(w) {
       );
     if (op.type === 'recovery') {
       const r = w.resource(op.resource);
+      receiveStaff(r, v.load, v.staffCargo);
       r.quantity += v.load;
       r.received += v.load;
       r.version++;
       v.load = 0;
+      delete v.staffCargo;
       v.state = 'idle';
       v.operation = null;
       w.reportVehicle(v);
@@ -617,6 +632,7 @@ export function installTasks(w) {
       op.times.returned = w.now;
       w.observeResource(op.org, r);
       w.record('cargo_returned', { quantity: op.quantity, resource: r.id }, op.id);
+      w.reportOperation(op);
     }
   });
   w.onAction('reroute', (a, p) => {
@@ -747,7 +763,7 @@ export function installTasks(w) {
       op.unloadingSlot = false;
     }
     if (c && ['reserved', 'confirmed'].includes(c.state)) {
-      release(w.resource(c.resource), c.quantity);
+      release(w.resource(c.resource), c.quantity, c.staffReservation);
       c.state = 'released';
     }
     if (v.load) {
@@ -771,5 +787,6 @@ export function installTasks(w) {
       }
     }
     w.record('cancel_received', { operation: op.id, cargo: v.load }, v.id);
+    w.reportOperation(op);
   };
 }

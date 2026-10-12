@@ -14,6 +14,7 @@ import {
   createResource,
 } from './ledger.mjs';
 import { clone } from './determinism.mjs';
+import { staffSnapshot, receiveStaff, consumeStaff } from './staff.mjs';
 import { route } from '../generators/map.mjs';
 
 const positive = (q) =>
@@ -119,7 +120,7 @@ export function installActions(w) {
           reserved: r.reserved,
           floor: r.floor,
           compatibility: r.compatibility,
-          qualifications: clone(r.qualifications ?? []),
+          ...staffSnapshot(r),
           version: r.version,
           observedAt: w.now,
         }));
@@ -132,7 +133,22 @@ export function installActions(w) {
         .map((v) => clone(w.state.observations[v.owner].vehicles[v.id]));
     if (p.target === 'roads') result = clone(known(a).edges);
     if (p.target === 'facility') result = clone(known(a).buildings[p.id] ?? null);
-    if (p.target === 'policy') result = clone(w.organization(a.org).policy);
+    if (p.target === 'policy') result = {
+      ...clone(w.organization(a.org).policy),
+      version: w.organization(a.org).version,
+      observedAt: w.now,
+      execution: {
+        reservation: { defaultTtlMs: 900000, maxTtlMs: 86400000 },
+        delivery: {
+          loadMs: w.config.loadMs,
+          unloadMs: w.config.unloadMs,
+          // Nominal command transport is a received contract, not a promise
+          // that outages or congestion cannot delay the real order.
+          commandNominalLatencyMs: w.config.networkLatencyMs +
+            Math.ceil(1000 / w.config.bandwidthBytesPerSecond * 1000),
+        },
+      },
+    };
     if (p.target === 'sources') result = w.publicFeed(p).posts;
     if (p.target === 'documents')
       result = [
@@ -440,7 +456,7 @@ export function installActions(w) {
       check(c.expiresAt > w.now && c.expiresAt <= w.now + 86400000, 'EXPIRY', 'Invalid expiry');
       if (c.state === 'reserved') {
         try {
-          reserve(r, c.quantity);
+          c.staffReservation = reserve(r, c.quantity);
         } catch (e) {
           w.record('reservation_conflict', { resource: r.id, quantity: c.quantity });
           throw e;
@@ -455,7 +471,7 @@ export function installActions(w) {
     requireOwner(a, c.owner);
     const r = w.resource(c.resource);
     if (p.action === 'reserve') {
-      reserve(r, c.quantity);
+      c.staffReservation = reserve(r, c.quantity);
       transition(c, 'reserved', COMMITMENT_STATES);
     } else if (p.action === 'confirm') {
       check(c.expiresAt > w.now, 'EXPIRED', 'Offer expired');
@@ -465,7 +481,7 @@ export function installActions(w) {
     } else if (['release', 'withdraw'].includes(p.action)) {
       const previous = c.state;
       transition(c, p.action === 'release' ? 'released' : 'withdrawn', COMMITMENT_STATES);
-      if (['reserved', 'confirmed'].includes(previous)) release(r, c.quantity);
+      if (['reserved', 'confirmed'].includes(previous)) release(r, c.quantity, c.staffReservation);
       w.record('commitment_withdrawn', { id: c.id, resource: r.id });
       for (const op of w.state.operations.filter(
         (x) => x.commitment === c.id && !['completed', 'cancelled', 'failed'].includes(x.state),
@@ -481,12 +497,15 @@ export function installActions(w) {
     const previous = c.state;
     c.state = 'expired';
     c.version++;
-    if (['reserved', 'confirmed'].includes(previous)) release(w.resource(c.resource), c.quantity);
+    if (['reserved', 'confirmed'].includes(previous)) release(w.resource(c.resource), c.quantity, c.staffReservation);
     w.observeResource(c.owner,w.resource(c.resource));
     w.record('commitment_expired', { id });
   });
   w.onAction('dispatch', (a, p) => {
     requireRole(a, commandRoles);
+    if (p.ttlMs !== undefined)
+      check(Number.isSafeInteger(p.ttlMs) && p.ttlMs > 0 && p.ttlMs <= 86400000,
+        'EXPIRY', 'Dispatch reservation validity must be positive and at most 24 hours');
     const v = w.vehicle(p.vehicle),
       n = w.need(p.need),
       r = w.resource(p.resource);
@@ -537,7 +556,7 @@ export function installActions(w) {
         'Split the commitment before partial dispatch',
       );
     } else {
-      reserve(r, p.quantity);
+      const staffReservation = reserve(r, p.quantity);
       c = {
         id: w.nextId('commitment'),
         owner: a.org,
@@ -545,11 +564,12 @@ export function installActions(w) {
         resource: r.id,
         quantity: p.quantity,
         state: 'confirmed',
-        expiresAt: w.now + 900000,
+        expiresAt: w.now + (p.ttlMs ?? 900000),
         conditions: [],
         createdAt: w.now,
         version: 1,
         authorizedBy: a.id,
+        staffReservation,
       };
       w.state.commitments.push(c);
       w.schedule(c.expiresAt, 'expire_commitment', { id: c.id }, 1, c.id);
@@ -590,15 +610,18 @@ export function installActions(w) {
     if (c.state !== 'confirmed') {
       op.state = 'failed';
       op.failure = 'commitment_invalid';
+      op.times.failed = w.now;
       v.state = 'idle';
       v.operation = null;
       w.reportVehicle(v);
+      w.reportOperation(op);
       return;
     }
-    load(r, op.quantity);
+    const staffCargo = load(r, op.quantity, c.staffReservation);
     transition(c, 'dispatched', COMMITMENT_STATES);
     v.load = op.quantity;
     v.resourceType = r.type;
+    if (staffCargo) v.staffCargo = staffCargo;
     op.times.prepared = w.now;
     w.startTrip(v, op.destination, op);
   });
@@ -610,6 +633,7 @@ export function installActions(w) {
     if (b?.damage >= 3) {
       op.state = 'waiting_to_unload';
       w.record('unloading_blocked', { reason: 'unsafe_destination' }, op.id);
+      w.reportOperation(op);
       return;
     }
     const owner = op.recipientOrg ?? (b && !op.need ? (b.ownerOrg ?? 'org0') : op.org);
@@ -620,15 +644,18 @@ export function installActions(w) {
       destination = createResource(stockId, owner, op.destination, op.resourceType, 0);
       w.state.resources.push(destination);
     }
+    receiveStaff(destination, v.load, v.staffCargo);
     destination.quantity += v.load;
     destination.received += v.load;
     destination.version++;
     destination.compatibility = clone(w.resource(op.resource).compatibility);
     op.destinationStock = destination.id;
     op.received = v.load;
+    if (v.staffCargo) op.receivedStaff = clone(v.staffCargo);
     op.times.received = w.now;
     op.state = 'received';
     v.load = 0;
+    delete v.staffCargo;
     v.state = 'idle';
     v.operation = null;
     w.reportVehicle(v);
@@ -649,6 +676,7 @@ export function installActions(w) {
       causeEvent: `receipt-${op.id}`,
     });
     if (op.need) {
+      consumeStaff(destination, op.received);
       destination.quantity -= op.received;
       destination.consumed += op.received;
       w.serveNeed(op.need, op.received);
@@ -661,6 +689,7 @@ export function installActions(w) {
       );
     } else op.state = 'completed';
     w.observeResource(op.org, w.resource(op.resource));
+    if (destination.type === 'staff') w.reportResource(destination, owner);
     w.reportOperation(op);
   });
   w.onAction('transfer', (a, p) => {
@@ -882,6 +911,7 @@ export function installActions(w) {
     const p = w.state.purchases.find((x) => x.id === id);
     if (!p) return;
     const r = w.resource(`r-${p.org}-${p.type}`);
+    receiveStaff(r, p.quantity);
     r.quantity += p.quantity;
     r.received += p.quantity;
     r.version++;
@@ -936,7 +966,7 @@ export function installActions(w) {
     const c = w.state.commitments.find((x) => x.id === op.commitment),
       r = w.resource(op.resource);
     if (c.state === 'confirmed') {
-      release(r, c.quantity);
+      release(r, c.quantity, c.staffReservation);
       transition(c, 'released', COMMITMENT_STATES);
       const v = w.vehicle(op.vehicle);
       v.state = 'idle';

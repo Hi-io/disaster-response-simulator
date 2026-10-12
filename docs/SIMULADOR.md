@@ -1115,3 +1115,164 @@ El motor pasa **120 pruebas** en la verificación conjunta final, mantiene 26 en
 La evaluación conserva 36 outcomes principales, 21 estructurales con abort histórico, siete referencias corregidas y seis mundos de carga física. El probe de transporte monitoriza las 1.000 publicaciones generadas hasta incluir uploads tardíos en las cuatro organizaciones: 4.000 pares medidos sin pérdida. La prueba de semántica mide otro corpus y no utiliza los acuses como comprensión.
 
 La simulación no garantiza una victoria: B6 no logró una ventaja robusta sobre B5/B7 ni el target de tiempo K07. Los resultados negativos son una salida válida del evaluador, no un defecto a eliminar para que el candidato siempre gane. El realismo operacional, el baseline profesional y el holdout externo requieren revisión independiente. [Resultados y huellas](VALIDACION.md#13-resultados-finales-de-la-entrega-local--13-de-octubre-de-2026-tokio) evitan heredar silenciosamente un resultado tras corregir una referencia.
+
+## 41. Información antes del informe formal: nuevo estrato de evaluación
+
+### 41.1 Por qué hace falta y qué resultados no se reemplazan
+
+Las primeras campañas comparaban coordinación sobre demandas ya estructuradas. S23 entrega el ticket formal desde el inicio; la carga física masiva también notificaba cada necesidad a todas las organizaciones antes de publicar el ruido social. No había una brecha de interpretación que NEXO necesitara cerrar. El planificador convencional competente podía distribuir directamente; investigar lo mismo otra vez añadía tiempo.
+
+Conservar estos mundos como controles negativos. La nueva pregunta es: **cuando existe una necesidad física y solo hay reportes públicos dispersos, ¿NEXO puede obtener una comprobación responsable y hacer llegar ayuda útil antes que un proceso competente de referencia?** La respuesta depende tanto del producto como del trabajo de lectura, los canales de comprobación y el tiempo físico de transporte. No basta con añadir más edificios o publicaciones a un mundo donde todos los tickets ya vienen tipados.
+
+### 41.2 Contrato del generador ya implementado
+
+El evaluador puede importar `generators/response-benchmark.mjs` y llamar `installResponseBenchmark(world, options)` antes del primer avance. El generador no es un agente y no prepara una asignación para NEXO.
+
+| Parámetro | Valor diagnóstico inicial | Qué cambia |
+|---|---:|---|
+| `count` | 12 | Necesidades físicas positivas, una por edificio residencial distinto |
+| `noise` | 48 | Originales públicos de contexto, rumores, archivo y solidaridad |
+| `reposts` | 2 | Copias por solicitud, con lineage público deduplicable por ambos brazos |
+| `reportAt` | 15.000 ms | Primer reporte social desde la necesidad física |
+| `staggerMs` | 2.000 ms | Separación entre reportes de distintas necesidades |
+| `formalDelayMs` | 1.800.000 ms | Retraso del canal formal respecto a cada reporte social |
+| `explicitFraction` | 1/3 | Proporción esperada de redacciones reconocibles por un patrón convencional simple |
+| `silentFraction` | 0 | Fracción esperada sin publicación social, que sigue contando como demanda |
+| `replaceDefaultNeed` | `true` | Retira antes del test la demanda piloto fija para que no confunda la cohorte |
+
+Estos valores son opciones experimentales. Ningún valor se anuncia como demora real típica de una ONG o una tragedia. El generador valida tamaños, fracciones, lugares suficientes y que el informe formal ocurra dentro del horizonte. No modificar el mundo para favorecer un brazo después de conocer su resultado.
+
+La función devuelve configuración, manifiesto y gold al evaluador. El gold contiene la demanda física y sus vínculos de puntuación; no se entrega como input a la plataforma. `actorView` y `publicFeed` conservan sus proyecciones normales. Los posts no incluyen un ID privado de necesidad ni una etiqueta de falsedad. Los reportes contextuales omiten el geotag; su lugar público aparece en el texto y se resuelve contra el mismo directorio/mapa recibido por ambos.
+
+Para reanudar un checkpoint de esta cohorte, registrar primero sus handlers: crear un `World` con la configuración original, instalar el mismo perfil y después llamar `world.restore(snapshot)`. Esto valida los eventos adicionales antes de ejecutar; no vuelve a publicar ni a crear las necesidades guardadas. La seed reproduce contenido, lugares y acontecimientos con las mismas acciones, pero una nueva llamada al modelo no es determinista por seed.
+
+### 41.3 Causalidad y fronteras de autoridad
+
+La necesidad se crea físicamente al tiempo cero. Más tarde un residente publica una solicitud; composición, upload, conectividad e indexación mantienen los retrasos normales. El canal formal publica una observación con demora declarada hacia todas las organizaciones, sin distinguir al candidato de la referencia. Una organización también puede descubrirla antes por la misma herramienta de aclaración/verificación de un edificio.
+
+Secuencia válida:
+
+```text
+necesidad física
+  → publicación disponible por HTTP
+  → interpretación como hipótesis con fuente y versión
+  → aclaración responsable del lugar público
+  → observación operativa recibida
+  → asignación calculada con restricciones
+  → autorización de cada propietario
+  → orden recibida, carga y trayecto
+  → descarga y servicio efectivo
+```
+
+Una inferencia de «faltan cinco recipientes de diez litros» puede orientar una pregunta, pero no escribe directamente el ticket físico ni reemplaza la cantidad observada por el canal responsable. Un rumor de evacuación no elimina una necesidad oficial. Un post falso puede consumir atención o una comprobación; ese coste y los falsos negativos deben seguir en el resultado.
+
+La retirada de la demanda piloto fija queda registrada y su vista formal se actualiza a cantidad cero. No contar esa fila como persona atendida instantáneamente: las métricas de atención usan demandas positivas. Mantener también las comunidades sin posts, pendientes al horizonte y las que dependen del canal formal.
+
+### 41.4 Referencia convencional competente y atención finita
+
+La comparación debe dar a todos los brazos el mismo HTTP, disponibilidad temporal, búsquedas, directorio de lugares, versiones, límites, inventarios, consentimientos de socios y herramienta de comprobación. No introducir una ventaja del candidato en el transporte de datos.
+
+El proceso convencional puede utilizar sin inferencia generativa:
+
+- Deduplicación por referencias públicas, agrupación de copias y versiones.
+- Reconocimiento de IDs/lugares explícitos y búsquedas por palabras o diccionarios.
+- Extracción de solicitudes con un patrón inequívoco de cantidad, unidad y tipo actuales.
+- Detección de archivo explícitamente fechado y conservación de fuentes para revisión.
+- El mismo compilador de asignación, restricciones, reservas y revisión por dueños que NEXO.
+
+El trabajo que esas reglas no resuelven entra en una cola de lectura con duración y cantidad de trabajadores declaradas. No descartar silenciosamente solicitudes difíciles para hacer una referencia débil. La interpretación humana scriptada del laboratorio debe ser competente y rastreable; todavía no es una prueba de comprensión de personas reales. La cola no puede leer la etiqueta privada `false` ni el gold de evaluación para resolver un mensaje.
+
+Separar tres capacidades: leer fuentes, comprobar por un canal responsable y autorizar acciones. Dos operadores que autorizan no equivalen automáticamente a dos operadores disponibles para leer cada fuente a la vez. Si se usa un pool compartido, las tareas compiten en ese pool; si son equipos distintos, declararlo. Mantener finitos los turnos, inspecciones, vehículos, stock y recepción.
+
+NEXO paga por sus llamadas reales y sus tiempos modelados/medidos. La interpretación de lotes no sustituye la comprobación física ni elimina la aprobación humana. El planificador determinista es compartido precisamente para que la diferencia observada no sea una referencia que distribuye mal por diseño.
+
+### 41.5 Sensibilidad requerida
+
+Congelar perfiles antes de ejecutar y guardar todos los resultados, incluso los adversos:
+
+| Eje | Controles y variaciones que deben explorarse |
+|---|---|
+| Tiempo de lectura | 0 s como control de interpretación gratis; después rangos plausibles declarados, por ejemplo 10/30/60 s por original difícil |
+| Personal de lectura | 1/2/4/8 trabajadores o el roster explícito elegido; no elegir solo la dotación donde NEXO gana |
+| Canal formal | Sin demora; demora breve; media; prolongada. Un canal formal rápido puede hacer innecesaria la inferencia |
+| Redacción | Todas explícitas; mezcla; contextuales; negaciones, archivo, versiones y ubicación ambigua |
+| Caudal | Pocos originales; muchos originales; muchas copias de los mismos; no confundir copias con tareas independientes |
+| Comprobación | Aclaración rápida; equipo de campo y viaje; respuesta inconclusa; cortes; cupo finito |
+| Demanda | Capacidad suficiente; escasa; nueva demanda de otro tipo en un lugar ya conocido; comunidades silenciosas |
+| Logística | Distancias pequeñas y regionales, tráfico, recepción limitada, vehículo que vuelve, combustible y cambios de acceso |
+| Modelo | Latencia modelada declarada, latencia real ×1, fallo, presupuesto agotado, mismo modelo genérico y posteriormente Gemini |
+
+No es obligatorio completar cada cruce cartesiano para un primer diagnóstico. Sí declarar qué rango se cubrió y qué condición cambia la conclusión. Una reducción aparente que desaparece con lectura de 10 s o cuatro trabajadores exige acotar el claim; un resultado robusto en el rango ensayado es evidencia interna del mecanismo, no una calibración de campo.
+
+La probabilidad de respuesta de aclaración actual se deriva de un ID de inspección. Cambiar el orden de consultas puede cambiar esas realizaciones aunque la seed del mundo coincida. Para la primera comparación causal, usar observabilidad determinista y registrar ese límite. En perfiles estocásticos registrar consultas, IDs, tiempos y réplicas; no anunciar que cada brazo recibió exactamente la misma respuesta factual si sus acciones cambiaron la secuencia.
+
+### 41.6 Métricas, controles y evidencias
+
+Métrica principal del diagnóstico: tiempo desde aparición física hasta primera ayuda útil y hasta la cantidad suficiente para esa necesidad. Guardar recepción/servicio desde eventos del motor, no desde el texto del agente. Informar mediana y cola, censura, cobertura y déficit acumulado por unidad nativa. Un percentil de completados sin los no atendidos puede ser engañoso.
+
+Implementación de medición: `serveNeed` guarda `firstServiceAt` en la primera contribución física positiva a la demanda restante; `completedAt` sigue representando cantidad suficiente. `perCommunity` exporta `firstServiceAt` y `sufficientServiceAt`; `response.firstUsefulServiceMs` y `response.sufficientServiceMs` conservan sus censuras propias. `needToServiceMs` queda como alias compatible de la segunda métrica. La demanda piloto retirada no entra en esos denominadores ni en el conteo de cumplimiento. Una llegada, una cantidad cero o un exceso sobre demanda ya inexistente no crean primera ayuda útil.
+
+Métricas explicativas: disponibilidad→ingesta→interpretación→comprobación; solicitudes correctas descubiertas; falsas hipótesis que pidieron trabajo; consultas improductivas; espera por revisión; tiempo de recurso útil sin trabajo; propuestas parciales pendientes; coste real del modelo; tokens; llamadas repetidas; stock y capacidad preservados. Mantener fallos e inconclusos en los denominadores.
+
+Atribución mínima:
+
+1. Información conocida desde el inicio: compilador directo versus NEXO, control donde el modelo puede perder.
+2. Información pública contextual: proceso convencional competente versus percepción NEXO y compilador compartido.
+3. Misma percepción generativa y recursos, sin continuidad dirigida: distingue extracción de una respuesta que llega a completarse.
+4. Mismo modelo genérico, si el claim es ventaja del sistema sobre un agente general.
+5. Un operador/equipo aislado y varios conectados, si el claim es capacidad colectiva.
+
+Cada pareja incluye build del motor, candidato, evaluador y modelo, configuración base, manifiesto adicional de la cohorte y `corpusHash`, reloj, presupuesto, parada y protocolo de exclusión. No comparar perfiles de demora distintos como si solo cambiara NEXO. Las campañas negativas anteriores permanecen enlazadas en [VALIDACION.md](VALIDACION.md).
+
+### 41.7 Aceptación del nuevo mecanismo
+
+- La plataforma realmente descubre y descarga publicaciones por HTTP; el evaluador no le selecciona el gold como lote de lectura.
+- Los filtros y la deduplicación usan información pública y conservan desconocidos relevantes para revisión.
+- El modelo real produce interpretaciones con fuentes/versiones; su supuesto número se comprueba y no crea autoridad.
+- El canal de aclaración descubre necesidades mediante una ubicación pública, sin pedir un ID privado del ticket.
+- Una comprobación pendiente o inconclusa sigue visible; una propuesta parcial no cierra el resto del lote.
+- Llegada de evidencia/capacidad/ofertas reanuda el trabajo sin repetir inferencia sobre el mismo contenido.
+- Cambios, borrados, cancelaciones, revocaciones y versiones invalidan la continuación que ya no corresponda.
+- Recursos, vehículos y propietarios conservan sus restricciones, revisión y ledger.
+- El resultado mejora sustancialmente el tiempo de servicio en los perfiles ensayados sin esconder menor cobertura, comunidades omitidas ni más daño a otras necesidades.
+- Los perfiles negativos y de empate se conservan; las hipótesis se acotan al rango demostrado.
+
+Los cinco tests del generador verifican causalidad, aislamiento, aclaración por lugar, seed/continuación, silencio y configuración válida. Las campañas de proveedor y la evaluación del producto se ejecutan aparte. Una mejora con Gemma en esta cohorte no valida las cifras inventadas de la landing, Gemini, mortalidad real ni feedback de usuarios.
+
+## 42. Etapas de demanda, comprobaciones y trazas físicas de la nueva iteración
+
+### 42.1 Una necesidad que vuelve no conserva un tiempo de respuesta antiguo
+
+Si una necesidad cubierta o retirada vuelve a tener déficit por un aumento, abrir una nueva etapa con `responseCreatedAt`. Reiniciar `firstServiceAt` y `completedAt` para esa etapa; conservar el `createdAt` original y el historial `demandEpisodes`. Aumentar una necesidad todavía pendiente amplía su etapa existente. Un exceso físico anterior sigue disponible; no desaparece para fabricar un déficit.
+
+Una retirada administrativa es un evento competidor, no una entrega exitosa. Una reducción que elimina el déficit sin entrega se registra como retiro, con tiempo observado y censura de servicio. Las métricas muestran etapa actual y episodios anteriores, unidades nativas, demanda/servicio y tiempo. El evaluador no puede restar `createdAt` original para dar a una nueva etapa el crédito de una entrega anterior.
+
+Probar cobertura → nueva demanda → entrega parcial → suficiente, retirada → reapertura, aumento todavía pendiente, reducción sin entrega, exceso previo, snapshot/replay y métricas por comunidad. La cohorte fija de descubrimiento no cambia su reloj: esta reparación afecta demandas dinámicas y se mantiene distinguida de su comparación.
+
+### 42.2 Aclaración y evaluación física tienen recursos distintos
+
+`clarificationWorkers` es una cantidad finita y predeclarada de canales de aclaración disponibles por organización. Una solicitud espera un slot, invierte el tiempo de comprobación y comunica por el canal normal, con latencia, pérdida y desconexión. Dos slots no entregan resultados instantáneos. El default de uno conserva el perfil anterior; evaluar también uno/dos y no presentar ese parámetro como productividad humana medida.
+
+La aclaración devuelve metadatos operacionales o necesidades observadas; no declara seguro un edificio. Una evaluación de seguridad operacional necesita personal con `field_assessment`, vehículo, ruta real, trabajo de campo, solicitud/propietarios autorizados, finalidad, versión y vigencia. Compartir un equipo no regala recursos: el dueño reserva su personal/vehículo y conserva control de la ejecución. Las consultas de inventario y las observaciones de recurso deben conservar sus cualificaciones reales.
+
+El responsable sin equipo propio puede recibir una evaluación delegada. El resultado viaja por la misma comunicación, puede llegar tarde o no llegar, y contiene el método y fuente observada. Expiración, réplica, cambio material, retiro de autorización o ruta bloqueada impiden convertirlo en activación automática. Probar doble aprobación, falta de competencia, viaje/trabajo, aislamiento de verdad, recepción offline y replay; después comprobar servicio realmente ocupado.
+
+### 42.3 Instrumentación sin información privilegiada para el candidato
+
+Las trazas del evaluador conservan inicio de viajes de recogida/entrega, rutas escogidas al partir, distancias, ETA, recurso/necesidad/destino, cantidad y timestamps físicos. Si luego cambia la ruta, la ruta inicial no se presenta como recorrido efectivo completo. El logger no altera reloj, aleatoriedad, observaciones ni decisiones; un test compara el estado determinista con y sin instrumentación.
+
+Separar estas trazas de los recibos visibles para el actor. El planificador y los prompts solo usan mapas, rutas, operaciones y permisos recibidos. El scoring puede usar la verdad para medir, pero jamás para elegir el siguiente lugar a investigar o la siguiente asignación.
+
+### 42.4 Cierre reproducible
+
+La verificación registra huellas inicial/final del candidato, evaluador y motor. Si alguna cambia, el resultado no puede declararse `passed`, aunque todos los tests individuales hayan pasado. Una suite sin casos ejecutados, con skips/fallos/cancelaciones o mezclada entre versiones tampoco cierra el gate.
+
+[MEJORA_RESPUESTA.md](MEJORA_RESPUESTA.md) conserva pilotos anteriores, defectos detectados, cambios y evidencia nueva. [El plan de seguimiento](https://github.com/Hi-io/nexo-platform/blob/main/reports/discovery-followup-plan.json) predeclara carga, semillas, referencias y sensibilidades; el protocolo de cada campaña fija la versión final antes de empezar. Una campaña detenida conserva resultados y coste desconocido, nunca outcomes inventados.
+
+### 42.7 Las competencias viajan con el personal, no con el nombre del depósito
+
+Una transferencia bilateral de personal a un depósito y su reexpedición a un refugio deben conservar las personas y sus habilidades reales. Guardar perfiles de grupos (`qualificationProfiles`) y cuentas físicas por competencia (`qualificationCounts`); `qualifications` contiene sólo las habilidades de todas las personas que siguen en ese stock. Un grupo mixto no hereda todas las competencias del envío más reciente. Contar dos habilidades por separado no demuestra que una misma persona tenga ambas; para una tarea con varias habilidades contar la intersección de los perfiles. Si un inventario nativo contiene sólo cuentas marginales parciales, utilizar únicamente la intersección garantizada, sin inventar una correlación positiva entre habilidades.
+
+La reserva del evaluador o del refugio retiene personas concretas. Un segundo envío no puede cargar ese mismo equipo mientras esté asignado. Retirar sus perfiles del origen al cargar, transportarlos con el vehículo y añadirlos al stock del dueño receptor después de la entrega física. Los perfiles y cantidades del stock se conocen por consultas, verificación o recibos entregados por los canales normales y consentidos; ninguna etiqueta privada del evaluador interviene. El personal comprado sin cualificaciones declaradas llega sin competencias inventadas. Una cancelación con carga exige viaje de devolución y restaura exactamente esos perfiles; un pickup fallido no consume personal. Las personas destinadas a una necesidad consumida o perdidas no dejan cuentas de competencias reutilizables.
+
+Regresión obligatoria: aceptación de ambos dueños → viaje real → depósito recibido → evaluación física competente desde ese stock → reexpedición parcial → instalación autorizada y reservas del refugio. Añadir mezcla con personal sin cualificación, dos reservas que se cargan en distinto orden, conservación por habilidad durante división de equipos, ausencia de intersección multi-skill, cuentas nativas parciales, consumo parcial, pickup expirado, pérdida, retorno de carga, recibos/versiones y checkpoint/replay. `tests/staff-transport.test.mjs` cubre siete casos y forma parte de la suite de 173 pruebas del motor `bb307da98907240bf04aa7a9bcf6675efd74a7dac6b216cddc346b964b14680c`. Esto cierra consistencia de física y observación en los casos probados; no acredita ventaja del modelo ni calibración externa de competencias.
