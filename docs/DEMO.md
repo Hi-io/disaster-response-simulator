@@ -1,8 +1,24 @@
 # NEXO — Guía para preparar la demo y defender la propuesta
 
-Documento de trabajo · 11 de octubre de 2026. Guion futuro; no describe capacidades ya construidas.
+Documento de trabajo original · 11 de octubre de 2026. Actualización de implementación local · 12 de octubre de 2026. El guion original es una intención; el apartado 0 distingue qué puede mostrarse hoy.
 
 Relacionados: [simulador](SIMULADOR.md) · [plataforma](PLATAFORMA.md).
+
+## 0. Demo ejecutable de la fase local
+
+Usar [LOCAL.md](LOCAL.md) para levantar cuatro instancias NEXO, un socio externo, el observador 3D y la red social ficticia. La plataforma utiliza **Gemma 4 31B mediante OpenRouter**. La futura identidad Gemini/GCP de la landing no cambia el modelo ni convierte una animación conceptual en una prueba.
+
+Tres recorridos diferentes:
+
+1. **Cadena operacional ×1:** `pnpm demo:live`. Fuente HTTP real, proveedor real, propuesta, propietario de prueba identificado, orden/acuse/transporte/descarga y recibo. Mostrar también cantidades todavía pendientes y coste. Las autorizaciones del script son un proxy; no un estudio con operadores.
+2. **Composición desde una necesidad:** `node --env-file-if-exists=.env.local scripts/service-demo.mjs --from-need`. El operador selecciona una necesidad recibida de refugio, sin dar instalación ni solución. Gemma consulta un directorio conocido, pide inspección y prepara aportes de cuatro propietarios. El sistema exige cada aprobación y sigue entregas, activación, evacuación y ocupación sostenida. El ensayo del 12 de octubre alojó 50 personas; consultar su recibo y mantener los ensayos anteriores fallidos.
+3. **Comparación reproducible:** campaña B1–B6 con protocolo previo, mismo mundo/horizonte, budget fijo y costes/fallos. Enseñar B4 vs B3 y B6 vs B5. La ventaja de compartir datos con reglas no se atribuye al LLM. No sustituir una pérdida real por el porcentaje inventado de la landing.
+
+Durante la explicación, mostrar solo necesidad → comprobación relevante → propuesta exacta → decisión del propietario → cambio físico observado. Abrir fuentes completas bajo demanda. El mapa 3D es observador del laboratorio y nunca una fuente secreta para el agente.
+
+El portal público se demuestra en otra ventana: publicación aprobada, recepción sustentada, fotografía derivada revisada y fondos colectivos del sandbox. No se muestran víctimas identificables, archivos privados ni claves. Una corrección conserva historial y no oculta incertidumbre.
+
+Antes de grabar, revisar [ESTADO_IMPLEMENTACION.md](ESTADO_IMPLEMENTACION.md) y [VALIDACION.md](VALIDACION.md). Cualquier resultado de una versión anterior debe mostrar su huella; cambiar modelo/prompt no permite reutilizarlo como medición de la versión nueva. Un replay grabado se etiqueta como replay, no consulta en vivo. GCP y pagos reales no forman parte de esta fase.
 
 ## 1. Lo que el jurado debe entender sin estudiar una pantalla
 
@@ -194,8 +210,6 @@ Mantener un dossier de pruebas para profundizar, sin meter todas las respuestas 
 ## 14. Demostrar con el laboratorio 3D
 
 El catálogo S01–S24 de [SIMULADOR.md](SIMULADOR.md) especifica qué debe ser visible y comprobable. Seleccionar una historia comprensible y una perturbación; no intentar exhibir todos los escenarios en una sola pantalla.
-
-El simulador no usa Gemini: la plataforma externa sí lo usará. Identificar siempre si la demo muestra una referencia algorítmica, NEXO conectado realmente o un replay de respuestas registradas. Las bajas son simuladas y dependen de curvas aún no calibradas clínicamente; no presentarlas como número real demostrado de vidas salvadas.
 
 - Vista isométrica simple, posibilidad de seguir un vehículo y distinguir necesidad, refugio candidato, instalación operativa y ayuda recibida.
 - Tres columnas para realidad, información comunicada y consumo real de NEXO. Mostrar una sola cadena seleccionada mientras el resto transmite volumen de fondo.

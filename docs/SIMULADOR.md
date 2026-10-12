@@ -2,11 +2,13 @@
 
 Documento de trabajo · 11 de octubre de 2026.
 
-**Estado actualizado · 12 de octubre de 2026:** este archivo conserva el diseño funcional y sus extensiones. Ya existe la implementación de este repositorio; la [auditoría del simulador](AUDITORIA_SIMULADOR.md) y [COVERAGE.md](COVERAGE.md) distinguen lo implementado, lo probado y lo pendiente. Las cifras de la web siguen siendo conceptuales; el motor construido no las valida automáticamente.
+**Estado actualizado · 12 de octubre de 2026:** este archivo conserva el diseño funcional. Ya existe una implementación en el repositorio vecino `disaster-response-simulator`; la [auditoría del simulador](AUDITORIA_SIMULADOR.md) distingue lo implementado, lo probado y lo pendiente. Las cifras de la web siguen siendo conceptuales; el motor construido no las valida automáticamente.
+
+**Seguimiento de ejecución local:** consultar [estado por requisito](ESTADO_IMPLEMENTACION.md) y [resultados medidos](VALIDACION.md). El motor posterior tiene 117 pruebas. NEXO se desarrolló en su repositorio propio con Gemma 4, bases independientes y fuentes HTTP; el diseño Gemini/GCP sigue siendo posterior. Preservar protocolos, costes y fallos, incluidos los episodios interrumpidos por saldo del proveedor. No tratar la política coordinadora de un experimento como una elección automática de líder en producción.
 
 Relacionados: [plataforma y KPIs de aceptación](PLATAFORMA.md) · [auditoría actual](AUDITORIA_SIMULADOR.md) · [demo](DEMO.md).
 
-**Cómo leer este documento:** las secciones 1–15 conservan los criterios de evaluación y los escenarios acordados. Las secciones 16–39 convierten esos criterios en un diseño funcional: contratos de entrada/salida, mundo causal, desastres, red social, vista 3D, relojes, semillas, rendimiento y pruebas de aceptación. La sección 40 añade los requisitos posteriores de región y población. Consultar la auditoría para cobertura actual; ninguna cifra de capacidad o velocidad de este documento es por sí sola un resultado medido.
+**Cómo leer este documento:** las secciones 1–15 conservan los criterios de evaluación y los escenarios acordados. Las secciones 16–39 convierten esos criterios en un diseño funcional: contratos de entrada/salida, mundo causal, desastres, red social, vista 3D, relojes, semillas, rendimiento y pruebas de aceptación. Es una especificación; consultar la auditoría para cobertura actual. Ninguna cifra de capacidad o velocidad de este documento es por sí sola un resultado medido.
 
 **Decisión de alcance:** simular todo lo que NEXO pueda percibir o modificar y las dependencias que cambien sus resultados. El visor 3D se incluye para entender y presentar ese mundo. No construir un videojuego, una simulación clínica ni física detallada de edificios o fuego. La fidelidad buscada está en información, restricciones, demoras y consecuencias.
 
@@ -1092,149 +1094,3 @@ El laboratorio está listo para evaluar el núcleo de NEXO cuando:
 Estos criterios buscan una contribución defendible en técnica, impacto, innovación y UX. No convierten el número de features, presets o agentes en garantía de 100/100 o primer puesto.
 
 **Primer corte para construir:** S01 y S02 con un pequeño grafo, una pérdida de conexión, una publicación engañosa y un recurso compartido. Deben recorrer señal → ingesta → investigación → autorización → viaje → servicio. Congelar contratos y verificar el motor; después extender los mismos mecanismos a región, incendio y carga masiva. El objetivo final sigue siendo el alcance completo descrito aquí.
-
-## 40. Requisitos adicionales: región irregular, deterioro y separación de NEXO
-
-Esta sección incorpora las aclaraciones del autor durante la construcción. Se suman al diseño anterior. El estado de implementación y sus límites se registran en [COVERAGE.md](COVERAGE.md); la documentación ejecutable es [README.md](../README.md), [API.md](API.md), [SCENARIOS.md](SCENARIOS.md) y [CALIBRATION.md](CALIBRATION.md).
-
-### 40.1 El simulador no utiliza Gemini
-
-- El mundo, su contenido sintético, sus desastres y las consecuencias de las acciones se generan con reglas y streams aleatorios deterministas.
-- NEXO es otro proyecto. Ahí se ejecutará Gemini para consumir información, investigar y proponer decisiones.
-- No agregar credenciales ni SDKs de proveedores de modelos al motor. Los controladores de referencia del laboratorio son algoritmos explícitos; nunca presentar sus resultados como resultados de Gemini.
-- El contrato permite que una plataforma externa informe tiempos, uso y respuestas. Esa instrumentación no ejecuta la inferencia dentro del simulador.
-- En modo vivo se utiliza tiempo de pared a ×1. En modo acelerado se declara y aplica la latencia modelada; esperar el resultado externo mediante una barrera. Una simulación a ×1000 no acredita inferencia real a ×1000.
-- La plataforma recibe fuentes públicas o autorizadas y acciones limitadas. No recibe la verdad privada, etiquetas de fake news, posiciones físicas ocultas ni métricas clínicas privadas instantáneas.
-
-### 40.2 Geografía que genere decisiones difíciles
-
-El mapa habitual no puede ser un grid de calles equivalentes que permita rodear cualquier obstáculo por la siguiente manzana. Usar un grafo irregular con comunidades, carreteras de diferente clase, redundancia limitada y accesos escasos.
-
-- Región predeterminada considerablemente mayor que 8 km: implementación inicial de **160 × 160 km**, ajustable hasta 200 km mediante configuración.
-- Densidad y extensión física se controlan por separado. El parámetro histórico `grid` indica densidad de asentamientos; no impone calles cuadradas en topología regional.
-- Río irregular con pocos cruces. El número de puentes es configurable; tres por defecto. Separar cierre de un puente de obstrucción de una carretera local.
-- Algunas comunidades tienen un acceso único; otras requieren cruzar uno de dos o tres puentes. Cerrar todos los accesos puede impedir el viaje por completo.
-- La variante predeterminada permite que cerrar el cruce central aumente el tiempo de transporte en varias horas. El mecanismo debe seguir siendo físico y no un número decorativo asignado para favorecer al candidato.
-- Velocidad, capacidad, almacenamiento de vehículos, headway, longitud, terreno, límite de peso y exposición al agua varían por tramo.
-- Los vehículos siguen la polilínea del tramo en el motor y en el visor. No atraviesan terreno para llegar al siguiente nodo más rápido que por la carretera.
-- Un cierre de puente afecta ambos sentidos. Una reparación necesita autoridad, equipo, acceso y tiempo; luego actualiza ambos sentidos y sus versiones.
-- Diferenciar la cartografía estática que puede conocer una organización de las condiciones dinámicas que aún no recibió. La ausencia de observación no significa que una carretera esté disponible.
-
-Pruebas: conectividad inicial, comunidades que realmente quedan aisladas, rutas alternativas de horas, ausencia de ruta, reparación bidireccional y consistencia entre posición del motor y posición dibujada.
-
-### 40.3 Necesidades que empeoran mientras llega la ayuda
-
-No basta mostrar una alerta fija de “necesita agua”. El mundo conserva población, suministros reales y exposición acumulada por cohorte/comunidad.
-
-- Agua y alimento se consumen a lo largo del tiempo. El consumo no termina cuando se cumple la primera solicitud.
-- Las entregas recibidas aumentan reservas reales; una propuesta, promesa o envío en tránsito no las aumenta.
-- Una comunidad sin suministros acumula privación. Una comunidad abastecida puede mejorar; después puede requerir otra entrega.
-- Cuando las reservas no alcanzan hasta la siguiente revisión, se pueden generar nuevas necesidades de abastecimiento. No crear pedidos ilimitados mientras sigue pendiente uno equivalente en la misma zona.
-- Hambre, falta de agua, exposición y lesiones sin atención son dimensiones distintas. Sus curvas, reservas iniciales y umbrales de riesgo son parámetros explícitos.
-- Contabilizar **bajas simuladas**, vivos, heridos y gente en tránsito. No convertir una fecha límite del pedido en una muerte automática ni usar un umbral universal de cuatro días.
-- Una evacuación conserva población, demanda vehículos y plazas, lleva reservas/estado de la cohorte y puede sufrir consecuencias durante una demora real. Llegar a un edificio que dejó de ser seguro no completa el servicio.
-- Las personas fallecidas permanecen en el registro de población. Una observación posterior debe poder informar que ya no hay supervivientes; no borrar esa comunidad de la evidencia.
-- Calibrar y hacer sensibilidad. Los coeficientes iniciales son hipótesis de laboratorio: no permiten concluir que un número concreto de personas reales habría sobrevivido.
-
-En el modelo inicial, la privación hídrica representa ingesta, no toda la demanda de agua doméstica/higiene. Nutrición, profesiones médicas y tratamientos se simplifican y se declaran. Revisar los supuestos antes de aumentar realismo agregando más gráficos.
-
-### 40.4 Organizaciones independientes y coordinación imperfecta
-
-- El mapa predeterminado debe incluir centros de respuesta y organizaciones con depósitos, flotas, recursos, operadores y permisos propios.
-- Deben existir demoras de información, revisión humana e instrucciones. Los vehículos no conocen las decisiones antes de que les llegue la orden.
-- Las organizaciones pueden asignar recursos duplicados a una zona mientras otra queda desatendida. Registrar esa situación y sus costes; no impedirla mágicamente mediante conocimiento global.
-- La cooperación es una posibilidad, no un supuesto universal. Permitir datos parciales, recursos no publicados, condiciones, vencimiento, desconexión y socios que no usen NEXO.
-- NEXO podrá conectar organizaciones por sus contratos; el simulador debe permitir medir la diferencia entre autonomía, intercambio parcial y coordinación.
-- Los controladores de referencia deben cumplir los mismos límites físicos y de autoridad. Su competencia operativa debe revisarse de forma independiente antes de atribuir el resultado a una mejora de Gemini.
-
-### 40.5 Métricas privadas, observables y consumidas
-
-| Dato | Quién puede verlo | Cómo puede llegar a NEXO |
-|---|---|---|
-| Daño, stock real, posición real, privación y bajas | Observador/evaluador | Evaluación final; no acceso directo desde sesión de plataforma |
-| Cartografía estática y fuentes publicadas | Público/plataforma según permisos | Scraping, API, documentos y consultas |
-| Inventario propio y compromisos propios | Organización dueña | Herramientas autorizadas, con versión y demora cuando corresponda |
-| Estado dinámico de acceso y población | Quien recibió una observación | Equipo de campo, radio, fuentes verificadas y compartidas |
-| Mensaje interno | Destinatarios autorizados | Inbox/canal del equipo; no aparece en la web pública |
-| Texto recibido/interpretado por plataforma | Plataforma y registro de acuses | Descarga y acuse versionado; interpretación es un estado declarado por la plataforma |
-
-Registrar por comunidad y globalmente: vivos/bajas/heridos, privación de agua y alimento en persona-horas, exposición, lesión sin atención, demanda/servicio/pendiente, servicio antes de plazo, latencia de cada etapa, recursos en tránsito, sobreabastecimiento por tipo, reservas vencidas, conflicto, viaje fallido, distancia/combustible, tiempo de revisión, queries, coste y fallos de integración. No sumar litros y raciones como si fuesen la misma unidad.
-
-La comparación de bajas es una métrica **simulada y condicionada a los supuestos**. Acompañarla con privación y atención efectiva para evitar que una curva arbitraria sea el único argumento del resultado.
-
-### 40.6 Reproducibilidad y rendimiento
-
-- Guardar configuración completa, seed/streams, build del motor, inputs, respuestas externas y trazas.
-- El manifiesto debe identificar el contenido del código causal, además de una versión comercial. Rechazar restauraciones de otro build; mantener el commit original para reproducir una ejecución antigua.
-- Un fork recibe identidad propia y conserva padre, hash del estado de partida y momento de bifurcación. No cambiar retrospectivamente la ejecución original.
-- Historial completo en almacenamiento; ventana de UI limitada. Que se dibujen menos tarjetas o menos objetos lejanos no debe borrar eventos ni posts del mundo.
-- Ejecución por eventos, sin dependencia del render. Batches con workers acotados, límites de memoria/eventos/tiempo, cancelación y reanudación verificada.
-- ×1000 es velocidad solicitada. Registrar velocidad efectiva y costes separados de generación, hashing/exportación, navegador e inferencia externa.
-- Repetir comparaciones con condiciones iniciales y presupuesto iguales. Guardar casos donde el candidato pierde; no seleccionar solamente la seed favorable.
-
-### 40.7 Condiciones de una demostración honesta
-
-El 3D sirve para entender la interacción: región, necesidad, acceso, quién puede ayudar, cuánto tarda una instrucción, dónde está el camión y cuándo se recibe el servicio. Representación simple; no convertir apariencia realista en evidencia científica.
-
-Para mostrar Gemini después, conectar NEXO de verdad, registrar sus respuestas y usar sus acciones en el mundo. No renombrar un algoritmo de referencia como Gemini ni representar como resultado medido un número inventado en la landing. Demostrar un caso concreto y un cambio inesperado; abrir el manifiesto y la traza para que puedan verificarse.
-
-Los documentos de cobertura y calibración conservan los límites actuales. Precisión operativa, revisión de operadores, validación clínica e impacto en terreno son evidencias diferentes y requieren trabajo separado.
-
-## 41. Vista de operación e información en movimiento
-
-### 41.1 Jerarquía y controles
-
-- El mapa y los tres carriles de información deben caber en el viewport sin scroll de página. Las métricas, diagnósticos y leyendas aparecen solo al abrir sus controles; la vista inicial sirve para comprender el desastre y el volumen de mensajes, no para vigilar todos los indicadores. El historial y los formularios largos pueden desplazarse dentro de sus paneles.
-- Configuración detrás de una hamburguesa, que se cierra al iniciar. El inspector aparece al seleccionar un objeto o tarjeta y se puede cerrar. Las métricas tienen su propio panel opcional Measurements. En pantallas pequeñas, el inspector usa una hoja inferior para conservar visible el objetivo. Nada debe reducir permanentemente el espacio del mapa.
-- Selector explícito de organización: cuatro por defecto, entre una y doce configurables. Cambiar la organización actualiza el carril de datos y, en modo de conocimiento recibido, también la perspectiva del mapa.
-- Capas independientes para vehículos, tráfico, necesidades, zonas de desastre, rutas, conectividad, grupos de población, organizaciones y notificaciones. Conservar el acceso a comparaciones, acciones, checkpoints y exportación.
-
-### 41.2 Tres niveles distintos
-
-1. **Lo que ocurre:** eventos físicos y operativos del mundo; solo observador. Texto legible, icono de categoría, hora y posibilidad de consultar el registro original.
-2. **Lo que se comunica:** publicaciones, videos descriptivos, notas de voz, noticias y documentos. Avatar por defecto o icono reconocible del formato. Etiquetas de falsedad exclusivamente del observador; nunca transferirlas a NEXO como resultado de su propio análisis.
-3. **Reportes recibidos por la organización elegida:** mensajes entregados a su bandeja, observaciones operativas conocidas, inventario propio y recibos reales del conector. Una opción de diagnóstico permite incluir también fuentes publicadas, indexadas y consultables; apagada por defecto. No mostrar mensajes privados de otro equipo ni fuentes futuras o eliminadas como disponibles.
-
-Disponibilidad, descarga, aceptación, interpretación y descarte son etapas diferentes. Un recibo conserva la versión descargada aunque después cambie la fuente. Un descarte del controlador de referencia debe explicarse como una limitación del controlador; no como veredicto de Gemini ni como excepción del servidor. Los estados iniciales conocidos son datos disponibles aunque todavía no haya publicaciones descargadas. La hora de una observación no se debe confundir con su recepción.
-
-Agrupar las etapas de recepción de una misma fuente y versión en una tarjeta; conservar todas las etapas en el archivo. Republicaciones con identidades diferentes siguen siendo mensajes separados aunque repitan el texto. Ocultar por defecto telemetría rutinaria y recibos de transporte: el GPS recibido tiene una sola representación, no otra tarjeta genérica de recepción. Un cambio de hora sin cambio de contenido no produce una tarjeta operativa nueva. Estas reglas solo afectan la presentación, no los datos de la plataforma.
-
-No imponer que cada carril tenga menos volumen que el anterior. Un incidente puede generar cientos de publicaciones; un equipo puede consultar pocas o muchas. La menor cantidad de tarjetas recibidas debe depender de entregas reales y del conector, sin atribuir al simulador interpretación o filtrado con Gemini.
-
-### 41.3 Ritmo, volumen y memoria
-
-- Tres carriles apilados verticalmente; las nuevas tarjetas entran por la izquierda y desplazan las anteriores hacia la derecha. Identidades estables, no reemplazar todo el DOM en cada actualización.
-- Distribuir secuencialmente los lotes en una cola de presentación. A gran velocidad, representar una muestra explícita y mantener todos los registros en el archivo causal. Nunca ralentizar o alterar la simulación para acomodar la animación.
-- Ventana de render finita: como máximo ocho tarjetas por carril y 36 pendientes; máximo nueve notificaciones del mapa a carga normal, doce durante ráfagas y 30 pendientes. Desmontar lo que salga del área visible y descartar de la cola visual lo que ya no pueda mostrarse oportunamente. Estas cotas no eliminan historia del mundo.
-- Notificaciones del mapa breves, con entrada y salida suaves, ubicación real, categoría visual y acceso al detalle. Pueden resultar abrumadoras bajo carga, pero no tapar de forma permanente los controles. Las tarjetas nuevas conservan su ancla; empujan hacia arriba a las anteriores que coinciden en pantalla. Desmontar las que salen del viewport en lugar de superponerlas.
-- Congelar los carriles para lectura sin detener el reloj ni la actividad del mapa. Filtrar una ventana reciente debe estar identificado como filtro de vista, no como una consulta sobre todo el archivo.
-- Respetar `prefers-reduced-motion`; controles con teclado, nombres accesibles y significado de los colores explicado en la leyenda.
-
-### 41.4 Movimiento y render ligero
-
-- Vehículos y grupos de población como puntos, no mallas tridimensionales individuales. Colores separados para tráfico cotidiano, respuesta, evacuación y vehículo de respuesta bloqueado. Los puntos de población representan grupos, no personas individuales.
-- Necesidades y edificios mediante instancias compartidas; búsquedas indexadas y geometría de carretera reutilizable. El render visual no debe dominar el coste de un experimento acelerado.
-- Tráfico verde/ámbar/coral según ocupación y colas. Considerar ambos sentidos. La vista de una organización conserva cierres reportados y muestra desconocido el tráfico que no haya recibido; no consultar la verdad oculta para colorearlo.
-- Interpolar entre posiciones confirmadas por el reloj del mundo y siguiendo curvas y trayectos confirmados. No inventar atajos cuando cambie una ruta ni adelantar una llegada. La posición de una organización con GPS discontinuo permanece en la última observación, sin reconstruir un recorrido desconocido.
-- Probar ×1000, cambios de alcance, selección, seguimiento, interrupciones, grandes ráfagas, pausa y reanudación. Validar tanto el estado causal como límites de DOM/GPU y la legibilidad; una animación convincente no sustituye esas comprobaciones.
-
-
-### 41.5 Presentación para acompañar a NEXO
-
-- El simulador tiene un papel secundario en la demo: mapa, reloj, movimiento y abundancia de mensajes. Evitar indicadores numéricos, leyendas completas, FPS, hashes y explicaciones técnicas permanentes. Conservarlos accesibles en Measurements, Layers y el menú de configuración.
-- Measurements muestra demanda sin cubrir, servicio efectivo y exceso por tipo y unidad. Incluir comida y agua; sumar refugio, medicina u otras necesidades cuando el mundo las genere. No cambiar los tipos físicos o sus unidades para satisfacer un diseño visual.
-- Mantener sufrimiento sin mortalidad como métrica: déficit de comida/agua en persona-horas, exposición y lesiones sin tratar. Cifras del observador separadas de reportes realmente recibidos por cada organización. Datos desconocidos no equivalen a cero.
-- Al seleccionar una entidad con ubicación, acercar la cámara con una transición suave y seguir el objetivo automáticamente. Para vehículos, seguir únicamente la posición confirmada usada por el renderer; para publicaciones, utilizar la ubicación declarada, no la coordenada privada real. No enfocar vehículos ni necesidades desconocidas en la vista de un equipo.
-- Desplazar el encuadre para que el objetivo quede visible junto al inspector o sobre la hoja inferior en móvil. Pan, giro, zoom, cierre o Stop tracking liberan el seguimiento; permitir reanudarlo.
-- Marcar únicamente la entidad seleccionada con un anillo discreto, sin añadir otra etiqueta permanente. La búsqueda por ID debe permitir confirmar con Enter.
-- Ajustar el ritmo al número de tarjetas pendientes, no al selector de velocidad del mundo. Con más de una tarjeta en cola, acelerar entradas y desplazamientos; al reducirse la cola, volver al ritmo tranquilo. Recalcular el siguiente plazo al llegar una ráfaga, sin esperar a un plazo lento anterior. Al pausar, terminar las transiciones y mostrar los registros más recientes de inmediato; no continuar una reproducción de mensajes obsoletos. Congelar el feed sigue siendo una operación distinta de pausar el mundo.
-- En ×1000 eliminar el fade-in de las tarjetas del mapa y de los carriles: deben aparecer con opacidad completa para que una vida breve no las vuelva invisibles. Mantener desplazamiento suave y una salida breve. No modificar los eventos físicos o sus tiempos para compensar el render.
-- Eliminar también el fade-in durante ráfagas grandes a cualquier velocidad: el tamaño de la cola determina la carga visual real.
-- Verificar ausencia de solapamiento de tarjetas cercanas, acotación del DOM, privacidad de la selección, seguimiento de objetivos móviles y pausa bajo carga. Estas animaciones no producen acciones, no alteran el seed ni modifican los resultados físicos.
-
-### 41.6 Backend independiente de la vista
-
-- El servicio de Node.js conserva el reloj, los cálculos físicos, la red, las políticas y las métricas. El navegador solo representa snapshots, interpola movimientos ya confirmados y anima la muestra visual.
-- El mundo en reproducción debe seguir avanzando sin pestañas, polling, render ni consumidores conectados. Abrir la vista 3D no modifica los resultados de una misma semilla. Una simulación pausada sigue pausada aunque el servicio esté activo.
-- Ofrecer un modo API-only sin servir la vista 3D, manteniendo las superficies de datos y acciones para la plataforma y la red social ficticia para scraping. Comandos implementados: `pnpm service` y `pnpm service -- --play`; `pnpm start` añade la vista opcional al mismo motor.
-- Conservar ejecución headless, CLI, lotes y replay sin dependencias de navegador. Preparar la futura ejecución en un contenedor manteniendo esa separación; Docker no es necesario para esta etapa.

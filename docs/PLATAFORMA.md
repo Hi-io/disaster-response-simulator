@@ -2,9 +2,11 @@
 
 Especificación de trabajo v2 · 12 de octubre de 2026. Define objetivos y condiciones de aceptación; no acredita funcionalidades ni resultados. Implementación primero en local; migración posterior a Google Cloud.
 
+**Implementación local:** consultar [estado por requisito](ESTADO_IMPLEMENTACION.md), [resultados medidos](VALIDACION.md), [operación local](LOCAL.md) y [puertas de validación externa](VALIDACION_EXTERNA.md). El proveedor probado ahora es Gemma 4 mediante OpenRouter; el nombre Gemini de esta especificación sigue siendo el objetivo posterior. No se desplegó GCP.
+
 Relacionados: [simulador](SIMULADOR.md) · [auditoría del simulador existente](AUDITORIA_SIMULADOR.md) · [arquitectura futura en GCP](ARQUITECTURA_GCP.md) · [demo](DEMO.md).
 
-Este documento es la especificación canónica en `nexo-vision/docs/PLATAFORMA.md`; se mantiene una copia idéntica en el repositorio del simulador para facilitar la implementación conjunta. Las secciones 1–15 conservan los principios C1–C7, H1 y R1–R7. Las secciones 16 en adelante los convierten en flujos, contratos, pantallas, pruebas y métricas. La arquitectura cloud se documenta aparte.
+La especificación se mantiene sincronizada en `nexo-vision`, `nexo-platform` y `disaster-response-simulator`. El estado de implementación, los recibos y la operación local tienen su fuente canónica en `nexo-platform`; las copias de esos índices en los otros repositorios enlazan a esa fuente. Las secciones 1–15 conservan los principios C1–C7, H1 y R1–R7. Las secciones 16 en adelante los convierten en flujos, contratos, pantallas, pruebas y métricas. La arquitectura cloud se documenta aparte.
 
 **Objetivo competitivo:** construir una candidatura extraordinariamente defendible en técnica, impacto, innovación y experiencia. Ningún documento, porcentaje de mejora ni simulación garantiza un puesto o 100/100. No ampliar el producto solo para sumar funcionalidades: cerrar con evidencia los puntos débiles que podrían invalidar su contribución.
 

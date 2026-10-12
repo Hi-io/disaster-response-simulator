@@ -117,6 +117,8 @@ External-computation receipts measure latency and usage without running inferenc
 - [CALIBRATION.md](docs/CALIBRATION.md): causal assumptions, parameter ranges and sensitivity plan.
 - [PERFORMANCE.md](docs/PERFORMANCE.md): measured workloads and scaling limits.
 - [PLATAFORMA.md](docs/PLATAFORMA.md) / [DEMO.md](docs/DEMO.md): context for NEXO and its eventual demonstration.
+- [ESTADO_IMPLEMENTACION.md](docs/ESTADO_IMPLEMENTACION.md) / [VALIDACION.md](docs/VALIDACION.md): canonical platform implementation coverage and measured outcomes, including unsuccessful and incomplete campaigns.
+- [LOCAL.md](docs/LOCAL.md) / [VALIDACION_EXTERNA.md](docs/VALIDACION_EXTERNA.md): running the separate local platform and the independent validation still required.
 - [AUDITORIA_SIMULADOR.md](docs/AUDITORIA_SIMULADOR.md): code-based review, a reproduced deadline-metric issue, and remaining evaluation work.
 - [ARQUITECTURA_GCP.md](docs/ARQUITECTURA_GCP.md): proposed cloud architecture after local product validation; no deployment has been performed by this documentation update.
 
