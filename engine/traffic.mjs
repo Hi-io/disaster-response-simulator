@@ -12,6 +12,7 @@ export function installTraffic(w) {
         operation.failure = 'no_known_route';
       }
       w.record('trip_failed', { vehicle: v.id, reason: 'no_known_route' }, operation?.id);
+      if (operation) w.reportOperation(operation);
       return false;
     }
     v.route = path.edges;
@@ -46,6 +47,8 @@ export function installTraffic(w) {
       if (!path) {
         v.state = 'blocked';
         w.record('trip_failed', { vehicle: v.id, reason: 'no_known_reroute' }, v.operation);
+        const blockedOperation = w.state.operations.find((o) => o.id === v.operation);
+        if (blockedOperation) { blockedOperation.state = 'blocked'; w.reportOperation(blockedOperation); }
         return;
       }
       v.route = path.edges;

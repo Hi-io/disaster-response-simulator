@@ -336,6 +336,7 @@ export async function createLabServers({
       const actorMutation = [
         '/api/actor/action',
         '/api/actor/ingestion',
+        '/api/actor/ingestion/batch',
         '/api/actor/model/start',
         '/api/actor/model/finish',
       ];
@@ -392,6 +393,11 @@ export async function createLabServers({
           });
         if (url.pathname === '/api/actor/ingestion')
           return json(res, 200, world.acknowledge(actor, await body(req)));
+        if (url.pathname === '/api/actor/ingestion/batch') {
+          const input=await body(req);
+          if(!Array.isArray(input.items)||input.items.length>100)throw new SimError('BATCH','One to one hundred ingestion receipts required',400);
+          return json(res,200,input.items.map(p=>{try{return {id:p.id,ok:true,receipt:world.acknowledge(actor,p)};}catch(e){return {id:p.id,ok:false,error:e.code??'RECEIPT',message:e.message};}}));
+        }
         throw new SimError('NOT_FOUND', 'Actor endpoint not found', 404);
       }
       if (url.pathname.startsWith('/api/observer') || url.pathname.startsWith('/api/state'))

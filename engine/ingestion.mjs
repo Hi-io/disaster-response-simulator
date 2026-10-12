@@ -27,6 +27,8 @@ export function installIngestion(w) {
     const prior = w.state.ingestion.filter(
       (r) => r.id === p.id && r.org === actor.org && r.version === version,
     );
+    const same=prior.find(r=>r.stage===p.stage);
+    if(same)return {...clone(same),duplicate:true};
     check(
       p.stage === 'downloaded' || prior.some((r) => r.stage === 'downloaded'),
       'RECEIPT',

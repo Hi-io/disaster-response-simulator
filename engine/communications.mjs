@@ -205,6 +205,10 @@ export function installCommunications(w) {
           ...p.operation,
           observedAt: p.observedAt,
         };
+    } else if(p.kind === 'facility_status') {
+      const prior=w.state.observations[m.to].buildings[p.building.id];
+      if(!prior || (prior.statusObservedAt??-1)<=p.observedAt)
+        w.state.observations[m.to].buildings[p.building.id]={...prior,...p.building,statusObservedAt:p.observedAt};
     } else if (p.kind === 'query_result') w.completeQuery(p);
   });
   w.reportRoad = (edge, org) => {

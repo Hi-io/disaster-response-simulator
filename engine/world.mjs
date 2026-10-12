@@ -678,6 +678,7 @@ export class World {
       proposals: clone(this.state.proposals.filter((p) => p.org === org)),
       commitments: clone(this.state.commitments.filter((p) => p.owner === org)),
       offers: clone(this.state.partnerOffers?.[org] ?? []),
+      transfers: clone((this.state.transfers??[]).filter(t=>t.from===org || this.state.partnerOffers?.[org]?.some(o=>o.id===t.id))),
       sharedCommitments: clone(this.state.sharedCommitments?.[org] ?? []),
       inspections: clone(
         this.state.inspections.filter(

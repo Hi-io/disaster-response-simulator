@@ -52,3 +52,6 @@ codex*.md
 **/codex*.toml
 **/codex*.md
 **/AGENTS.override.md
+**/[Cc][Oo][Dd][Ee][Xx]*/
+**/[Cc][Oo][Dd][Ee][Xx]*.md
+**/[Aa][Gg][Ee][Nn][Tt][Ss].md

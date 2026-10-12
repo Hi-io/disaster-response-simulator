@@ -2,6 +2,7 @@ import { requireCondition as check, requireRole, requireOwner } from '../contrac
 import { available, reserve, release, createResource } from './ledger.mjs';
 import { clone } from './determinism.mjs';
 export function installFacilities(w) {
+  w.reportFacility=(b)=>w.send({kind:'facility_status',observedAt:w.now,building:{id:b.id,node:b.node,use:b.use,state:b.state,openAt:b.openAt??null,capacity:b.capacity,occupancy:b.occupancy,provisioned:clone(b.provisioned),dependencies:clone(b.dependencies),requiredPower:clone(b.requiredPower),version:b.version,...(b.state==='closed'?{safe:false}:{}),ownerOrg:b.ownerOrg??'org0'}},b.ownerOrg??'org0',{sector:b.sector});
   w.onAction('activate', (a, p) => {
     requireRole(a, ['commander', 'dispatcher']);
     const b = w.building(p.building);
@@ -77,6 +78,7 @@ export function installFacilities(w) {
     }
     b.activeReservations = [];
     w.record('facility_closed', { building: b.id, reason });
+    w.reportFacility(b);
   };
   w.on('facility_open', ({ building: id, org }) => {
     const b = w.building(id);
@@ -90,6 +92,7 @@ export function installFacilities(w) {
     b.generatorFuelUnit = 'runtime_minute';
     b.productionRemainder = 0;
     w.record('facility_operating', { building: id, capacity: b.capacity });
+    w.reportFacility(b);
     if (b.use === 'plant') {
       if (!w.resource(`raw-${id}`))
         w.state.resources.push(createResource(`raw-${id}`, org, b.node, 'raw_water', 10000));
