@@ -2,7 +2,7 @@
 
 A deterministic laboratory for testing disaster-response platforms against a causal world. It simulates disasters, information delays, transport, finite supplies, independent organizations and population outcomes. An isometric 3D observer lets you inspect what actually happened.
 
-**The simulator does not run Gemini or any other AI model.** NEXO is a separate platform that will read the simulated sources, investigate alternatives and submit proposals. This repository supplies the world, action contracts, scripted reference policies and independent measurements. It requires no model API key and makes no paid inference calls.
+**The simulator does not run Gemini or any other AI model.** The separate [NEXO platform](https://github.com/Hi-io/nexo-platform) reads its scoped HTTP sources, investigates alternatives and submits human-reviewed proposals. The local platform currently uses Gemma 4 through OpenRouter; this is not a Gemini result. This repository supplies the world, action contracts, scripted reference policies and independent measurements. It requires no model API key and makes no paid inference calls.
 
 ## Run locally
 
@@ -64,7 +64,7 @@ Motion is buffered between confirmed snapshots, follows the known road shape and
 - Dispatch sends an instruction through the communication model. A truck moves only after receiving it, loading cargo and accessing a road.
 - Traffic has finite entry/storage capacity, queues, spillback, fuel use, weight restrictions and shift limits.
 - Arrival, unloading, receipt and useful service are separate milestones. Failed plans retain sunk distance, fuel and physical cargo.
-- A shelter or water plant requires a current assessment, permission, compatible equipment and resources physically at the site. Production and generator runtime are finite.
+- A shelter or water plant requires a current assessment, permission, compatible equipment and resources physically at the site. Production and generator runtime are finite. Shelter benefit counts actual occupied place-hours after people physically arrive, not unused capacity. Water consumption integrates occupancy over time; closing a shelter stops its useful-service accumulation.
 - Independent organizations can miss needs, duplicate shipments, share observations, make conditional commitments, withdraw offers and transport borrowed equipment back.
 - Internet outages, radio, bandwidth, packet loss, retries, indexing delay and stale observations affect what a platform can know and when an instruction arrives.
 - Water and food shortage, injuries, exposure, unmet person-hours and **simulated fatalities** evolve over time. A deadline alone never kills people. A proposal alone never treats them.

@@ -57,6 +57,7 @@ export function evaluate(world) {
   return {
     simulatedMs: world.now,
     services,
+    collective:{shelterPlaceHours:world.state.map.buildings.filter(b=>b.use==='shelter').reduce((s,b)=>s+((b.servedPlaceMs??0)+(b.state==='operating'?Math.max(0,world.now-(b.serviceIntegratedAt??world.now))*(b.occupancy??0):0))/3600000,0),operatingHours:world.state.map.buildings.reduce((s,b)=>s+((b.operatingMs??0)+(b.state==='operating'?Math.max(0,world.now-(b.serviceIntegratedAt??world.now)):0))/3600000,0),waterProduced:world.state.resources.filter(r=>r.id.startsWith('production-')).reduce((s,r)=>s+(r.produced??0),0),note:'Operating hours alone are not useful service. Occupied shelter place-hours and finite water production are measured separately.'},
     population: world.populationMetrics(),
     perCommunity,
     latency,
@@ -86,6 +87,12 @@ export function evaluate(world) {
       providerCost: (world.state.modelRequests ?? []).some((r) => r.providerCost !== undefined)
         ? (world.state.modelRequests ?? []).reduce((n, r) => n + (r.providerCost ?? 0), 0)
         : null,
+    },
+    platformTransport: {
+      attempts: events.filter(e=>e.type==='platform_peer_transport').length,
+      disconnected: events.filter(e=>e.type==='platform_peer_transport' && e.data?.state==='disconnected').length,
+      bytes: events.filter(e=>e.type==='platform_peer_transport').reduce((s,e)=>s+(e.data?.bytes??0),0),
+      note: 'Actual platform peer HTTP is charged by the laboratory transport adapter; this is distinct from source-system messages.',
     },
     invalidActions: world.state.invalidActions,
     ledgerValid: world.invariants().length === 0,
@@ -189,7 +196,7 @@ function evaluateInformation(w) {
     unobservedNeeds: w.state.needs.filter(
       (n) => !Object.values(w.state.observations).some((o) => o.needs[n.id]),
     ).length,
-    note: 'Error counts use private evaluator labels. Unverified content is not classified as true. No inferred accuracy score.',
+    note: 'These counts cover source-world claims only, not claims in an external platform database. Workflow acknowledgments are not semantic accuracy. Platform precision/recall requires matched external claims and independent task annotations.',
   };
 }
 function subgroups(rows, now) {

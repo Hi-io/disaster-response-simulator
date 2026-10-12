@@ -65,6 +65,7 @@ export function installCooperation(w) {
       if (c.state === 'reserved') reserve(r, c.quantity);
       w.state.commitments.push(c);
       w.schedule(c.expiresAt, 'expire_commitment', { id: c.id }, 1, c.id);
+      w.observeResource(a.org,r);
       return clone(c);
     }
     const c = w.state.commitments.find((c) => c.id === p.id);

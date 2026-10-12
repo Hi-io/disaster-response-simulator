@@ -441,6 +441,7 @@ export function installTasks(w) {
       return;
     }
     to.reservedPlaces -= t.quantity;
+    w.integrateFacility?.(to);
     to.occupancy += v.passengers;
     n.inTransit -= t.quantity;
     const original = w.state.cohorts.find((c) => c.id === t.cohort);
@@ -470,6 +471,7 @@ export function installTasks(w) {
     v.operation = null;
     w.reportOperation(op);
     w.record('evacuation_completed', { quantity: t.quantity, to: to.id }, t.id);
+    w.reportFacility?.(to);
   });
   w.on('task_arrival', ({ operation: id }) => {
     const op = operation(w, id);

@@ -46,7 +46,9 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Release verification
 
-The current automated suite has 108 tests and zero skipped tests: 85 causal/integration tests and 23 presentation-model tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+The current automated suite has 116 tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+
+`service-measurement.test.mjs` separately checks occupied shelter benefit and exact consumption: an empty operating shelter earns zero occupied place-hours, fifty occupants for one hour earn fifty place-hours, closure stops accumulation, and twenty-four hours of fifty occupants consume one hundred litres at the declared two-litre daily rate. This verifies arithmetic within the model, not a clinically validated intake requirement.
 
 `service.test.mjs` verifies that the API-only backend advances without a browser or polling, preserves authentication and organization scope, hides observer UI assets, stops only when paused, and produces the same seeded results as the service with its optional viewer.
 

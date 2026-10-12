@@ -359,6 +359,9 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
       }
       break;
     case 'S19':
+      // Collective capacity must have actual shelter demand to serve. Opening
+      // an unused building is not a useful-service outcome.
+      { const displaced=extraNeed(2,false,'shelter');w.schedule(20000,'initial_report',{need:displaced.id},1,'joint-shelter-demand'); }
       for (const org of w.state.map.organizations)
         org.sharing = org.id === 'org0' ? 'public' : 'partial';
       for (const r of w.state.resources) {

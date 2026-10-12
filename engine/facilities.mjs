@@ -2,6 +2,7 @@ import { requireCondition as check, requireRole, requireOwner } from '../contrac
 import { available, reserve, release, createResource } from './ledger.mjs';
 import { clone } from './determinism.mjs';
 export function installFacilities(w) {
+  w.integrateFacility=(b)=>{const elapsed=Math.max(0,w.now-(b.serviceIntegratedAt??w.now));if(b.state==='operating'){b.operatingMs=(b.operatingMs??0)+elapsed;if(b.use==='shelter')b.servedPlaceMs=(b.servedPlaceMs??0)+(b.occupancy??0)*elapsed;}b.serviceIntegratedAt=w.now;};
   w.reportFacility=(b)=>w.send({kind:'facility_status',observedAt:w.now,building:{id:b.id,node:b.node,use:b.use,state:b.state,openAt:b.openAt??null,capacity:b.capacity,occupancy:b.occupancy,provisioned:clone(b.provisioned),dependencies:clone(b.dependencies),requiredPower:clone(b.requiredPower),version:b.version,...(b.state==='closed'?{safe:false}:{}),ownerOrg:b.ownerOrg??'org0'}},b.ownerOrg??'org0',{sector:b.sector});
   w.onAction('activate', (a, p) => {
     requireRole(a, ['commander', 'dispatcher']);
@@ -67,6 +68,11 @@ export function installFacilities(w) {
     return { building: b.id, state: b.state, readyAt: w.now + w.config.setupMs };
   });
   w.closeFacility = (b, reason) => {
+    for(const c of w.state.cohorts.filter(c=>c.node===b.node&&c.population>0)){
+      w.advancePopulation?.(c,w.now);
+      if(c.health)c.health.unsheltered=true;
+    }
+    w.integrateFacility(b);
     b.state = 'closed';
     b.assessed = false;
     for (const id of b.activeReservations ?? []) {
@@ -87,6 +93,7 @@ export function installFacilities(w) {
       return;
     }
     b.state = 'operating';
+    b.serviceIntegratedAt=w.now;
     b.openAt = w.now;
     b.generatorFuel ??= 120;
     b.generatorFuelUnit = 'runtime_minute';
@@ -131,8 +138,11 @@ export function installFacilities(w) {
   w.on('shelter_service', ({ building: id, org }) => {
     const b = w.building(id);
     if (b?.state !== 'operating') return;
+    w.integrateFacility(b);
+    b.waterConsumptionRemainder=(b.waterConsumptionRemainder??0)+(b.occupancy??0)*w.config.waterMlPerPersonDay;
     const water = w.resource(`stock-${b.node}-water`),
-      amount = b.occupancy ? Math.max(1, Math.ceil((b.occupancy * 2) / 1440)) : 0;
+      amount = Math.floor(b.waterConsumptionRemainder/1440000);
+    b.waterConsumptionRemainder%=1440000;
     if (b.damage >= 2 || !water || water.quantity < amount) {
       w.closeFacility(b, 'unsafe_or_water_exhausted');
       return;

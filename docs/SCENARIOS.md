@@ -67,7 +67,7 @@ Dispatch a real shipment. Cut the driver's sector connectivity, then authorize a
 
 ### Collective service
 
-Select S19. Use a current assessment and the permissions of each owner. Deliver compatible equipment, water, sanitation and staff to the same site; only then activate it. Inspect the physical deliveries and their owner records. The automated laboratory test performs this sequence with four independent owners; no Gemini capability is implied until NEXO discovers the sequence itself.
+Select S19. Use a current assessment and the permissions of each owner. Deliver compatible equipment, water, sanitation and staff to the same site; only then activate it. Inspect the physical deliveries and their owner records. The scenario also includes a reported fifty-person shelter need: people must be evacuated in finite vehicle trips and physically arrive before occupied place-hours accumulate. Opening an empty facility is not useful shelter service. The automated laboratory test performs this sequence with four independent owners; a separate NEXO episode is needed to measure an actual model's contribution.
 
 ### Actual ingestion
 

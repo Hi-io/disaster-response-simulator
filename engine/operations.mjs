@@ -481,6 +481,7 @@ export function installActions(w) {
     c.state = 'expired';
     c.version++;
     if (['reserved', 'confirmed'].includes(previous)) release(w.resource(c.resource), c.quantity);
+    w.observeResource(c.owner,w.resource(c.resource));
     w.record('commitment_expired', { id });
   });
   w.onAction('dispatch', (a, p) => {
