@@ -1213,7 +1213,7 @@ Para cada cambio de alcance registrar: motivación, actor, entrada, salida, esta
 ## 40. Referencias y estado de las decisiones
 
 - [Criterios y requisitos de AI Builder Cup](https://aibuildercup.com/themes.html), consultados el 12 de octubre de 2026.
-- [API de IFRC GO](https://go-wiki.ifrc.org/en/go-api/api-overview): referencia para explorar acceso real, no integración ya desarrollada.
+- [API de IFRC GO](https://go-wiki.ifrc.org/en/go-api/api-overview): el conector de lectura pública ya recibió y persistió registros reales; [reporte privado](https://github.com/Hi-io/nexo-platform/blob/main/reports/sources/ifrc-go-1791815424508.json). No implica acuerdo institucional ni acceso a stock/operaciones de IFRC.
 - [HDX HAPI](https://hdx-hapi.readthedocs.io/en/latest/getting-started/): referencia de datos humanitarios normalizados.
 - Documentación y código de `disaster-response-simulator` en commit `6980dda`, especialmente `docs/API.md`, `docs/COVERAGE.md`, `docs/CALIBRATION.md`, `evaluation/metrics.mjs`, `evaluation/runs.mjs`, `adapters/reference.mjs`, `sources/server.mjs` y tests.
 - [Auditoría realizada](AUDITORIA_SIMULADOR.md): evidencia, defectos reproducidos y backlog priorizado.
@@ -1227,3 +1227,9 @@ Decisiones propuestas, pendientes de validar en implementación/piloto: stack ex
 El alcance implementado, sus pruebas, limitaciones y resultados se detallan en [CIERRE_LOCAL.md](CIERRE_LOCAL.md). Esa revisión corrige propiedad de proyecciones, planificación recurrente/concurrente, repair sobre la operación original, interpretación masiva, acuses durables, leases/checkpoints, continuación PDF, retención y navegación/offline. [ESTADO_IMPLEMENTACION.md](ESTADO_IMPLEMENTACION.md) mantiene I01–I26/O01–O23/UX01–UX14/T01–T27/K01–K30 y A01–A18.
 
 Las metas de esta especificación no cambian por haber construido los instrumentos. Un resultado interno negativo obliga a limitar el claim (§38.2), conservarlo y decidir la siguiente mejora; no permite anunciar una victoria garantizada. Los gates externos necesitan personas, datos permitidos y revisión independiente. GCP está excluido de la entrega local y Gemini debe reevaluarse cuando se habilite.
+
+### 41.1 Entrega local verificada — 13 de octubre de 2026, Tokio
+
+La revisión de requisitos cerró los mecanismos del alcance finito local y ejecutó **120 pruebas de plataforma y 120 del simulador**, con proveedor Gemma real en los ensayos aparte. [VALIDACION §13](VALIDACION.md#13-resultados-finales-de-la-entrega-local--13-de-octubre-de-2026-tokio) detalla campañas, huellas, comparación convencional/mismo modelo, pérdidas y objetivos no alcanzados. [CIERRE_LOCAL.md](CIERRE_LOCAL.md) relaciona funciones, UI y contratos con pruebas.
+
+Los checklists §38 permanecen como gates del proyecto completo: la instrucción de esta fase sustituye Gemini por Gemma y excluye GCP; no sustituye un estudio humano, holdout independiente ni calibración por tests sintéticos. La evidencia ejecutada obliga a limitar el claim de ventaja, tal como permite §38.2. Composición finita, reparación física, ingesta semántica, red/propiedad, recuperación y retención funcionan localmente; no se anuncian capacidades universales ni todos los porcentajes objetivos cumplidos.

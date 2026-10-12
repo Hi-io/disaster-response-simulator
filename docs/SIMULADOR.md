@@ -1107,3 +1107,11 @@ Una orden de reroute modifica la operación existente y conserva ID, vehículo, 
 El ledger de carga masiva usa createResource y campos de conservación completos; no añade stock solo al candidato. Se comprueban todas las invariantes antes/después del contraste. Los resultados del motor y los del proveedor se registran por separado.
 
 La revisión añade pruebas de variantes, conservación de cargo en reroute y compatibilidad/ocupación. [CIERRE_LOCAL.md](CIERRE_LOCAL.md) y [VALIDACION.md](VALIDACION.md) enlazan implementación, build, pruebas y límites. No se reescribe la auditoría inicial ni se elimina una campaña fallida después de corregir el motor.
+
+### 40.1 Resultado del cierre — 13 de octubre de 2026, Tokio
+
+El motor pasa **120 pruebas** en la verificación conjunta final, mantiene 26 entradas/23 acciones y 360 presets. El laboratorio se probó con proveedor real, cuatro instancias y un socio externo, mapas/observaciones limitadas al actor, composición, carga física concurrente, red y reparación sobre la misma carga. Las etiquetas de verdad/fake y manifiestos de puntuación quedan fuera del candidato.
+
+La evaluación conserva 36 outcomes principales, 21 estructurales con abort histórico, siete referencias corregidas y seis mundos de carga física. El probe de transporte monitoriza las 1.000 publicaciones generadas hasta incluir uploads tardíos en las cuatro organizaciones: 4.000 pares medidos sin pérdida. La prueba de semántica mide otro corpus y no utiliza los acuses como comprensión.
+
+La simulación no garantiza una victoria: B6 no logró una ventaja robusta sobre B5/B7 ni el target de tiempo K07. Los resultados negativos son una salida válida del evaluador, no un defecto a eliminar para que el candidato siempre gane. El realismo operacional, el baseline profesional y el holdout externo requieren revisión independiente. [Resultados y huellas](VALIDACION.md#13-resultados-finales-de-la-entrega-local--13-de-octubre-de-2026-tokio) evitan heredar silenciosamente un resultado tras corregir una referencia.

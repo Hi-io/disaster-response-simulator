@@ -232,3 +232,15 @@ Mostrar una necesidad recibida, la consulta real del modelo, la propuesta con co
 En el dossier de apoyo incluir el contraste completo B4/B5/B6/B7, variantes internas imposibles y seguras, carga semántica y física, latencia/coste/fallos y lo que queda pendiente. Una animación de 100 necesidades no significa 100 necesidades resueltas. La actividad visible usa herramientas y evidencia registradas; no inventa pensamiento privado.
 
 Los archivos exactos del build final se enlazan desde [VALIDACION.md](VALIDACION.md) y [CIERRE_LOCAL.md](CIERRE_LOCAL.md). Las pruebas humanas, calibración y holdout externo mantienen su protocolo propio. No presentar replay, tiempo modelado o revisión programada como inferencia ×1 ni estudio con profesionales.
+
+## 16. Qué demuestra la entrega final y qué no anunciar
+
+- 120+120 pruebas de mecanismos; 80 checks de navegador, sin llamarlos estudio con personas.
+- Composición estándar real: 600 L y 50 personas ocupando refugio; prueba dirigida desde necesidad sin ID de instalación.
+- Reparación sobre la misma operación cargada: 4/4 ensayos; su objetivo de mejora de tiempo K07 no se cumplió.
+- 4.000/4.000 versiones durables con p95 3,33 s desde disponibilidad, sin polling ni inferencia incluidos.
+- 100 necesidades reconocidas por cada una de cuatro organizaciones en un corpus interno; no 100 entregas/minuto ni precisión certificada sobre desastres reales.
+- Campaña principal de 36 outcomes y carga física de 101 necesidades con pérdidas, parciales y backlog. B6 no acreditó ventaja robusta sobre B5/B7; mostrarlo si se pregunta por atribución.
+- Propuesta real de Gemma para revisión, después de intentos inconclusos y comprobaciones de campo. No describir el recorrido como éxito al primer intento o respuesta instantánea.
+
+Los reportes exactos están en [VALIDACION §13](VALIDACION.md#13-resultados-finales-de-la-entrega-local--13-de-octubre-de-2026-tokio). El laboratorio de presentación está en pausa para inspección y el operador puede reanudarlo. El mensaje de una futura demo debe apoyarse en estos mecanismos medidos; los porcentajes de la landing continúan siendo objetivos conceptuales.
