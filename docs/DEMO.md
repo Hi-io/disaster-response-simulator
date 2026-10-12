@@ -20,6 +20,8 @@ El portal público se demuestra en otra ventana: publicación aprobada, recepci�
 
 Antes de grabar, revisar [ESTADO_IMPLEMENTACION.md](ESTADO_IMPLEMENTACION.md) y [VALIDACION.md](VALIDACION.md). Cualquier resultado de una versión anterior debe mostrar su huella; cambiar modelo/prompt no permite reutilizarlo como medición de la versión nueva. Un replay grabado se etiqueta como replay, no consulta en vivo. GCP y pagos reales no forman parte de esta fase.
 
+La huella local actual `c59fc605…` pasa 89 pruebas de plataforma y 117 del simulador, además de 57 checks de UI y 18 recorridos. Se puede demostrar composición dirigida de 50 ocupantes, agua aislada 500/600 L a ×1 y agua compartida 600/600 L en el comparativo modelado. No intercambiar esos modos ni atribuir la mejora de cobertura de compartir a una capacidad exclusiva del modelo: la red convencional también la consigue. En la campaña actual sin foco, agua y refugio compitieron y el modelo no consiguió ambas respuestas. Presentar ese límite y su plan de validación; el positivo de refugio del build anterior no se convierte en porcentaje vigente.
+
 ## 1. Lo que el jurado debe entender sin estudiar una pantalla
 
 **NEXO es una plataforma para organizaciones humanitarias. Gemini descubre y ayuda a verificar respuestas que ninguna organización puede construir por separado.**

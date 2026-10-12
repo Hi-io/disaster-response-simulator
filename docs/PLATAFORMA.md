@@ -278,13 +278,15 @@ La plataforma consume fuentes limitadas —incluida una red social ficticia que 
 
 El visor 3D y las etiquetas de verdad pertenecen al observador. Las descripciones textuales de videos y notas de voz son sustitutos ligeros para evaluar interpretación; no acreditan percepción multimodal real. Los tiempos de Gemini, humanos y herramientas deben contabilizarse según el modo experimental explícito. Una reproducción a ×1000 no demuestra inferencia en vivo a esa velocidad.
 
-El simulador existente no ejecuta Gemini; la plataforma lo hace mediante su propio proveedor. La extensión §40 de la copia de SIMULADOR.md del repositorio del laboratorio conserva los requisitos posteriores de región irregular, población dinámica y observaciones. Consultar la auditoría actual antes de interpretar una sección de diseño como estado de implementación.
+El simulador no ejecuta Gemini. La plataforma llama a su proveedor: Gemma/OpenRouter en la fase local y Gemini cuando se habilite y vuelva a medir. Región, población y observaciones se describen en el diseño funcional y se contrastan con [el estado actual](ESTADO_IMPLEMENTACION.md). Consultar también la auditoría antes de interpretar una sección de diseño como estado de implementación.
 
 ## 16. Alcance del producto y condiciones que faltan para defenderlo
 
 ### 16.1 Resultado que se busca
 
 NEXO convierte señales dispersas en respuestas ejecutables, autorizadas y revisables para desastres. Una instancia sirve a una organización; varias pueden componer servicios con capacidades complementarias. La ciudadanía comprende y apoya la respuesta a través de una proyección pública. La plataforma trabaja continuamente sin requerir un prompt para cada consulta o actualización.
+
+La investigación debe enviar contexto útil, no el JSON completo de todas las operaciones. Conservar descripciones, incertidumbre, versiones, correcciones, linaje de fuentes y restricciones materiales. Presentar una vista relevante con recuentos de omisiones y herramientas para recuperar detalles autorizados. Cargar contratos de acciones especiales bajo demanda; copiar propuestas calculadas desde el servidor para no transcribirlas. Dar espacio suficiente a razonamiento y salida, sin ejecutar respuestas cortadas. El coste se controla mediante relevancia, límites acumulados y tarifas de proveedor, no suprimiendo información decisiva. [Política implementada y pruebas](CONTEXTO_MODELO.md).
 
 Primera familia operativa de referencia: abastecimiento de agua y suministros básicos, habilitación de refugios y transporte asociado durante una emergencia regional. Terremoto, inundación e incendio introducen distintas restricciones sobre esa familia. El transporte de evacuación se coordina bajo decisiones de responsables competentes. No convertir la primera versión en un sistema de diagnóstico clínico, certificación estructural o mando autónomo de rescate.
 
