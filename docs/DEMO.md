@@ -221,3 +221,14 @@ El catálogo S01–S24 de [SIMULADOR.md](SIMULADOR.md) especifica qué debe ser 
 - Describir un video mediante un objeto textual no demuestra visión multimodal. Si se afirma esa capacidad, incluir la prueba correspondiente con medios reales autorizados o sintéticos.
 - La comparación A/B usa el mismo comienzo y perturbaciones externas; decisiones distintas producen consecuencias distintas de forma legítima.
 - Guardar manifiesto, seed, versiones y traza; el jurado puede inspeccionar una operación o introducir una condición nueva sin que el escenario garantice el éxito.
+
+
+## 15. Demo de la implementación local y resultados reales
+
+La fase actual usa Gemma 4 31B/OpenRouter; Gemini y GCP son posteriores. Separar la landing conceptual con métricas inventadas de los resultados medidos. No copiar esos porcentajes a la demo como si fueran un benchmark.
+
+Mostrar una necesidad recibida, la consulta real del modelo, la propuesta con condiciones, revisión por cada dueño y servicio efectivo en el visor. Un refugio debe mostrar personas ocupando plazas; un camión debe mostrar carga, viaje y recepción. Bloquear el viaje original ya cargado y mostrar cómo Repair conserva esa carga y resuelve la misma operación. No reemplazar la reparación con un envío nuevo.
+
+En el dossier de apoyo incluir el contraste completo B4/B5/B6/B7, variantes internas imposibles y seguras, carga semántica y física, latencia/coste/fallos y lo que queda pendiente. Una animación de 100 necesidades no significa 100 necesidades resueltas. La actividad visible usa herramientas y evidencia registradas; no inventa pensamiento privado.
+
+Los archivos exactos del build final se enlazan desde [VALIDACION.md](VALIDACION.md) y [CIERRE_LOCAL.md](CIERRE_LOCAL.md). Las pruebas humanas, calibración y holdout externo mantienen su protocolo propio. No presentar replay, tiempo modelado o revisión programada como inferencia ×1 ni estudio con profesionales.

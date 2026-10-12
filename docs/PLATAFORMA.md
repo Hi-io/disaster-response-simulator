@@ -1220,3 +1220,10 @@ Para cada cambio de alcance registrar: motivación, actor, entrada, salida, esta
 - [Arquitectura GCP futura](ARQUITECTURA_GCP.md): decisiones cloud y pruebas de migración, separadas del contrato funcional.
 
 Decisiones propuestas, pendientes de validar en implementación/piloto: stack exacto de UI/API, primer conector real, modelo/versiones de Gemini, presupuestos, latencias objetivo, priorización aprobada, actor de despliegue, almacenamiento compartido o por instancia y tamaño final de evaluación. Las reglas de integridad, separación de verdad, autoridad y transparencia ya son requisitos, no decisiones optativas.
+
+
+## 41. Seguimiento de implementación local — 12 de octubre de 2026
+
+El alcance implementado, sus pruebas, limitaciones y resultados se detallan en [CIERRE_LOCAL.md](CIERRE_LOCAL.md). Esa revisión corrige propiedad de proyecciones, planificación recurrente/concurrente, repair sobre la operación original, interpretación masiva, acuses durables, leases/checkpoints, continuación PDF, retención y navegación/offline. [ESTADO_IMPLEMENTACION.md](ESTADO_IMPLEMENTACION.md) mantiene I01–I26/O01–O23/UX01–UX14/T01–T27/K01–K30 y A01–A18.
+
+Las metas de esta especificación no cambian por haber construido los instrumentos. Un resultado interno negativo obliga a limitar el claim (§38.2), conservarlo y decidir la siguiente mejora; no permite anunciar una victoria garantizada. Los gates externos necesitan personas, datos permitidos y revisión independiente. GCP está excluido de la entrega local y Gemini debe reevaluarse cuando se habilite.

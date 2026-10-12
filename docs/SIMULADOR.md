@@ -1096,3 +1096,14 @@ El laboratorio está listo para evaluar el núcleo de NEXO cuando:
 Estos criterios buscan una contribución defendible en técnica, impacto, innovación y UX. No convierten el número de features, presets o agentes en garantía de 100/100 o primer puesto.
 
 **Primer corte para construir:** S01 y S02 con un pequeño grafo, una pérdida de conexión, una publicación engañosa y un recurso compartido. Deben recorrer señal → ingesta → investigación → autorización → viaje → servicio. Congelar contratos y verificar el motor; después extender los mismos mecanismos a región, incendio y carga masiva. El objetivo final sigue siendo el alcance completo descrito aquí.
+
+
+## 40. Cambios implementados para el cierre local
+
+La composición de capacidades tiene variantes internas declaradas: standard, distributed, incompatible, unsafe, insufficient_staff, occupied y delayed. Cambian cantidades/dependencias/dueños/calificaciones/capacidad del mismo mundo para todos los brazos. Una plaza útil cuenta cuando hay ocupación autorizada; una planta/edificio activado sin uso no suma atención efectiva. La evaluación de estas variantes no se denomina holdout externo.
+
+Una orden de reroute modifica la operación existente y conserva ID, vehículo, carga y destino/recibo. La reparación de NEXO se considera terminada cuando esa operación se resuelve físicamente, no por otro camión nuevo. Cancelación recibida y carga físicamente devuelta son estados distintos. Evacuación ya reservada conserva su compromiso al rerutearse sin crear plazas nuevas.
+
+El ledger de carga masiva usa createResource y campos de conservación completos; no añade stock solo al candidato. Se comprueban todas las invariantes antes/después del contraste. Los resultados del motor y los del proveedor se registran por separado.
+
+La revisión añade pruebas de variantes, conservación de cargo en reroute y compatibilidad/ocupación. [CIERRE_LOCAL.md](CIERRE_LOCAL.md) y [VALIDACION.md](VALIDACION.md) enlazan implementación, build, pruebas y límites. No se reescribe la auditoría inicial ni se elimina una campaña fallida después de corregir el motor.
