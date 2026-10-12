@@ -9,6 +9,8 @@ export function installFacilities(w) {
     const b = w.building(p.building);
     check(b, 'NOT_FOUND', 'Facility not found');
     requireOwner(a, b.ownerOrg ?? 'org0');
+    check(['shelter', 'plant'].includes(b.use) && b.capacity > 0,
+      'FACILITY_PURPOSE', 'Activation requires an eligible service site with useful capacity');
     check(
       w.state.observations[a.org].buildings[b.id]?.safe &&
         b.assessed &&

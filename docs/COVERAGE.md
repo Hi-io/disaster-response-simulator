@@ -46,9 +46,11 @@ The design remains in `SIMULADOR.md`. This file distinguishes functioning softwa
 
 ## Release verification
 
-The current automated suite has 116 tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
+The current automated suite has 117 tests and zero skipped tests. `pnpm check` verifies syntax, contract/preset counts and tracked-file hygiene. Rerun both after changes. Per-test names explain the property under test; the files above provide their concrete setup and assertions.
 
 `service-measurement.test.mjs` separately checks occupied shelter benefit and exact consumption: an empty operating shelter earns zero occupied place-hours, fifty occupants for one hour earn fifty place-hours, closure stops accumulation, and twenty-four hours of fifty occupants consume one hundred litres at the declared two-litre daily rate. This verifies arithmetic within the model, not a clinically validated intake requirement.
+
+The same suite rejects activating a residential demand location as a zero-capacity service. The world requires an eligible service site, received current safety assessment, actual dependencies and owner permission; a model-written benefit cannot create shelter places.
 
 `service.test.mjs` verifies that the API-only backend advances without a browser or polling, preserves authentication and organization scope, hides observer UI assets, stops only when paused, and produces the same seeded results as the service with its optional viewer.
 

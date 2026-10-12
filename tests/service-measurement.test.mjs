@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import {World} from '../engine/world.mjs';
 import {createResource} from '../engine/ledger.mjs';
 import {evaluate} from '../evaluation/metrics.mjs';
+
+test('a demand location cannot be activated as a zero-capacity service',()=>{
+ const w=new World({policy:'none',hazard:'none',grid:5,postsPerHour:0});
+ const b=w.state.map.buildings.find(b=>b.use==='residential');
+ assert.ok(b); const before=b.state;
+ assert.throws(()=>w.act({id:'commander-org0',org:'org0',role:'commander'},
+  {type:'activate',params:{building:b.id,permit:true},idempotencyKey:'zero-capacity'}),e=>e.code==='FACILITY_PURPOSE');
+ assert.equal(b.state,before); assert.deepEqual(w.invariants(),[]);
+});
 test('occupied place-hours count occupancy over time, never empty opening hours',()=>{
  const w=new World({policy:'none',hazard:'none',grid:5,topology:'grid',postsPerHour:0,backgroundTraffic:0,durationMs:86400000});const b=w.building(w.state.map.shelterId);
  b.state='operating';b.serviceIntegratedAt=0;b.occupancy=0;w.advance(3600000);assert.equal(evaluate(w).collective.shelterPlaceHours,0);
