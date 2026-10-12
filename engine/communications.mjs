@@ -122,8 +122,14 @@ export function installCommunications(w) {
       w.state.observations[m.to].lastContact[m.target ?? m.sector ?? m.id] = w.now;
     if (p.kind === 'post') w.publishPost(p.post);
     else if (p.kind === 'telemetry') {
-      const v = w.vehicle(p.vehicle);
-      if (v && p.observedAt >= v.lastGPS.at) {
+      const v = w.vehicle(p.vehicle),
+        prior = w.state.observations[m.to]?.vehicles[p.vehicle],
+        priorAt = Math.max(v?.lastGPS.at ?? -1, prior?.at ?? -1);
+      // Equal-time lifecycle reports have monotonically increasing versions.
+      // A delayed retry from the last road edge cannot overwrite a newer idle
+      // receipt and make an available truck appear busy again.
+      if (v && (p.observedAt > priorAt ||
+        p.observedAt === priorAt && (p.view?.version ?? 0) >= (prior?.version ?? 0))) {
         v.lastGPS = { node: p.node, at: p.observedAt };
         w.state.observations[m.to].vehicles[v.id] = p.view ?? {
           ...w.vehicleView(v),

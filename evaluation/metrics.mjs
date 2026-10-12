@@ -23,7 +23,7 @@ export function evaluate(world) {
     row.overprovided += Math.max(0, n.served - n.quantity);
     row.uncoveredUnitMs +=
       n.pendingIntegral + (world.now - n.integratedAt) * Math.max(0, n.quantity - n.served);
-    if (n.completedAt !== null && n.completedAt <= n.deadline) row.onTime++;
+    if (n.quantity > 0 && n.served >= n.quantity && n.completedAt != null && n.completedAt <= n.deadline) row.onTime++;
   }
   const stages = {};
   for (const op of world.state.operations)
@@ -44,8 +44,13 @@ export function evaluate(world) {
     type: n.type,
     quantity: n.quantity,
     served: Math.min(n.quantity, n.served),
+    firstServiceAt: n.firstServiceAt ?? null,
+    sufficientServiceAt: n.completedAt,
     completedAt: n.completedAt,
-    createdAt: n.createdAt ?? n.occurredAt ?? 0,
+    createdAt: n.responseCreatedAt ?? n.createdAt ?? n.occurredAt ?? 0,
+    originalCreatedAt: n.createdAt ?? n.occurredAt ?? 0,
+    responseEpisode: n.demandEpisodes?.at(-1)?.index ?? 1,
+    responseState: n.demandEpisodes?.at(-1)?.state ?? (n.completedAt != null ? 'covered' : 'open'),
     deadline: n.deadline,
     silent: n.silent,
     firstSignalAt: world.state.statistics.firstSignalAt[n.id] ?? null,
@@ -54,6 +59,56 @@ export function evaluate(world) {
       .filter(([, o]) => o.needs[n.id])
       .map(([id]) => id),
   }));
+  const eligibleCommunities = perCommunity.filter((n) => n.quantity > 0 && n.responseState !== 'retired'),
+    firstUsefulCompleted = eligibleCommunities.filter((n) => n.firstServiceAt != null),
+    sufficientlyCompleted = eligibleCommunities.filter((n) => n.completedAt != null && n.served >= n.quantity),
+    sufficientServiceMs = {
+      p50: quantile(sufficientlyCompleted.map((n) => n.completedAt - n.createdAt), 0.5),
+      p95: quantile(sufficientlyCompleted.map((n) => n.completedAt - n.createdAt), 0.95),
+      samples: sufficientlyCompleted.length,
+      note: 'Sufficient physical service, completed positive-demand cases only; report right-censored cases alongside these percentiles.',
+    },
+    responseEpisodes = needs.flatMap((n) => (n.demandEpisodes ?? [{
+      index: 1,
+      startedAt: n.createdAt ?? n.occurredAt ?? 0,
+      baselineServed: 0,
+      quantity: n.quantity,
+      peakQuantity: n.quantity,
+      targetQuantity: n.quantity,
+      firstServiceAt: n.firstServiceAt ?? null,
+      completedAt: n.completedAt ?? null,
+      endedAt: n.completedAt ?? null,
+      state: n.completedAt != null ? 'covered' : n.quantity > 0 ? 'open' : 'retired',
+      pendingIntegral: n.pendingIntegral ?? 0,
+    }]).filter((e) => e.peakQuantity > 0).map((e) => {
+      const firstServiceAt = e.firstServiceAt ?? null,
+        completedAt = e.state === 'covered' ? e.completedAt : null,
+        censoredAt = e.endedAt ?? world.now;
+      return {
+        need: n.id,
+        episode: e.index,
+        building: n.building,
+        type: e.type ?? n.type,
+        unit: e.unit ?? n.unit,
+        startedAt: e.startedAt,
+        quantity: e.quantity,
+        peakQuantity: e.peakQuantity,
+        targetQuantity: e.targetQuantity,
+        baselineServed: e.baselineServed,
+        state: e.state,
+        closedReason: e.closedReason ?? null,
+        endedAt: e.endedAt ?? null,
+        firstServiceAt,
+        sufficientServiceAt: completedAt,
+        firstUsefulCensored: firstServiceAt === null,
+        sufficientCensored: completedAt === null,
+        censoredAt: completedAt === null ? censoredAt : null,
+        timeToFirstUsefulServiceMs: (firstServiceAt ?? censoredAt) - e.startedAt,
+        timeToSufficientServiceMs: (completedAt ?? censoredAt) - e.startedAt,
+        uncoveredUnitMs: e.pendingIntegral +
+          (e.state === 'open' ? Math.max(0, world.now - n.integratedAt) * Math.max(0, n.quantity - n.served) : 0),
+      };
+    }));
   return {
     simulatedMs: world.now,
     services,
@@ -143,14 +198,30 @@ export function evaluate(world) {
         .filter((e) => e.type === 'received')
         .reduce((s, e) => s + e.amount, 0),
     },
-    subgroups: subgroups(perCommunity, world.now),
+    subgroups: subgroups(eligibleCommunities, world.now),
     response: {
-      completed: perCommunity.filter((n) => n.completedAt !== null).length,
-      rightCensored: perCommunity.filter((n) => n.completedAt === null).length,
-      needToServiceMs: {
-        p50: quantile(perCommunity.filter((n) => n.completedAt !== null).map((n) => n.completedAt - n.createdAt), 0.5),
-        p95: quantile(perCommunity.filter((n) => n.completedAt !== null).map((n) => n.completedAt - n.createdAt), 0.95),
-        note: 'Completed cases only; report right-censored cases alongside these percentiles.',
+      eligibleNeeds: eligibleCommunities.length,
+      completed: sufficientlyCompleted.length,
+      rightCensored: eligibleCommunities.length - sufficientlyCompleted.length,
+      firstUsefulCompleted: firstUsefulCompleted.length,
+      firstUsefulRightCensored: eligibleCommunities.length - firstUsefulCompleted.length,
+      firstUsefulServiceMs: {
+        p50: quantile(firstUsefulCompleted.map((n) => n.firstServiceAt - n.createdAt), 0.5),
+        p95: quantile(firstUsefulCompleted.map((n) => n.firstServiceAt - n.createdAt), 0.95),
+        samples: firstUsefulCompleted.length,
+        note: 'First physical positive contribution to outstanding demand; partial service counts here, but not as sufficient service. Report firstUsefulRightCensored separately.',
+      },
+      sufficientServiceMs,
+      needToServiceMs: sufficientServiceMs,
+      excludedNonpositiveNeeds: perCommunity.filter((n) => n.quantity <= 0).length,
+      excludedRetiredPositiveNeeds: perCommunity.filter((n) => n.quantity > 0 && n.responseState === 'retired').length,
+      episodes: {
+        eligible: responseEpisodes.length,
+        completed: responseEpisodes.filter((e) => !e.sufficientCensored).length,
+        retired: responseEpisodes.filter((e) => e.state === 'retired').length,
+        rightCensored: responseEpisodes.filter((e) => e.sufficientCensored).length,
+        perEpisode: responseEpisodes,
+        note: 'A new outstanding shortfall after coverage or retirement starts a new episode. Earlier aid is retained in history, never credited as response to a new episode. Withdrawn episodes are censored at withdrawal and must be reported separately; native resource quantities and integrals are not summed across types.',
       },
     },
     eventCounts: { ...world.state.statistics.counts },
@@ -194,7 +265,7 @@ function evaluateInformation(w) {
     rejectedObservedTrue: rejectedTrue,
     falseMerges,
     unobservedNeeds: w.state.needs.filter(
-      (n) => !Object.values(w.state.observations).some((o) => o.needs[n.id]),
+      (n) => n.quantity > 0 && !Object.values(w.state.observations).some((o) => o.needs[n.id]),
     ).length,
     note: 'These counts cover source-world claims only, not claims in an external platform database. Workflow acknowledgments are not semantic accuracy. Platform precision/recall requires matched external claims and independent task annotations.',
   };
@@ -230,6 +301,7 @@ export const METRIC_RULES = {
     'Sum min(demand, delivered service) for water needs. Arrivals and proposals are excluded.',
   signals: 'Publications and distinct versioned download receipts are separate counts.',
   operations: 'Authorized physical operations not in a terminal state.',
+  responseEpisodes: 'Each return to outstanding demand after coverage/retirement starts a new response clock. Partial aid is first useful service, not sufficient service. Withdrawals remain separately censored in episode history; no delivery timestamp is inherited by a new episode.',
   integrity:
     'Per-resource conservation, reservations, vehicle capacity, population and stage ordering.',
 };

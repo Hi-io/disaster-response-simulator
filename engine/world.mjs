@@ -204,6 +204,12 @@ export class World {
     }
     configureScenario(this);
     varyComposition(this);
+    // Scenario setup can specialize a demand before the clock begins. Those
+    // constructor-time values define the initial episode, not a later change.
+    for (const n of this.state.needs) {
+      n.demandEpisodes = [];
+      this.ensureDemandEpisode(n);
+    }
     this.initializeLaboratory();
     this.initializePopulation();
     this.schedule(30_000, 'initial_report', { need: 'need-water-main' }, 1, 'initial-main');
@@ -353,6 +359,7 @@ export class World {
     const need = {
       served: 0,
       createdAt: this.now,
+      firstServiceAt: null,
       completedAt: null,
       pendingIntegral: 0,
       integratedAt: this.now,
@@ -362,6 +369,7 @@ export class World {
       population: 0,
       ...clone(n),
     };
+    this.ensureDemandEpisode(need);
     this.state.needs.push(need);
     this.activatePopulationNeed?.(need);
     this.record(
@@ -371,21 +379,103 @@ export class World {
     );
     return need;
   }
-  updateNeed(id, change) {
+  ensureDemandEpisode(n) {
+    n.responseCreatedAt ??= n.createdAt ?? this.now;
+    if (n.demandEpisodes?.length) return n.demandEpisodes.at(-1);
+    const covered = n.quantity > 0 && n.served >= n.quantity && n.completedAt != null;
+    const episode = {
+      index: 1,
+      startedAt: n.responseCreatedAt,
+      baselineServed: 0,
+      targetQuantity: n.quantity,
+      quantity: Math.max(0, n.quantity),
+      peakQuantity: Math.max(0, n.quantity),
+      type: n.type,
+      unit: n.unit,
+      firstServiceAt: n.firstServiceAt ?? null,
+      completedAt: covered ? n.completedAt : null,
+      endedAt: covered ? n.completedAt : n.quantity <= 0 ? this.now : null,
+      state: covered ? 'covered' : n.quantity <= 0 ? 'retired' : 'open',
+      closedReason: covered ? 'physical_service' : n.quantity <= 0 ? 'nonpositive_demand' : null,
+      pendingIntegral: 0,
+    };
+    n.demandEpisodes = [episode];
+    return episode;
+  }
+  updateNeed(id, change, { physicalService = false } = {}) {
     const n = this.need(id);
     if (!n) throw new Error('Unknown need');
-    n.pendingIntegral += (this.now - n.integratedAt) * Math.max(0, n.quantity - n.served);
+    let episode = this.ensureDemandEpisode(n);
+    const pendingBefore = Math.max(0, n.quantity - n.served);
+    const integral = (this.now - n.integratedAt) * pendingBefore;
+    n.pendingIntegral += integral;
+    if (episode.state === 'open') episode.pendingIntegral += integral;
     n.integratedAt = this.now;
     Object.assign(n, change);
+    const pending = Math.max(0, n.quantity - n.served);
+    if (pending > 0) {
+      if (episode.state !== 'open') {
+        // A previously covered or withdrawn request is a new response episode.
+        // Existing deliveries remain in the cumulative stock/accounting ledger,
+        // but their timestamps cannot stand in for aid to this new shortfall.
+        episode = {
+          index: n.demandEpisodes.length + 1,
+          startedAt: this.now,
+          baselineServed: n.served,
+          targetQuantity: n.quantity,
+          quantity: pending,
+          peakQuantity: pending,
+          type: n.type,
+          unit: n.unit,
+          firstServiceAt: null,
+          completedAt: null,
+          endedAt: null,
+          state: 'open',
+          closedReason: null,
+          pendingIntegral: 0,
+        };
+        n.demandEpisodes.push(episode);
+        n.responseCreatedAt = this.now;
+        n.firstServiceAt = null;
+        n.completedAt = null;
+      } else {
+        episode.targetQuantity = n.quantity;
+        episode.quantity = Math.max(0, n.quantity - episode.baselineServed);
+        episode.peakQuantity = Math.max(episode.peakQuantity, episode.quantity);
+      }
+    } else if (episode.state === 'open') {
+      episode.targetQuantity = n.quantity;
+      episode.quantity = Math.max(0, n.quantity - episode.baselineServed);
+      episode.endedAt = this.now;
+      if (physicalService && pendingBefore > 0) {
+        episode.state = 'covered';
+        episode.closedReason = 'physical_service';
+        episode.completedAt = this.now;
+        n.completedAt = this.now;
+      } else {
+        // A correction or retirement is not a successful physical delivery.
+        episode.state = 'retired';
+        episode.closedReason = n.quantity <= 0 ? 'nonpositive_demand' : 'demand_reduced';
+        episode.completedAt = null;
+        n.completedAt = null;
+      }
+    }
     n.version++;
     this.record('need_changed', { ...change }, id);
   }
   serveNeed(id, quantity) {
     const n = this.need(id);
     if (!n) throw new Error('Unknown need');
+    // First useful aid is a physical positive contribution to outstanding
+    // demand. A zero receipt, an arrival, and oversupply of a retired demand do
+    // not create an instant service timestamp.
+    const useful = Math.min(quantity, Math.max(0, n.quantity - n.served));
+    if (useful > 0 && n.firstServiceAt == null) {
+      n.firstServiceAt = this.now;
+      this.ensureDemandEpisode(n).firstServiceAt = this.now;
+    }
     this.receivePopulationAid?.(n, quantity);
-    this.updateNeed(id, { served: n.served + quantity });
-    if (n.served >= n.quantity && n.completedAt === null) n.completedAt = this.now;
+    this.updateNeed(id, { served: n.served + quantity }, { physicalService: useful > 0 });
     this.record('service_delivered', { quantity, type: n.type, building: n.building }, id);
   }
   observeResource(org, r) {
@@ -692,11 +782,18 @@ export class World {
       offers: clone(this.state.partnerOffers?.[org] ?? []),
       transfers: clone((this.state.transfers??[]).filter(t=>t.from===org || this.state.partnerOffers?.[org]?.some(o=>o.id===t.id))),
       sharedCommitments: clone(this.state.sharedCommitments?.[org] ?? []),
-      inspections: clone(
-        this.state.inspections.filter(
-          (p) => p.org === org && ['completed', 'inconclusive', 'timeout'].includes(p.state),
-        ),
-      ),
+      inspections: this.state.inspections.filter((p) => p.org === org).map((p) => {
+        if (['completed', 'inconclusive', 'timeout'].includes(p.state)) return clone(p);
+        // An actor knows the request it submitted and its workflow status.
+        // Expose that receipt while queued/in progress so independent batches
+        // can share one inquiry. Pending receipts cannot reveal an assessment,
+        // source observation, assigned crew or another organization's requests.
+        return clone(Object.fromEntries([
+          'id', 'org', 'target', 'entity', 'method', 'purpose', 'validForMs',
+          'targetVersion', 'reportTo', 'requestProposal', 'requestStep',
+          'authorizedBy', 'staffResource', 'requestedVehicle', 'state', 'createdAt',
+        ].filter((key) => p[key] !== undefined).map((key) => [key, p[key]])));
+      }),
       queries: includeQueries
         ? clone((this.state.queries ?? []).filter((p) => p.org === org).slice(-historyLimit))
         : [],

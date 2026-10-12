@@ -119,6 +119,7 @@ export function installActions(w) {
           reserved: r.reserved,
           floor: r.floor,
           compatibility: r.compatibility,
+          qualifications: clone(r.qualifications ?? []),
           version: r.version,
           observedAt: w.now,
         }));
@@ -590,6 +591,8 @@ export function installActions(w) {
       op.state = 'failed';
       op.failure = 'commitment_invalid';
       v.state = 'idle';
+      v.operation = null;
+      w.reportVehicle(v);
       return;
     }
     load(r, op.quantity);
@@ -628,6 +631,7 @@ export function installActions(w) {
     v.load = 0;
     v.state = 'idle';
     v.operation = null;
+    w.reportVehicle(v);
     const c = w.state.commitments.find((x) => x.id === op.commitment);
     transition(c, 'completed', COMMITMENT_STATES);
     if (b && !op.need) {

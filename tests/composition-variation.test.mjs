@@ -18,8 +18,11 @@ test('structural composition variants repeat exactly and preserve total stock wh
  }
 });
 test('headcount alone cannot substitute for qualified staff at an assessed service site', () => {
- const w = new World({ ...config, compositionVariant: 'insufficient_staff' }), b = w.building(w.state.map.shelterId);
- b.assessed = true; b.assessedVersion = b.version; b.damage = 0; w.state.observations.org0.buildings[b.id] = { safe: true, version: b.version };
+ const w = new World({ ...config, extentKm: 2, inspectionMs: 1000, packetLoss: 0, compositionVariant: 'insufficient_staff' }), b = w.building(w.state.map.shelterId);
+ b.damage = 0;
+ w.act({ id: 'owner', org: 'org0', role: 'commander' }, { type: 'verify', params: { target: 'building', id: b.id, method: 'field' }, idempotencyKey: 'qualified-site-assessment' });
+ w.advance(600000);
+ assert.equal(b.assessed, true, 'Fixture must first receive a competent physical assessment');
  for (const [type, quantity] of Object.entries(b.dependencies)) {
   b.provisioned[type] = quantity; const r = createResource('stock-' + b.node + '-' + type, 'org0', b.node, type, quantity); if (type === 'energy') r.compatibility = b.requiredPower; w.state.resources.push(r);
  }

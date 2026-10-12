@@ -2,6 +2,25 @@ import { route } from '../generators/map.mjs';
 import { pointAlong } from '../viewer/geometry.js';
 
 export function installTraffic(w) {
+  // A completed physical trip does not make a vehicle instantly observable.
+  // Report terminal availability through the same delayed, lossy telemetry
+  // channel as movement. Without this receipt, finite fleets stayed en_route
+  // forever in the owner's view even after cargo had been unloaded.
+  w.reportVehicle = (v) => {
+    if (!v || v.background) return null;
+    v.version++;
+    return w.send(
+      {
+        kind: 'telemetry',
+        vehicle: v.id,
+        node: v.node,
+        observedAt: w.now,
+        view: { ...w.vehicleView(v), node: v.node, at: w.now },
+      },
+      v.owner,
+      { sector: w.sectorForNode(v.node), target: v.id },
+    );
+  };
   w.startTrip = (v, destination, operation = null) => {
     const known = operation ? w.state.observations[operation.org]?.edges : null;
     const path = route(w.state.map, v.node, destination, v, known);
@@ -13,6 +32,7 @@ export function installTraffic(w) {
       }
       w.record('trip_failed', { vehicle: v.id, reason: 'no_known_route' }, operation?.id);
       if (operation) w.reportOperation(operation);
+      w.reportVehicle(v);
       return false;
     }
     v.route = path.edges;
@@ -49,6 +69,7 @@ export function installTraffic(w) {
         w.record('trip_failed', { vehicle: v.id, reason: 'no_known_reroute' }, v.operation);
         const blockedOperation = w.state.operations.find((o) => o.id === v.operation);
         if (blockedOperation) { blockedOperation.state = 'blocked'; w.reportOperation(blockedOperation); }
+        w.reportVehicle(v);
         return;
       }
       v.route = path.edges;
@@ -103,6 +124,7 @@ export function installTraffic(w) {
         w.reportOperation(op);
       }
       w.record('vehicle_blocked', { edge: e?.id ?? null }, v.id);
+      w.reportVehicle(v);
       w.reportRoad?.(e, v.owner);
       return;
     }
@@ -191,6 +213,7 @@ export function installTraffic(w) {
       v.operation = null;
       w.record('vehicle_stopped', { node: v.node }, id);
       delete v.pendingCancel;
+      w.reportVehicle(v);
       return;
     }
     w.schedule(w.now, 'vehicle_enter', { vehicle: id }, 3, `continue-${id}-${w.now}`);

@@ -15,7 +15,14 @@ export function installFacilities(w) {
       w.state.observations[a.org].buildings[b.id]?.safe &&
         b.assessed &&
         b.damage < 2 &&
-        b.assessedVersion === b.version,
+        b.assessedVersion === b.version &&
+        b.assessedValidUntil > w.now &&
+        w.state.inspections.some(i => i.org === a.org && i.entity === b.id && i.target === 'building' &&
+          i.state === 'completed' && i.confirmedBySource === true && i.method === 'field' &&
+          i.purpose === 'facility_safety' && i.result?.safe === true && i.result.version === b.version &&
+          i.result.assessment?.competent === true && i.result.assessment.qualifications?.includes('field_assessment') &&
+          i.result.assessment.validUntil > w.now &&
+          (i.targetVersion === undefined || i.targetVersion === b.version)),
       'ASSESSMENT',
       'A current safe assessment must have reached the responsible organization',
     );
@@ -92,7 +99,8 @@ export function installFacilities(w) {
   };
   w.on('facility_open', ({ building: id, org }) => {
     const b = w.building(id);
-    if (!b || b.state !== 'provisioning' || b.damage >= 2 || !b.assessed) {
+    if (!b || b.state !== 'provisioning' || b.damage >= 2 || !b.assessed ||
+      b.assessedVersion !== b.version || b.assessedValidUntil <= w.now) {
       if (b) w.closeFacility(b, 'conditions_changed_before_opening');
       return;
     }

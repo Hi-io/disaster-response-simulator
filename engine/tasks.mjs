@@ -18,8 +18,9 @@ const terminal = (o) => ['completed', 'cancelled', 'failed'].includes(o.state);
 
 export function installTasks(w) {
   // Personnel assignments use the same reservation ledger as deliveries.
-  w.allocateStaff = (org, quantity, task) => {
-    const r = w.resource(`r-${org}-staff`);
+  w.allocateStaff = (org, quantity, task, resourceId = `r-${org}-staff`) => {
+    const r = w.resource(resourceId);
+    check(r?.owner === org && r.type === 'staff', 'STAFF', 'Only owned staff may be assigned');
     check(available(r) >= quantity, 'STAFF', 'No staff available');
     reserve(r, quantity);
     const c = {
@@ -58,6 +59,18 @@ export function installTasks(w) {
         : i.target === 'road'
           ? w.edge(i.entity)?.from
           : w.resource(i.entity)?.node;
+  // Local work queues are FIFO for requests at the same physical timestamp.
+  // Generic event keys are lexically ordered: inspection-10 must not jump
+  // ahead of inspection-8 merely because its decimal ID has another digit.
+  // Retries retain the original request order; exogenous event ordering stays
+  // unchanged. The fallback keeps earlier checkpoints' inspection IDs usable.
+  const fieldPrepareKey = (i) =>
+    `field-prepare-${String(i.queueSequence ?? Number(i.id.slice('inspection-'.length))).padStart(16, '0')}`;
+  const delegationCurrent = (i) => !i.requestProposal || w.state.proposals.some(p =>
+    p.id === i.requestProposal && p.org === i.reportTo && p.state === 'authorized' && !p.requiresReview &&
+    p.plan?.actions?.[i.requestStep]?.type === 'verify' && p.plan.actions[i.requestStep].owner === i.org &&
+    p.plan.actions[i.requestStep].params?.id === i.entity &&
+    p.plan.actions[i.requestStep].params.targetVersion === i.targetVersion);
   w.onAction('verify', (a, p) => {
     check(
       ['building', 'need', 'road', 'resource'].includes(p.target),
@@ -78,28 +91,82 @@ export function installTasks(w) {
         403,
       );
     }
+    const method = p.method ?? 'field';
+    const purpose = p.purpose ?? (p.target === 'building' && method === 'field' ? 'facility_safety' : 'observation');
+    check(['facility_safety', 'observation'].includes(purpose), 'PURPOSE', 'Unknown assessment purpose');
+    check(purpose !== 'facility_safety' || p.target === 'building' && method === 'field',
+      'ASSESSMENT_METHOD', 'A facility safety assessment requires a physical field visit');
+    const validForMs = p.validForMs ?? 6 * 3600000;
+    check(Number.isSafeInteger(validForMs) && validForMs >= 1000 && validForMs <= 86400000,
+      'ASSESSMENT_TTL', 'Assessment validity must be between one second and one day');
+    if (p.targetVersion !== undefined)
+      check(Number.isSafeInteger(p.targetVersion) && p.targetVersion >= 0, 'VERSION', 'Invalid target version');
+    if (p.staff) check(w.resource(p.staff)?.owner === a.org && w.resource(p.staff).type === 'staff',
+      'ASSESSMENT_OWNER', 'The assessor must own its assigned staff', 403);
+    if (p.vehicle) check(w.vehicle(p.vehicle)?.owner === a.org, 'ASSESSMENT_OWNER',
+      'The assessor must own its crew vehicle', 403);
+    if (p.reportTo && p.reportTo !== a.org) {
+      command(a);
+      check(purpose === 'facility_safety', 'ASSESSMENT_METHOD', 'Delegated safety requires a field assessment');
+      const request = w.state.proposals.find(x => x.id === p.requestProposal),
+        assigned = request?.plan?.actions?.[p.requestStep],
+        approval = w.state.proposals.find(x => x.id === p.proposal),
+        own = approval?.plan?.actions?.[p.step];
+      const matches = (step) => step?.type === 'verify' && step.owner === a.org &&
+        step.params?.target === p.target && step.params.id === p.id && step.params.method === method &&
+        step.params.purpose === purpose && step.params.reportTo === p.reportTo &&
+        step.params.targetVersion === p.targetVersion && step.params.validForMs === p.validForMs &&
+        step.params.staff === p.staff && step.params.vehicle === p.vehicle;
+      check(w.organization(p.reportTo) && request?.org === p.reportTo && request.state === 'authorized' &&
+        !request.requiresReview && matches(assigned) && approval?.org === a.org &&
+        approval.state === 'authorized' && !approval.requiresReview && matches(own),
+        'ASSESSMENT_APPROVAL', 'Both owners must approve the exact delegated field assessment', 403);
+      const prior = w.state.inspections.find(x => x.requestProposal === p.requestProposal && x.requestStep === p.requestStep);
+      if (prior) return clone(prior); // Retries cannot assign a second crew to the same approved request.
+    }
     const i = {
       id: w.nextId('inspection'),
+      queueSequence: w.state.counters.inspection,
       org: a.org,
       target: p.target,
       entity: p.id,
-      method: p.method ?? 'field',
+      method,
+      purpose,
+      validForMs,
+      targetVersion: p.targetVersion,
+      reportTo: p.reportTo ?? a.org,
+      requestProposal: p.requestProposal,
+      requestStep: p.requestStep,
+      authorizedBy: a.id,
+      staffResource: p.staff ?? `r-${a.org}-staff`,
+      requestedVehicle: p.vehicle,
       state: 'queued',
       createdAt: w.now,
     };
     check(targetNode(i), 'NOT_FOUND', 'Target location is not available');
     w.state.inspections.push(i);
-    w.schedule(w.now, 'field_prepare', { inspection: i.id }, 4, i.id);
+    w.schedule(w.now, 'field_prepare', { inspection: i.id }, 4, fieldPrepareKey(i));
     return clone(i);
   });
   w.on('field_prepare', ({ inspection: id }) => {
     const i = w.state.inspections.find((x) => x.id === id);
     if (!i || i.state !== 'queued') return;
+    if (!delegationCurrent(i)) {
+      i.state = 'inconclusive'; i.failure = 'requester_authorization_changed';
+      w.record('verification_inconclusive', { inspection: id, reason: i.failure }); return;
+    }
     const org = w.organization(i.org),
-      v = idleVehicle(i.org),
-      r = w.resource(`r-${i.org}-staff`);
+      v = i.requestedVehicle ? w.state.vehicles.find(v => v.id === i.requestedVehicle && v.owner === i.org &&
+        !v.background && v.state === 'idle' && !v.load && !v.passengers) : idleVehicle(i.org),
+      r = w.resource(i.staffResource);
     if (w.now >= w.config.durationMs) {
       i.state = 'timeout';
+      return;
+    }
+    if (i.purpose === 'facility_safety' && !r?.qualifications?.includes('field_assessment')) {
+      i.state = 'inconclusive';
+      i.failure = 'qualified_field_assessor_unavailable';
+      w.record('verification_inconclusive', { inspection: id, reason: i.failure });
       return;
     }
     if (i.method !== 'clarification' && (!v || available(r) < 1)) {
@@ -108,15 +175,18 @@ export function installTasks(w) {
         'field_prepare',
         { inspection: id },
         4,
-        `field-wait-${id}-${w.now}`,
+        fieldPrepareKey(i),
       );
       return;
     }
     if (i.method === 'clarification') {
-      const start = Math.max(w.now, org.inspectionAvailableAt ?? 0);
-      org.inspectionAvailableAt = start + w.config.inspectionMs;
+      const workers = Math.max(1, Math.floor(w.config.clarificationWorkers ?? 1));
+      org.clarificationAvailableAt ??= Array(workers).fill(0);
+      const slot = org.clarificationAvailableAt.indexOf(Math.min(...org.clarificationAvailableAt));
+      const start = Math.max(w.now, org.clarificationAvailableAt[slot]);
+      org.clarificationAvailableAt[slot] = start + w.config.inspectionMs;
       i.state = 'clarification_pending';
-      w.schedule(org.inspectionAvailableAt, 'field_observe', { inspection: id }, 4, id);
+      w.schedule(org.clarificationAvailableAt[slot], 'field_observe', { inspection: id }, 4, id);
       return;
     }
     const path = route(w.state.map, v.node, targetNode(i), v, w.state.observations[i.org].edges);
@@ -126,7 +196,7 @@ export function installTasks(w) {
       w.record('verification_inconclusive', { inspection: id, reason: i.failure });
       return;
     }
-    i.staff = w.allocateStaff(i.org, 1, id);
+    i.staff = w.allocateStaff(i.org, 1, id, i.staffResource);
     i.state = 'traveling';
     i.vehicle = v.id;
     i.startedAt = w.now;
@@ -152,16 +222,16 @@ export function installTasks(w) {
     const node = targetNode(i),
       sector = w.sectorForNode(node);
     // Clarification may be inconclusive; it is not a free ground-truth oracle.
-    const observed =
+    const observed = delegationCurrent(i) && (
       i.method !== 'clarification' ||
-      w.random('verification', id, 'reply') < w.config.observationRate;
+      w.random('verification', id, 'reply') < w.config.observationRate);
     if (observed && i.target === 'building') {
       const b = w.building(i.entity);
       result = {
         id: b.id,
         node: b.node,
         use: b.use,
-        safe: b.damage < 2,
+        ...(i.purpose === 'facility_safety' ? { safe: b.damage < 2 } : {}),
         state: b.state,
         damage: b.damage,
         capacity: b.capacity,
@@ -170,6 +240,12 @@ export function installTasks(w) {
         requiredPower: clone(b.requiredPower),
         requiredStaffSkills: clone(b.requiredStaffSkills ?? []),
         version: b.version,
+      };
+      if (i.purpose === 'facility_safety') result.assessment = {
+        purpose: 'facility_safety', method: 'field', competent: true,
+        inspectorOrg: i.org, staffResource: i.staffResource, qualifications: clone(w.resource(i.staffResource).qualifications),
+        vehicle: i.vehicle, operation: i.operation, observedAt: w.now,
+        targetVersion: b.version, validUntil: w.now + i.validForMs,
       };
       for (const n of w.state.needs.filter((n) => n.building === b.id))
         w.send({ kind: 'need_observation', need: clone(n), observedAt: w.now }, i.org, {
@@ -217,6 +293,7 @@ export function installTasks(w) {
         floor: r.floor,
         available: available(r),
         compatibility: clone(r.compatibility),
+        qualifications: clone(r.qualifications ?? []),
         version: r.version,
       };
     }
@@ -230,18 +307,34 @@ export function installTasks(w) {
       const v = w.vehicle(op.vehicle);
       v.state = 'idle';
       v.operation = null;
+      w.reportVehicle(v);
     }
     w.send({ kind: 'verification', inspection: id, result, observedAt: w.now }, i.org, {
       sector,
       channel: i.method === 'radio' ? 'radio' : 'internet',
     });
+    if (i.reportTo !== i.org)
+      w.send({ kind: 'verification', inspection: id, result, observedAt: w.now, recipient: i.reportTo }, i.reportTo, {
+        sector, ttlMs: i.validForMs,
+      });
   });
   w.completeVerification = (p) => {
-    const i = w.state.inspections.find((x) => x.id === p.inspection);
-    if (!i) return;
+    const source = w.state.inspections.find((x) => x.id === p.inspection);
+    if (!source) return;
+    let i = source;
+    if (p.recipient && p.recipient !== source.org) {
+      if (p.recipient !== source.reportTo || !w.state.observations[p.recipient]) return;
+      const id = `received:${p.recipient}:${source.id}`;
+      i = w.state.inspections.find(x => x.id === id);
+      if (!i) {
+        i = { ...clone(source), id, org: p.recipient, sourceOwner: source.org, sourceId: source.id };
+        w.state.inspections.push(i);
+      }
+    }
     i.state = p.result ? 'completed' : 'inconclusive';
     i.result = clone(p.result);
     i.completedAt = w.now;
+    i.confirmedBySource = true;
     const result = p.result;
     if (result) {
       const key = { building: 'buildings', need: 'needs', road: 'edges', resource: 'resources' }[
@@ -252,10 +345,16 @@ export function installTasks(w) {
         w.state.observations[i.org][key][i.entity] = { ...result, at: p.observedAt };
       if (i.target === 'building') {
         const b = w.building(i.entity);
-        if (result.safe && result.version === b.version) {
+        const assessment = result.assessment;
+        if (result.safe && result.version === b.version && i.method === 'field' &&
+          i.purpose === 'facility_safety' && assessment?.competent === true &&
+          assessment.qualifications?.includes('field_assessment') && assessment.validUntil > w.now &&
+          (i.targetVersion === undefined || i.targetVersion === result.version)) {
           b.assessed = true;
           b.assessedAt = p.observedAt;
           b.assessedVersion = b.version;
+          b.assessedValidUntil = assessment.validUntil;
+          b.assessedBy = assessment.inspectorOrg;
         }
       }
     }
@@ -334,6 +433,7 @@ export function installTasks(w) {
     const v = w.vehicle(op.vehicle);
     v.state = 'idle';
     v.operation = null;
+    w.reportVehicle(v);
   });
 
   w.onAction('evacuate', (a, p) => {
@@ -418,6 +518,8 @@ export function installTasks(w) {
       w.need(task.need).inTransit -= task.quantity;
       w.building(task.to).reservedPlaces -= task.quantity;
       v.state = 'idle';
+      v.operation = null;
+      w.reportVehicle(v);
       return;
     }
     task.health = w.takePopulationGroup(cohort, task.quantity);
@@ -473,6 +575,7 @@ export function installTasks(w) {
     v.passengers = 0;
     v.state = 'idle';
     v.operation = null;
+    w.reportVehicle(v);
     w.reportOperation(op);
     w.record('evacuation_completed', { quantity: t.quantity, to: to.id }, t.id);
     w.reportFacility?.(to);
@@ -509,6 +612,7 @@ export function installTasks(w) {
       v.load = 0;
       v.state = 'idle';
       v.operation = null;
+      w.reportVehicle(v);
       op.state = 'cancelled';
       op.times.returned = w.now;
       w.observeResource(op.org, r);
@@ -663,6 +767,7 @@ export function installTasks(w) {
       if (!v.edge) {
         v.state = 'idle';
         v.operation = null;
+        w.reportVehicle(v);
       }
     }
     w.record('cancel_received', { operation: op.id, cargo: v.load }, v.id);
