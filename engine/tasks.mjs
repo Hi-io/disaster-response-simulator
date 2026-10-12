@@ -168,6 +168,7 @@ export function installTasks(w) {
         dependencies: clone(b.dependencies),
         provisioned: clone(b.provisioned),
         requiredPower: clone(b.requiredPower),
+        requiredStaffSkills: clone(b.requiredStaffSkills ?? []),
         version: b.version,
       };
       for (const n of w.state.needs.filter((n) => n.building === b.id))
@@ -387,6 +388,9 @@ export function installTasks(w) {
       org: a.org,
       evacuation: task.id,
       vehicle: v.id,
+      quantity: task.quantity,
+      need: task.need,
+      building: task.to,
       destination: from.node,
       state: 'authorized',
       createdAt: w.now,
@@ -529,9 +533,12 @@ export function installTasks(w) {
         'DESTINATION',
         'A new delivery destination needs a corresponding need or facility',
       );
-    if (op.type === 'evacuation') {
+    if (op.type === 'evacuation' && op.phase === 'pickup') {
+      check(!b && !n && p.destination === op.destination, 'DESTINATION', 'A pickup reroute must preserve the assigned pickup and shelter');
+    } else if (op.type === 'evacuation') {
+      const task = w.state.evacuations.find(t => t.id === op.evacuation), ownReservation = task?.to === b?.id ? task.quantity : 0;
       check(
-        b?.state === 'operating' && b.capacity - b.occupancy - b.reservedPlaces >= v.passengers,
+        b?.state === 'operating' && b.capacity - b.occupancy - b.reservedPlaces + ownReservation >= v.passengers,
         'SHELTER',
         'A safe destination with capacity is required',
       );
@@ -556,7 +563,7 @@ export function installTasks(w) {
       { vehicle: v.id, destination: p.destination, orderVersion },
       op.id,
     );
-    return { state: 'instruction_pending', vehicle: v.id, orderVersion };
+    return { id: op.id, operation: op.id, state: 'instruction_pending', vehicle: v.id, orderVersion };
   });
   w.applyReroute = (v, p) => {
     const op = operation(w, v.operation);

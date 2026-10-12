@@ -78,6 +78,21 @@ test('an evacuation occupies a real vehicle and finite shelter places until peop
   assert.equal(w.need(t.need).served, 20);
   clean(w);
 });
+test('rerouting the same occupied evacuation retains its own reserved shelter places and returns the original operation receipt', () => {
+  const w = world(), from = w.building('b0'), to = w.building(w.state.map.shelterId);
+  to.state = 'operating'; to.damage = 0; to.capacity = 20;
+  w.addNeed({ id: 'evac-reroute', building: from.id, type: 'shelter', quantity: 20, unit: 'place', population: 20, deadline: 3600000 });
+  const task = act(w, 'evacuate', { from: from.id, to: to.id, vehicle: 'v-org0-0', quantity: 20 });
+  w.advance(10000);
+  assert.equal(w.vehicle('v-org0-0').passengers, 20); assert.equal(to.reservedPlaces, 20);
+  const update = act(w, 'reroute', { vehicle: 'v-org0-0', destination: to.node, building: to.id });
+  assert.equal(update.operation, task.operation);
+  w.advance(600000);
+  assert.equal(to.occupancy, 20); assert.equal(to.reservedPlaces, 0); assert.equal(w.need(task.need).served, 20);
+  assert.equal(w.state.operations.filter(o => o.type === 'evacuation').length, 1);
+  clean(w);
+});
+
 test('shelter collapse after dispatch prevents a false completed evacuation', () => {
   const w = world(),
     from = w.building('b0'),

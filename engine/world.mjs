@@ -19,6 +19,7 @@ import { installModels } from './models.mjs';
 import { validateParameters } from '../contracts/parameters.mjs';
 import { validateIntervention } from '../contracts/interventions.mjs';
 import { configureScenario } from '../scenarios/catalog.mjs';
+import { varyComposition } from '../generators/composition.mjs';
 import { evaluate } from '../evaluation/metrics.mjs';
 import { RecordArchive, recordsDigest, recordSnapshot } from './archive.mjs';
 
@@ -141,6 +142,7 @@ export class World {
           { compatibility: type === 'energy' ? { powerKw: 12, connector: 'A' } : null },
         );
         this.state.resources.push(resource);
+        if (type === 'staff') resource.qualifications = ['field_assessment', 'shelter_support', 'water_operations'];
         this.observeResource(org.id, resource);
       }
       for (let j = 0; j < 2; j++) {
@@ -201,6 +203,7 @@ export class World {
         };
     }
     configureScenario(this);
+    varyComposition(this);
     this.initializeLaboratory();
     this.initializePopulation();
     this.schedule(30_000, 'initial_report', { need: 'need-water-main' }, 1, 'initial-main');
@@ -396,6 +399,7 @@ export class World {
       floor: r.floor,
       unit: r.unit,
       compatibility: clone(r.compatibility),
+      qualifications: clone(r.qualifications ?? []),
       version: r.version,
       at: this.now,
     };
@@ -440,6 +444,10 @@ export class World {
       shiftEnd: v.shiftEnd,
       state: v.state,
       version: v.version,
+      operation: v.operation ?? null,
+      destination: v.destination ?? null,
+      receivedOrderVersion: v.receivedOrderVersion ?? 0,
+      order: v.order ?? null,
     };
   }
   act(actor, request) {

@@ -3,7 +3,7 @@ import { available, reserve, release, createResource } from './ledger.mjs';
 import { clone } from './determinism.mjs';
 export function installFacilities(w) {
   w.integrateFacility=(b)=>{const elapsed=Math.max(0,w.now-(b.serviceIntegratedAt??w.now));if(b.state==='operating'){b.operatingMs=(b.operatingMs??0)+elapsed;if(b.use==='shelter')b.servedPlaceMs=(b.servedPlaceMs??0)+(b.occupancy??0)*elapsed;}b.serviceIntegratedAt=w.now;};
-  w.reportFacility=(b)=>w.send({kind:'facility_status',observedAt:w.now,building:{id:b.id,node:b.node,use:b.use,state:b.state,openAt:b.openAt??null,capacity:b.capacity,occupancy:b.occupancy,provisioned:clone(b.provisioned),dependencies:clone(b.dependencies),requiredPower:clone(b.requiredPower),version:b.version,...(b.state==='closed'?{safe:false}:{}),ownerOrg:b.ownerOrg??'org0'}},b.ownerOrg??'org0',{sector:b.sector});
+  w.reportFacility=(b)=>w.send({kind:'facility_status',observedAt:w.now,building:{id:b.id,node:b.node,use:b.use,state:b.state,openAt:b.openAt??null,capacity:b.capacity,occupancy:b.occupancy,provisioned:clone(b.provisioned),dependencies:clone(b.dependencies),requiredPower:clone(b.requiredPower),requiredStaffSkills:clone(b.requiredStaffSkills??[]),version:b.version,...(b.state==='closed'?{safe:false}:{}),ownerOrg:b.ownerOrg??'org0'}},b.ownerOrg??'org0',{sector:b.sector});
   w.onAction('activate', (a, p) => {
     requireRole(a, ['commander', 'dispatcher']);
     const b = w.building(p.building);
@@ -27,6 +27,8 @@ export function installFacilities(w) {
       check(stock && available(stock) >= amount, 'DEPENDENCY', `Physical ${type} is unavailable`);
     }
     const power = w.resource(`stock-${b.node}-energy`);
+    const staff = w.resource(`stock-${b.node}-staff`);
+    for (const skill of b.requiredStaffSkills ?? []) check((staff?.qualificationCounts?.[skill] ?? 0) >= (b.dependencies.staff ?? 0), 'QUALIFICATION', `Qualified ${skill} staff have not reached the facility`);
     if (power)
       check(
         power.compatibility?.connector === b.requiredPower.connector &&
@@ -178,6 +180,10 @@ export function installFacilities(w) {
         source = w.resource(op.resource),
         dest = w.resource(op.destinationStock);
       if (source?.compatibility) dest.compatibility = clone(source.compatibility);
+      if (op.resourceType === 'staff') {
+        dest.qualificationCounts ??= {};
+        for (const skill of source?.qualifications ?? []) dest.qualificationCounts[skill] = (dest.qualificationCounts[skill] ?? 0) + op.received;
+      }
       if (op.resourceType === 'fuel') b.generatorFuel = (b.generatorFuel ?? 0) + op.received * 5;
     }
   });
