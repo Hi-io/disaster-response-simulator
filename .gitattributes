@@ -1,3 +1,15 @@
-* text=auto eol=lf
-*.png binary
-*.gz binary
+# Preserve the exact verified source bytes on every operating system.
+/contracts/* -text
+/engine/* -text
+/evaluation/* -text
+/sources/* -text
+/viewer/* -text
+/scripts/* -text
+/tests/* -text
+/package.json -text
+/pnpm-lock.yaml -text
+/.gitignore -text
+/.gitattributes -text
+# Reports and recorded runs keep their original bytes.
+/runs/** -text
+/reports/** -text

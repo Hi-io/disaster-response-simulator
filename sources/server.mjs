@@ -9,6 +9,7 @@ import { PRESETS } from '../content/presets.mjs';
 import { SimError, ACTION_SCHEMA } from '../contracts/actions.mjs';
 import { INPUT_TYPES, OBSERVATION_SCHEMA } from '../contracts/inputs.mjs';
 import { CONFIG_SCHEMA } from '../contracts/config.mjs';
+import { clone } from '../engine/determinism.mjs';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const esc = (s) =>
   String(s ?? '').replace(
@@ -127,6 +128,7 @@ export async function createLabServers({
         authorizeObserver(req);
         const reads = [
           '/api/state',
+          '/api/activity',
           '/api/catalog',
           '/api/checkpoint',
           '/api/metrics',
@@ -154,6 +156,38 @@ export async function createLabServers({
           });
         if (url.pathname === '/api/catalog')
           return json(res, 200, { scenarios: SCENARIOS, presetCount: PRESETS.length });
+        if (url.pathname === '/api/activity') {
+          // This observer-only view is a finite presentation sample. Actor
+          // display filters use received observations, never world truth.
+          const org = url.searchParams.get('org') ?? 'org0',
+            perspective = url.searchParams.get('perspective') ?? 'truth',
+            truth = perspective === 'truth',
+            limit = 200;
+          if (!world.organization(org) || (!truth && perspective !== org))
+            throw new SimError('ACTIVITY_SCOPE', 'Choose truth or the requested organization');
+          const posts = world.state.posts.slice(-limit).filter(p => truth ||
+            (!p.deleted && p.public.publishedAt !== null && p.public.publishedAt <= world.now &&
+              (p.private?.audience === 'public' || p.private?.audience?.includes(org))));
+          const observations = world.state.observations[org],
+            known = Object.fromEntries(Object.entries(observations).map(([key,value]) =>
+              [key,Array.isArray(value) ? value.slice(-limit) : value && typeof value === 'object'
+                ? Object.fromEntries(Object.entries(value).slice(-limit)) : value]));
+          const events = world.log.slice(-limit).filter(e => truth ||
+            (e.type === 'message_delivered' && e.data?.to === org) ||
+            (e.type === 'sharing_received' && e.data?.to === org) ||
+            (e.type === 'query_completed' && e.data?.org === org));
+          return json(res, 200, clone({
+            runId:world.runId,now:world.now,org,perspective,sampleLimit:limit,
+            state:{
+              posts:truth ? posts : posts.map(p => ({public:p.public,indexAt:p.indexAt,deleted:p.deleted,
+                private:{audience:p.private.audience}})),
+              ingestion:world.state.ingestion.filter(r => truth || r.org === org).slice(-limit),
+              observations:{[org]:known},
+            },
+            events,
+            totals:{posts:world.state.posts.length,ingestion:world.state.ingestion.length},
+          }));
+        }
         const b =
           req.method === 'POST'
             ? await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000)

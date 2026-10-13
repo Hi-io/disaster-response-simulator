@@ -1,6 +1,7 @@
 import { World } from '../engine/world.mjs';
 import { evaluate } from './metrics.mjs';
 import { clone, digest, keyedRandom } from '../engine/determinism.mjs';
+import { integrateUtilization } from '../engine/utilization.mjs';
 import { mkdir, writeFile, readFile, copyFile } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -55,6 +56,7 @@ export function replay(checkpoint) {
         throw new Error('Input boundary does not match recorded world');
     }
     if (w.now > input.at) throw new Error('Replay input is in the past');
+    integrateUtilization(w, input.at);
     w.now = input.at;
     try {
       if (input.kind === 'intervention') w.inject(input.type, input.data);

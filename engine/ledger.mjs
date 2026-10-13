@@ -2,6 +2,7 @@ import { requireCondition } from '../contracts/actions.mjs';
 import { reserveStaff, releaseStaffHold, loadStaff, checkStaff } from './staff.mjs';
 
 export function available(resource) {
+  if (['expired', 'damaged', 'quarantined'].includes(resource.condition)) return 0;
   return resource.quantity - resource.reserved - resource.floor;
 }
 export function reserve(resource, quantity, skills = []) {

@@ -1,6 +1,7 @@
 // Qualifications travel with physical people, rather than being copied from
 // a depot's historic label. Profiles preserve the intersection of skills;
 // legacy marginal counts alone never establish an unobserved intersection.
+import { requireCondition as check } from '../contracts/actions.mjs';
 const copy = (x) => structuredClone(x);
 const skillsKey = (skills) => [...new Set(skills)].sort().join('|');
 function profiles(groups) {
@@ -83,6 +84,13 @@ export function qualifiedStaffAvailable(r, skills = []) {
   if (r?.type !== 'staff') return 0;
   return Math.max(0, Math.min(r.quantity - r.reserved - r.floor, joint(free(r), skills)));
 }
+export function checkStaffSelection(r, quantity, skills) {
+  if (skills === undefined) return;
+  check(r?.type === 'staff', 'STAFF_SELECTOR', 'Qualification selectors require physical staff cargo');
+  check(quantity <= qualifiedStaffAvailable(r, skills), 'STAFF_QUALIFICATIONS',
+    'The selected qualified staff are reserved, protected or unavailable');
+}
+export function sameStaffSelection(a, b) { return skillsKey(a ?? []) === skillsKey(b ?? []); }
 export function reserveStaff(r, quantity, skills = []) {
   if (r.type !== 'staff') return undefined;
   const selected = take(free(r), quantity, skills);

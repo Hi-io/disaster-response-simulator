@@ -13,7 +13,7 @@ import {
 } from './presentation.js';
 import { MotionBuffer } from './motion.js';
 import { FlowLane, MapNotices, iconHTML, applyIcons } from './flow.js';
-import { serviceRows, selectionPoint, trackingStep, mapVisualKey } from './display.js';
+import { serviceRows, selectionPoint, trackingStep, mapVisualKey, humanQueueRows } from './display.js';
 import { mapTheme } from './theme.js';
 import { englishText } from './english.js';
 
@@ -330,6 +330,14 @@ function renderMeasurements() {
       : property('Resource conservation', m.ledgerValid ? 'Verified' : 'Check failed') +
         property('Queueing vehicles', number(m.physical.trafficQueue)) +
         property('Closed crossings', number(m.physical.closedCrossings)));
+  const humanRows = humanQueueRows(snapshot, perspective);
+  if (humanRows.some(r => r.queued + r.working + r.awaitingDelivery + r.completed + r.unconfirmed > 0)) {
+    $('informationStats').innerHTML += '<h3>Finite human attention</h3><table class="serviceTable"><thead><tr><th>Stage</th><th>Waiting</th><th>Busy</th><th>Done</th></tr></thead><tbody>' +
+      humanRows.map(r => `<tr><td>${escape({read:'Read',decide:'Decide / review',relay:'Relay'}[r.stage])}</td><td>${number(r.queued)}</td><td>${number(r.working + r.awaitingDelivery)}</td><td>${number(r.completed)}</td></tr>`).join('') + '</tbody></table>' +
+      property('Oldest task still waiting', clock(Math.max(...humanRows.map(r => r.oldestQueuedMs ?? 0)))) +
+      property('Unconfirmed work', number(humanRows.reduce((n,r) => n + r.unconfirmed,0))) +
+      '<p class="measurementNote">These queues use declared experimental timings. Reading or approval is not physical aid received. Relay remains busy until its message arrives.</p>';
+  }
 }
 
 function initialize3D() {

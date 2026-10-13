@@ -4,6 +4,7 @@ import {
   requireRole,
   requireOwner,
 } from '../contracts/actions.mjs';
+import { acceptsVehicleReceipt } from './received-vehicle.mjs';
 import {
   available,
   reserve,
@@ -14,7 +15,9 @@ import {
   createResource,
 } from './ledger.mjs';
 import { clone } from './determinism.mjs';
-import { staffSnapshot, receiveStaff, consumeStaff } from './staff.mjs';
+import { staffSnapshot, receiveStaff, consumeStaff, staffReservation, checkStaffSelection, sameStaffSelection } from './staff.mjs';
+import { CARGO_PROFILES, checkVehicleCargo } from '../contracts/cargo.mjs';
+import { supplyMetadata } from './supplies.mjs';
 import { route } from '../generators/map.mjs';
 
 const positive = (q) =>
@@ -101,6 +104,7 @@ export function installActions(w) {
         'sources',
         'capabilities',
         'map',
+        'finance',
       ].includes(p.target),
       'TARGET',
       'Unknown query target',
@@ -112,6 +116,7 @@ export function installActions(w) {
           (r) => r.owner === a.org || (r.public && w.organization(r.owner)?.sharing === 'public'),
         )
         .map((r) => ({
+          ...w.resourceView(r),
           id: r.id,
           owner: r.owner,
           node: r.node,
@@ -138,7 +143,11 @@ export function installActions(w) {
       version: w.organization(a.org).version,
       observedAt: w.now,
       execution: {
+        cargo:{version:1,types:clone(CARGO_PROFILES)},
         reservation: { defaultTtlMs: 900000, maxTtlMs: 86400000 },
+        fieldAssessment:{inspectionMs:w.config.inspectionMs,commandNominalLatencyMs:w.config.networkLatencyMs+Math.ceil(1000/w.config.bandwidthBytesPerSecond*1000)},
+        service:{setupMs:w.config.setupMs},
+        repair:{workMs:2*w.config.setupMs},
         delivery: {
           loadMs: w.config.loadMs,
           unloadMs: w.config.unloadMs,
@@ -150,6 +159,10 @@ export function installActions(w) {
       },
     };
     if (p.target === 'sources') result = w.publicFeed(p).posts;
+    if (p.target === 'finance') {
+      check(p.org === undefined || p.org === a.org, 'FORBIDDEN', 'Finance is private to its owner', 403);
+      result = w.financeView(a.org);
+    }
     if (p.target === 'documents')
       result = [
         {
@@ -184,7 +197,8 @@ export function installActions(w) {
             id: r.id,
             type: r.type,
             ...(org.sharing === 'public' || org.id === a.org
-              ? { available: available(r), node: r.node, compatibility: r.compatibility }
+              ? { available: available(r), node: r.node, compatibility: r.compatibility,
+                ...supplyMetadata(r) }
               : { availability: 'requires_owner_confirmation' }),
           })),
       };
@@ -194,6 +208,8 @@ export function installActions(w) {
         nodes: w.state.map.nodes.map((n) => ({ ...n })),
         roads: w.state.map.edges.map((e) => ({
           id: e.id,
+          ...(typeof e.name === 'string' ? { name: e.name } : {}),
+          ...(Array.isArray(e.aliases) ? { aliases: e.aliases.filter(x => typeof x === 'string') } : {}),
           from: e.from,
           to: e.to,
           lengthM: e.lengthM,
@@ -206,7 +222,9 @@ export function installActions(w) {
           x: b.x,
           z: b.z,
           use: b.use,
+          sector: b.sector,
         })),
+        sectors: w.state.map.sectors.map(s=>({id:s.id,node:s.node,...(typeof s.name==='string'?{name:s.name}:{}),...(s.jurisdiction?{jurisdiction:s.jurisdiction}:{})})),
       };
     const id = w.nextId('query');
     w.state.queries ??= [];
@@ -244,8 +262,9 @@ export function installActions(w) {
     if (q.target === 'vehicles')
       for (const v of result) {
         const old = w.state.observations[q.org].vehicles[v.id];
-        if (!old || v.at >= old.at) w.state.observations[q.org].vehicles[v.id] = v;
+        if (acceptsVehicleReceipt(old,v)) w.state.observations[q.org].vehicles[v.id] = v;
       }
+    if (q.target === 'finance') w.receiveFinance(q.org, result);
     w.record('query_completed', { id, org: q.org, target: q.target });
   };
   w.onAction('capabilities', (a, p) => {
@@ -514,7 +533,7 @@ export function installActions(w) {
     requireOwner(a, r.owner);
     check(['idle', 'arrived'].includes(v.state) && !v.load, 'VEHICLE_BUSY', 'Vehicle unavailable');
     positive(p.quantity);
-    check(p.quantity <= v.capacity, 'CAPACITY', 'Vehicle cannot carry that quantity');
+    checkVehicleCargo(v,r.type,p.quantity);
     const destination = p.destination ?? (n ? w.building(n.building).node : null);
     check(w.node(destination), 'DESTINATION', 'Destination required');
     check(
@@ -522,20 +541,13 @@ export function installActions(w) {
       'LOCATION',
       'No known route to pickup',
     );
+    check(route(w.state.map, r.node, destination,
+      { ...v, load: p.quantity, resourceType: r.type }, known(a).edges),
+      'ROUTE', 'No known route supports the actual loaded cargo');
     check(
       r.type === (n?.type ?? p.type ?? r.type),
       'RESOURCE_TYPE',
       'Resource does not meet this need',
-    );
-    check(
-      p.quantity * (r.type === 'water' ? 1 : r.type === 'energy' ? 150 : 1) <= v.maxCargoKg,
-      'WEIGHT',
-      'Cargo weight limit exceeded',
-    );
-    check(
-      p.quantity * (r.type === 'water' ? 0.001 : r.type === 'energy' ? 0.2 : 0.001) <= v.volumeM3,
-      'VOLUME',
-      'Cargo volume limit exceeded',
     );
     let c;
     if (p.commitment) {
@@ -555,8 +567,14 @@ export function installActions(w) {
         'PARTIAL_RESERVATION',
         'Split the commitment before partial dispatch',
       );
+      check(p.staffSkills === undefined || r.type === 'staff' && sameStaffSelection(p.staffSkills, c.staffSkills),
+        'STAFF_SCOPE', 'Dispatch cannot replace an existing owner-approved staff selection');
+      const selected = staffReservation(r, c.staffReservation);
+      check(!c.staffSkills?.length || selected && c.staffSkills.every(s => selected.qualifications.includes(s)),
+        'STAFF_QUALIFICATIONS', 'The exact reserved people must still carry every approved qualification');
     } else {
-      const staffReservation = reserve(r, p.quantity);
+      checkStaffSelection(r, p.quantity, p.staffSkills);
+      const staffReservation = reserve(r, p.quantity, p.staffSkills);
       c = {
         id: w.nextId('commitment'),
         owner: a.org,
@@ -570,6 +588,7 @@ export function installActions(w) {
         version: 1,
         authorizedBy: a.id,
         staffReservation,
+        ...(p.staffSkills === undefined ? {} : { staffSkills: [...p.staffSkills].sort() }),
       };
       w.state.commitments.push(c);
       w.schedule(c.expiresAt, 'expire_commitment', { id: c.id }, 1, c.id);
@@ -583,6 +602,7 @@ export function installActions(w) {
       resource: r.id,
       resourceType: r.type,
       quantity: p.quantity,
+      ...(c.staffSkills === undefined ? {} : { staffSkills: [...c.staffSkills] }),
       vehicle: v.id,
       destination,
       commitment: c.id,
@@ -607,6 +627,18 @@ export function installActions(w) {
     const c = w.state.commitments.find((x) => x.id === op.commitment),
       r = w.resource(op.resource),
       v = w.vehicle(op.vehicle);
+    if (v.node !== r.node || v.edge) {
+      if (['reserved','confirmed'].includes(c.state)) {
+        release(r,c.quantity,c.staffReservation);c.state='released';c.version++;
+      }
+      op.state='failed';op.failure='pickup_wrong_location';op.times.failed=w.now;
+      v.operation=null;
+      if(v.edge)v.pendingCancel=true;else v.state='idle';
+      const t=w.state.transfers?.find(t=>t.id===op.transfer);
+      if(t){t.state='failed';t.failure=op.failure;}
+      w.reportVehicle(v);w.reportOperation(op);
+      return;
+    }
     if (c.state !== 'confirmed') {
       op.state = 'failed';
       op.failure = 'commitment_invalid';
@@ -639,12 +671,14 @@ export function installActions(w) {
     const owner = op.recipientOrg ?? (b && !op.need ? (b.ownerOrg ?? 'org0') : op.org);
     let stockId = `stock-${op.destination}-${op.resourceType}`;
     if (w.resource(stockId)?.owner && w.resource(stockId).owner !== owner) stockId += `-${owner}`;
+    stockId = w.supplyStockId?.(stockId, op) ?? stockId;
     let destination = w.resource(stockId);
     if (!destination) {
       destination = createResource(stockId, owner, op.destination, op.resourceType, 0);
       w.state.resources.push(destination);
     }
     receiveStaff(destination, v.load, v.staffCargo);
+    if(op.resourceType==='staff'&&op.staffCalendar)destination.staffCalendar=clone(op.staffCalendar);
     destination.quantity += v.load;
     destination.received += v.load;
     destination.version++;

@@ -188,3 +188,23 @@ export function trackingStep(target, zoom, goal, desiredZoom, elapsed, reduced =
     zoom: zoom + (desiredZoom - zoom) * blend,
   };
 }
+
+// This is an observer visualization of causal source work, not inferred human
+// productivity. Actor perspectives may see counts only for that owner.
+export function humanQueueRows(snapshot, perspective = 'truth') {
+  const tasks = (snapshot?.state?.humanWork ?? []).filter(t => perspective === 'truth' || t.org === perspective);
+  const now = snapshot?.now;
+  return ['read', 'decide', 'relay'].map(stage => {
+    const own = tasks.filter(t => t.stage === stage);
+    const queued = own.filter(t => t.state === 'queued');
+    return {
+      stage,
+      queued: queued.length,
+      working: own.filter(t => t.state === 'working').length,
+      awaitingDelivery: own.filter(t => t.state === 'awaiting_delivery').length,
+      completed: own.filter(t => t.state === 'completed').length,
+      unconfirmed: own.filter(t => ['failed', 'inconclusive'].includes(t.state)).length,
+      oldestQueuedMs: Number.isFinite(now) && (!queued.length || queued.some(t => Number.isFinite(t.createdAt) && t.createdAt >= 0 && t.createdAt <= now)) ? queued.reduce((m,t) => Number.isFinite(t.createdAt) && t.createdAt >= 0 && t.createdAt <= now ? Math.max(m,now-t.createdAt) : m,0) : null,
+    };
+  });
+}

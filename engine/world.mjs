@@ -23,6 +23,16 @@ import { configureScenario } from '../scenarios/catalog.mjs';
 import { varyComposition } from '../generators/composition.mjs';
 import { evaluate } from '../evaluation/metrics.mjs';
 import { RecordArchive, recordsDigest, recordSnapshot } from './archive.mjs';
+import { installSupplies } from './supplies.mjs';
+import { installProcurement } from './procurement.mjs';
+import { installVehicleCalendar } from './vehicle-calendar.mjs';
+import { installVehicleDriver } from './vehicle-driver.mjs';
+import { installStaffCalendar } from './staff-calendar.mjs';
+import { integrateUtilization } from './utilization.mjs';
+import { installCargo } from './cargo.mjs';
+import { installUnloading } from './unloading.mjs';
+import { installCoverage } from './coverage.mjs';
+import { installHumanCapacity } from './human-capacity.mjs';
 
 export class World {
   constructor(input = {}, snapshot = null) {
@@ -93,6 +103,8 @@ export class World {
       return;
     }
     this.initialize();
+    this.initializeHumanCapacity();
+    integrateUtilization(this, 0);
   }
   install() {
     installTraffic(this);
@@ -108,6 +120,15 @@ export class World {
     installModels(this);
     installReference(this);
     installIngestion(this);
+    installSupplies(this);
+    installProcurement(this);
+    installVehicleCalendar(this);
+    installVehicleDriver(this);
+    installStaffCalendar(this);
+    installCargo(this);
+    installUnloading(this);
+    installCoverage(this);
+    installHumanCapacity(this);
     configureScenario(this, { handlersOnly: true });
   }
   initialize() {
@@ -143,7 +164,10 @@ export class World {
           { compatibility: type === 'energy' ? { powerKw: 12, connector: 'A' } : null },
         );
         this.state.resources.push(resource);
-        if (type === 'staff') resource.qualifications = ['field_assessment', 'shelter_support', 'water_operations'];
+        if (type === 'staff') {
+          resource.qualifications = ['field_assessment', 'shelter_support', 'water_operations'];
+          this.setStaffCalendar(resource,{shiftMs:this.config.staffShiftMs,restMs:this.config.staffRestMs,epochAt:0},{publish:false});
+        }
         this.observeResource(org.id, resource);
       }
       for (let j = 0; j < 2; j++) {
@@ -284,6 +308,7 @@ export class World {
     if (this.eventCount >= this.config.maxEvents)
       throw new SimError('EVENT_BUDGET', 'Event budget exhausted');
     const next = this.queue.pop();
+    integrateUtilization(this, next.at);
     this.now = next.at;
     this.eventCount++;
     const fn = this.handlers.get(next.type);
@@ -313,7 +338,7 @@ export class World {
       count++;
     }
     const reached = !(this.queue.peek()?.at <= target);
-    if (reached) this.now = target;
+    if (reached) { integrateUtilization(this, target); this.now = target; }
     return { now: this.now, processed: count, reached, nextAt: this.queue.peek()?.at ?? null };
   }
   lookup(key, list, id) {

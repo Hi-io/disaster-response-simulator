@@ -83,8 +83,13 @@ test('new unqualified staff do not inherit depot credentials and an assigned ass
   const donation = act(w, 'org0', 'purchase', { type: 'staff', quantity: 2, price: 1, leadMs: 60000 });
   until(w, () => w.state.purchases.find(p => p.id === donation.id).state === 'received');
   const native = w.resource('r-org0-staff');
-  counts(native, 6); assert.equal(native.quantity, 8); assert.deepEqual(native.qualifications, []);
-  const unqualified = transfer(w, 'org0', 'org1', 2); counts(unqualified, 0);
+  const purchased = w.resource(w.state.purchases.find(p => p.id === donation.id).receipts[0].resource);
+  counts(native, 6); assert.equal(native.quantity, 6); counts(purchased, 0);
+  assert.equal(purchased.staffCalendar, undefined, 'Purchase acknowledgement does not invent a personnel schedule');
+  w.inject('lab_intervention', { kind: 'staff_calendar', resource: purchased.id, calendar: {
+    shiftMs: native.staffCalendar.shiftMs, restMs: native.staffCalendar.restMs, epochAt: native.staffCalendar.epochAt } });
+  w.advance(w.now);
+  const unqualified = transfer(w, 'org0', 'org1', 2, purchased.id); counts(unqualified, 0);
   const mixed = transfer(w, 'org0', 'org1', 1); assert.equal(mixed.id, unqualified.id);
   assert.equal(mixed.quantity, 3); counts(mixed, 1); assert.deepEqual(mixed.qualifications, []);
   const inspection = act(w, 'org1', 'verify', { target: 'building', id: b.id, method: 'field',

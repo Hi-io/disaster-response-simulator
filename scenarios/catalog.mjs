@@ -153,7 +153,10 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
   w.on('existing_return', ({ vehicle: id }) => {
     const v = w.vehicle(id);
     if (v?.state === 'working') {
-      w.startTrip(v, v.plannedReturn.destination);
+      const destination=v.plannedReturn.destination;
+      w.setVehicleCalendar(v,{...Object.fromEntries(Object.entries(v.calendar).filter(([k])=>!['version','observedAt','plannedReturn'].includes(k)))},{publish:false});
+      v._calendarReturning=true;
+      w.startTrip(v, destination);
       w.send(
         {
           kind: 'telemetry',
@@ -175,11 +178,15 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
         v.node = shelter.node;
         v.state = 'working';
         v.lastGPS = { node: v.node, at: 0 };
-        v.plannedReturn = {
+        const plannedReturn = {
           departureAt: 600000,
           destination: w.organization('org1').node,
           cargo: 0,
         };
+        w.setVehicleCalendar(v,{plannedReturn,availableAfter:600000,
+          availableUntil:Math.max(600001,w.config.durationMs),
+          nextCommitment:{id:'existing-next-org1',startsAt:Math.max(600001,w.config.durationMs),node:w.organization('org1').node}},
+          {publish:false});
         w.schedule(600000, 'existing_return', { vehicle: v.id }, 3, 'existing-return');
         w.state.observations.org1.vehicles[v.id] = w.vehicleView(v);
       }
@@ -312,13 +319,8 @@ export function configureScenario(w, { handlersOnly = false } = {}) {
         );
       break;
     case 'S14':
-      w.schedule(
-        180000,
-        'damage',
-        { building: shelter.id, severity: 3, cause: 'access_failure' },
-        0,
-        'unloading-obstructed',
-      );
+      shelter.unloading={staffQuantity:1,requiredSkills:['shelter_support'],workMs:w.config.unloadMs};
+      shelter.version++;
       break;
     case 'S15':
       main.quantity = 100;

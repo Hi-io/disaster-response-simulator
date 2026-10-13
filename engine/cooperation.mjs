@@ -1,6 +1,7 @@
 import { clone } from './determinism.mjs';
 import { requireCondition as check, requireRole, requireOwner } from '../contracts/actions.mjs';
 import { reserve, release, available, transition, COMMITMENT_STATES } from './ledger.mjs';
+import { checkStaffSelection, sameStaffSelection } from './staff.mjs';
 
 const roles = ['commander', 'dispatcher'];
 const positive = (n) =>
@@ -41,6 +42,7 @@ export function installCooperation(w) {
       requireOwner(a, r.owner);
       positive(p.quantity);
       check(p.quantity <= available(r), 'INSUFFICIENT_RESOURCE', 'Insufficient stock');
+      checkStaffSelection(r, p.quantity, p.staffSkills);
       if (request.expectedVersion !== undefined)
         check(r.version === request.expectedVersion, 'VERSION_CONFLICT', 'Resource changed', 409);
       const c = {
@@ -55,6 +57,7 @@ export function installCooperation(w) {
         createdAt: w.now,
         version: 1,
         authorizedBy: a.id,
+        ...(p.staffSkills === undefined ? {} : { staffSkills: [...p.staffSkills].sort() }),
       };
       check(w.organization(c.requester), 'REQUESTER', 'Unknown partner');
       check(
@@ -62,7 +65,7 @@ export function installCooperation(w) {
         'EXPIRY',
         'Invalid validity window',
       );
-      if (c.state === 'reserved') c.staffReservation = reserve(r, c.quantity);
+      if (c.state === 'reserved') c.staffReservation = reserve(r, c.quantity, c.staffSkills);
       w.state.commitments.push(c);
       w.schedule(c.expiresAt, 'expire_commitment', { id: c.id }, 1, c.id);
       w.observeResource(a.org,r);
@@ -72,9 +75,12 @@ export function installCooperation(w) {
     check(c, 'NOT_FOUND', 'Commitment not found');
     requireOwner(a, c.owner);
     const r = w.resource(c.resource);
+    check(p.staffSkills === undefined || r.type === 'staff' && sameStaffSelection(p.staffSkills, c.staffSkills),
+      'STAFF_SCOPE', 'A reserved or offered staff selection cannot be replaced without a new owner approval');
     if (p.action === 'reserve') {
       check(c.state === 'offered' && c.expiresAt > w.now, 'STATE', 'Offer is not reservable');
-      c.staffReservation = reserve(r, c.quantity);
+      checkStaffSelection(r, c.quantity, c.staffSkills);
+      c.staffReservation = reserve(r, c.quantity, c.staffSkills);
       transition(c, 'reserved', COMMITMENT_STATES);
     } else if (p.action === 'confirm') {
       check(c.expiresAt > w.now && c.state === 'reserved', 'STATE', 'Reservation required');
@@ -126,6 +132,7 @@ export function installCooperation(w) {
           quantity: p.quantity,
           requester: p.to,
           ttlMs: p.ttlMs ?? 900000,
+          ...(p.staffSkills === undefined ? {} : { staffSkills: p.staffSkills }),
         },
         idempotencyKey: `transfer-stock-${w.nextId('transfer-request')}`,
       });
@@ -141,6 +148,7 @@ export function installCooperation(w) {
         returnBy: p.returnBy ?? null,
         createdAt: w.now,
         authorizedBy: a.id,
+        ...(p.staffSkills === undefined ? {} : { staffSkills: [...p.staffSkills].sort() }),
       };
       w.state.transfers.push(t);
       w.send({ kind: 'transfer_offer', transfer: clone(t) }, p.to, {
@@ -153,6 +161,8 @@ export function installCooperation(w) {
     requireOwner(a, t.to);
     check(t.state === 'offered', 'STATE', 'Transfer already decided');
     const c = w.state.commitments.find((c) => c.id === t.commitment);
+    check(p.staffSkills === undefined || sameStaffSelection(p.staffSkills, t.staffSkills),
+      'STAFF_SCOPE', 'Transfer acceptance cannot replace the owner-approved staff selection');
     check(c.state === 'reserved' && c.expiresAt > w.now, 'EXPIRED', 'Owner reservation expired');
     if (p.action === 'accept') {
       t.state = 'accepted';
@@ -176,6 +186,8 @@ export function installCooperation(w) {
       );
       const c = w.state.commitments.find((c) => c.id === t.commitment);
       check(c.state === 'confirmed', 'COMMITMENT', 'Transfer commitment is invalid');
+      check(p.staffSkills === undefined || sameStaffSelection(p.staffSkills, t.staffSkills),
+        'STAFF_SCOPE', 'Dispatch cannot replace the accepted bilateral staff selection');
       // The dispatch validator remains authoritative. Its requester scope is temporarily
       // local only during validation; the accepted bilateral record is kept intact.
       const requester = c.requester;
@@ -192,6 +204,7 @@ export function installCooperation(w) {
             destination: w.organization(t.to).node,
             need: undefined,
             building: undefined,
+            ...(t.staffSkills === undefined ? {} : { staffSkills: t.staffSkills }),
           },
           request,
         );
@@ -225,7 +238,7 @@ export function installCooperation(w) {
     const op = w.state.operations.find((o) => o.id === p.operation);
     if (!op || !['arrived', 'waiting_to_unload'].includes(op.state)) return;
     const b = op.building ? w.building(op.building) : null;
-    if (b && (b.unloading >= b.unloadCapacity || !b.receiverAvailable || b.damage >= 3)) {
+    if (b && (b.unloadingCount >= b.unloadCapacity || !b.receiverAvailable || b.damage >= 3)) {
       op.state = 'waiting_to_unload';
       w.record('unloading_queued', { building: b.id }, op.id);
       w.reportOperation(op);
@@ -233,7 +246,7 @@ export function installCooperation(w) {
         w.schedule(w.now + 30000, 'request_unload', p, 4, `unload-queue-${op.id}-${w.now}`);
       return;
     }
-    if (b) b.unloading++;
+    if (b) b.unloadingCount++;
     op.unloadingSlot = !!b;
     op.state = 'unloading';
     op.times.unloadingStarted = w.now;
@@ -246,7 +259,7 @@ export function installCooperation(w) {
     const b = op.building ? w.building(op.building) : null,
       v = w.vehicle(op.vehicle);
     if (op.unloadingSlot) {
-      b.unloading--;
+      b.unloadingCount--;
       op.unloadingSlot = false;
     }
     op.state = 'arrived';

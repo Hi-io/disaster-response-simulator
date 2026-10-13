@@ -2,6 +2,7 @@ import { requireCondition as check, requireRole, requireOwner } from '../contrac
 import { available, reserve, release, createResource } from './ledger.mjs';
 import { clone } from './determinism.mjs';
 import { qualifiedStaffAvailable } from './staff.mjs';
+import { supplyUsable } from './supplies.mjs';
 export function installFacilities(w) {
   // Unloading keeps stocks separate when two organizations receive goods at
   // the same node. A service site may use only stock owned by its owner; a
@@ -10,10 +11,18 @@ export function installFacilities(w) {
     const owner = b.ownerOrg ?? 'org0';
     for (const id of [`stock-${b.node}-${type}`, `stock-${b.node}-${type}-${owner}`]) {
       const stock = w.resource(id);
-      if (stock?.owner === owner && stock.node === b.node && stock.type === type) return stock;
+      if (stock?.owner === owner && stock.node === b.node && stock.type === type&&
+        (type!=='staff'||w.staffWindow?.(stock).usable!==false)) return stock;
     }
+    if(type==='staff')return w.state.resources.filter(r=>r.node===b.node&&r.owner===owner&&r.type===type&&
+      w.staffWindow?.(r).usable!==false&&qualifiedStaffAvailable(r,b.requiredStaffSkills??[])>=(b.dependencies.staff??0))
+      .sort((a,z)=>a.id.localeCompare(z.id))[0]??null;
     return null;
   };
+  const waterStocks = b => w.state.resources.filter(r => r.node === b.node &&
+    r.owner === (b.ownerOrg ?? 'org0') && r.type === 'water' && supplyUsable(r, w.now))
+    .sort((a, z) => (a.useByAt ?? Infinity) - (z.useByAt ?? Infinity) || a.id.localeCompare(z.id));
+  const usableWater = b => waterStocks(b).reduce((sum, r) => sum + Math.max(0, available(r)), 0);
   w.integrateFacility=(b)=>{const elapsed=Math.max(0,w.now-(b.serviceIntegratedAt??w.now));if(b.state==='operating'){b.operatingMs=(b.operatingMs??0)+elapsed;if(b.use==='shelter')b.servedPlaceMs=(b.servedPlaceMs??0)+(b.occupancy??0)*elapsed;}b.serviceIntegratedAt=w.now;};
   w.reportFacility=(b)=>w.send({kind:'facility_status',observedAt:w.now,building:{id:b.id,node:b.node,use:b.use,state:b.state,openAt:b.openAt??null,capacity:b.capacity,occupancy:b.occupancy,provisioned:clone(b.provisioned),dependencies:clone(b.dependencies),requiredPower:clone(b.requiredPower),requiredStaffSkills:clone(b.requiredStaffSkills??[]),version:b.version,...(b.state==='closed'?{safe:false}:{}),ownerOrg:b.ownerOrg??'org0'}},b.ownerOrg??'org0',{sector:b.sector});
   w.onAction('activate', (a, p) => {
@@ -43,12 +52,15 @@ export function installFacilities(w) {
     for (const [type, amount] of Object.entries(b.dependencies)) {
       check((b.provisioned[type] ?? 0) >= amount, 'DEPENDENCY', `Missing ${type}`);
       const stock = facilityStock(b, type);
-      check(stock && available(stock) >= amount, 'DEPENDENCY', `Physical ${type} is unavailable`);
+      check(type === 'water' ? usableWater(b) >= amount : stock && available(stock) >= amount,
+        'DEPENDENCY', `Physical usable ${type} is unavailable`);
     }
     const power = facilityStock(b, 'energy');
     const staff = facilityStock(b, 'staff');
     check(qualifiedStaffAvailable(staff, b.requiredStaffSkills ?? []) >= (b.dependencies.staff ?? 0),
       'QUALIFICATION', 'Enough staff with all required skills must be physically available');
+    if((b.dependencies.staff??0)>0)check(w.staffWindow?.(staff,w.now+w.config.setupMs).usable!==false,
+      'STAFF_CALENDAR','Staff must be on shift throughout facility setup');
     if (power)
       check(
         power.compatibility?.connector === b.requiredPower.connector &&
@@ -114,6 +126,7 @@ export function installFacilities(w) {
   w.on('facility_open', ({ building: id, org }) => {
     const b = w.building(id);
     if (!b || b.state !== 'provisioning' || b.damage >= 2 || !b.assessed ||
+      (b.dependencies.water > 0 && usableWater(b) < b.dependencies.water) ||
       b.assessedVersion !== b.version || b.assessedValidUntil <= w.now) {
       if (b) w.closeFacility(b, 'conditions_changed_before_opening');
       return;
@@ -166,17 +179,19 @@ export function installFacilities(w) {
     if (b?.state !== 'operating') return;
     w.integrateFacility(b);
     b.waterConsumptionRemainder=(b.waterConsumptionRemainder??0)+(b.occupancy??0)*w.config.waterMlPerPersonDay;
-    const water = facilityStock(b, 'water'),
-      amount = Math.floor(b.waterConsumptionRemainder/1440000);
+    const amount = Math.floor(b.waterConsumptionRemainder/1440000);
     b.waterConsumptionRemainder%=1440000;
-    if (b.damage >= 2 || !water || water.quantity < amount) {
+    if (b.damage >= 2 || usableWater(b) < amount) {
       w.closeFacility(b, 'unsafe_or_water_exhausted');
       return;
     }
-    water.quantity -= amount;
-    water.consumed += amount;
-    water.version++;
-    b.provisioned.water = water.quantity;
+    let remaining = amount;
+    for (const water of waterStocks(b)) {
+      const used = Math.min(remaining, Math.max(0, available(water)));
+      if (used) { water.quantity -= used; water.consumed += used; water.version++; remaining -= used; }
+      if (!remaining) break;
+    }
+    b.provisioned.water = usableWater(b);
     if (w.now + 60000 <= w.config.durationMs)
       w.schedule(
         w.now + 60000,

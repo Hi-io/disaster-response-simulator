@@ -22,6 +22,8 @@ export const ACTION_TYPES = {
   O21: 'coverage',
   O22: 'abstain',
   O23: 'record_outcome',
+  O24: 'unload',
+  O25: 'human_work',
 };
 export class SimError extends Error {
   constructor(code, message, status = 400) {

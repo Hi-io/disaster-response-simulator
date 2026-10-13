@@ -51,7 +51,7 @@ export function installTasks(w) {
   };
   const idleVehicle = (org) =>
     w.state.vehicles.find(
-      (v) => v.owner === org && !v.background && v.state === 'idle' && !v.load && !v.passengers,
+      (v) => v.owner === org && !v.background && v.state === 'idle' && !v.load && !v.passengers && w.vehicleDriverAvailable?.(v)!==false,
     );
   const targetNode = (i) =>
     i.target === 'building'
@@ -159,7 +159,7 @@ export function installTasks(w) {
     }
     const org = w.organization(i.org),
       v = i.requestedVehicle ? w.state.vehicles.find(v => v.id === i.requestedVehicle && v.owner === i.org &&
-        !v.background && v.state === 'idle' && !v.load && !v.passengers) : idleVehicle(i.org),
+        !v.background && v.state === 'idle' && !v.load && !v.passengers && w.vehicleDriverAvailable?.(v)!==false) : idleVehicle(i.org),
       r = w.resource(i.staffResource);
     if (w.now >= w.config.durationMs) {
       i.state = 'timeout';
@@ -191,7 +191,8 @@ export function installTasks(w) {
       w.schedule(org.clarificationAvailableAt[slot], 'field_observe', { inspection: id }, 4, id);
       return;
     }
-    const path = route(w.state.map, v.node, targetNode(i), v, w.state.observations[i.org].edges);
+    if((v.seats??0)<1){i.state='inconclusive';i.failure='crew_seats_unavailable';w.record('verification_inconclusive',{inspection:id,reason:i.failure});return;}
+    const path = route(w.state.map, v.node, targetNode(i), {...v,crewQuantity:1}, w.state.observations[i.org].edges);
     if (!path) {
       i.state = 'inconclusive';
       i.failure = 'no_known_access';
@@ -199,7 +200,7 @@ export function installTasks(w) {
       return;
     }
     i.staff = w.allocateStaff(i.org, 1, id, i.staffResource,
-      i.purpose === 'facility_safety' ? ['field_assessment'] : []);
+      i.purpose === 'facility_safety' ? ['field_assessment'] : [],w.now+path.freeTimeMs,w.now+path.freeTimeMs+w.config.inspectionMs);
     const assigned = w.state.commitments.find(c => c.id === i.staff);
     i.staffQualifications = staffReservation(r, assigned.staffReservation)?.qualifications ?? [];
     i.state = 'traveling';
@@ -289,6 +290,7 @@ export function installTasks(w) {
     if (observed && i.target === 'resource') {
       const r = w.resource(i.entity);
       result = {
+        ...w.resourceView(r),
         id: r.id,
         owner: r.owner,
         node: r.node,
@@ -385,7 +387,8 @@ export function installTasks(w) {
     );
     const v = idleVehicle(a.org);
     check(v, 'VEHICLE_BUSY', 'A crew vehicle is required');
-    const path = route(w.state.map, v.node, edge.from, v, w.state.observations[a.org].edges);
+    check((v.seats??0)>=2,'SEATS','The repair crew requires actual seats');
+    const path = route(w.state.map, v.node, edge.from, {...v,crewQuantity:2}, w.state.observations[a.org].edges);
     check(path, 'ROUTE', 'Crew has no known route to worksite');
     const task = {
       id: w.nextId('repair'),
@@ -395,7 +398,7 @@ export function installTasks(w) {
       createdAt: w.now,
       staff: null,
     };
-    task.staff = w.allocateStaff(a.org, 2, task.id);
+    task.staff = w.allocateStaff(a.org, 2, task.id,undefined,[],w.now+path.freeTimeMs,w.now+path.freeTimeMs+2*w.config.setupMs);
     w.state.repairs ??= [];
     w.state.repairs.push(task);
     const op = {
@@ -472,7 +475,7 @@ export function installTasks(w) {
     );
     check(
       route(w.state.map, v.node, from.node, v, w.state.observations[a.org].edges) &&
-        route(w.state.map, from.node, to.node, v, w.state.observations[a.org].edges),
+        route(w.state.map, from.node, to.node, {...v,passengers:p.quantity}, w.state.observations[a.org].edges),
       'ROUTE',
       'No known pickup or evacuation route',
     );
@@ -580,6 +583,10 @@ export function installTasks(w) {
       reportProbability: original.reportProbability,
     });
     w.serveNeed(n.id, v.passengers);
+    // Service quantity is the people physically admitted, not the number of
+    // seats authorized or a departure/arrival acknowledgement. Keep it in the
+    // terminal owner receipt before clearing the vehicle for a serial trip.
+    op.received = v.passengers;
     op.times.received = w.now;
     op.times.service = w.now;
     op.state = 'completed';
@@ -625,6 +632,7 @@ export function installTasks(w) {
       r.version++;
       v.load = 0;
       delete v.staffCargo;
+      delete v.staffCalendar;
       v.state = 'idle';
       v.operation = null;
       w.reportVehicle(v);
@@ -645,7 +653,10 @@ export function installTasks(w) {
     check(w.node(p.destination), 'DESTINATION', 'Unknown destination');
     const n = p.need ? w.need(p.need) : null,
       b = p.building ? w.building(p.building) : null;
-    if (op.type === 'delivery')
+    const pickup=['delivery','transfer'].includes(op.type)&&op.phase==='pickup';
+    if(pickup)check(!n&&!b&&p.destination===w.resource(op.resource)?.node,'DESTINATION',
+      'A pickup reroute must preserve the assigned source and the aid destination');
+    else if (op.type === 'delivery')
       check(
         (n && w.building(n.building).node === p.destination && n.type === op.resourceType) ||
           (b && b.node === p.destination) ||
@@ -653,6 +664,8 @@ export function installTasks(w) {
         'DESTINATION',
         'A new delivery destination needs a corresponding need or facility',
       );
+    if(['inspection','repair','transfer'].includes(op.type)&&!pickup)
+      check(p.destination===op.destination&&!n&&!b,'DESTINATION','This task can change its route, not its assigned worksite or receiver');
     if (op.type === 'evacuation' && op.phase === 'pickup') {
       check(!b && !n && p.destination === op.destination, 'DESTINATION', 'A pickup reroute must preserve the assigned pickup and shelter');
     } else if (op.type === 'evacuation') {
@@ -672,6 +685,7 @@ export function installTasks(w) {
         destination: p.destination,
         need: n?.id,
         building: b?.id,
+        pickup,
         orderVersion,
         createdAt: w.now,
       },
@@ -688,6 +702,9 @@ export function installTasks(w) {
   w.applyReroute = (v, p) => {
     const op = operation(w, v.operation);
     if (!op || terminal(op) || (p.orderVersion ?? 0) < (v.receivedOrderVersion ?? 0)) return;
+    if(p.pickup&&(!['delivery','transfer'].includes(op.type)||op.phase!=='pickup'||p.destination!==w.resource(op.resource)?.node)){
+      w.record('reroute_rejected',{vehicle:v.id,reason:'pickup_phase_changed'},op.id);return;
+    }
     v.receivedOrderVersion = p.orderVersion ?? 0;
     if (op.type === 'evacuation' && p.building) {
       const task = w.state.evacuations.find((t) => t.id === op.evacuation);
@@ -696,7 +713,7 @@ export function installTasks(w) {
       task.to = p.building;
       op.phase = 'shelter';
     }
-    op.destination = p.destination;
+    if(!p.pickup)op.destination = p.destination;
     if (p.need) {
       op.need = p.need;
       op.building = w.need(p.need).building;
@@ -759,7 +776,7 @@ export function installTasks(w) {
     }
     const c = w.state.commitments.find((c) => c.id === op.commitment);
     if (op.unloadingSlot) {
-      w.building(op.building).unloading--;
+      w.building(op.building).unloadingCount--;
       op.unloadingSlot = false;
     }
     if (c && ['reserved', 'confirmed'].includes(c.state)) {

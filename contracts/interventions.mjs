@@ -1,4 +1,6 @@
 import { SimError } from './actions.mjs';
+import { validateVehicleCalendar } from '../engine/vehicle-calendar.mjs';
+import { validateStaffCalendar } from '../engine/staff-calendar.mjs';
 export function validateIntervention(w, type, p) {
   const fail = (message) => {
     throw new SimError('INTERVENTION', message);
@@ -61,6 +63,9 @@ export function validateIntervention(w, type, p) {
         'driver_relay',
         'donation',
         'refuel',
+        'vehicle_calendar',
+        'vehicle_driver',
+        'staff_calendar',
       ].includes(p.kind)
     )
       fail('Unknown laboratory intervention');
@@ -73,7 +78,22 @@ export function validateIntervention(w, type, p) {
     }
     if (p.kind === 'facility_receiver') entity('id', (id) => w.building(id));
     if (p.kind === 'resource_condition') entity('id', (id) => w.resource(id));
+    if (p.kind === 'resource_condition' && p.useByAt !== undefined) integer('useByAt');
+    if (p.kind === 'resource_condition' && p.lotId !== undefined &&
+      (typeof p.lotId !== 'string' || !p.lotId.length || p.lotId.length > 120)) fail('Invalid lot identifier');
     if (['driver_relay', 'refuel'].includes(p.kind)) entity('vehicle', (id) => w.vehicle(id));
+    if(p.kind==='vehicle_calendar'){
+      entity('vehicle',id=>w.vehicle(id));validateVehicleCalendar(w,p.calendar);
+    }
+    if(p.kind==='vehicle_driver'){
+      entity('vehicle',id=>w.vehicle(id));
+      if(typeof p.available!=='boolean')fail('Driver availability must be explicit');
+    }
+    if(p.kind==='staff_calendar'){
+      entity('resource',id=>w.resource(id));
+      if(w.resource(p.resource).type!=='staff')fail('Staff schedules apply only to staff stock');
+      validateStaffCalendar(p.calendar);
+    }
     if (p.kind === 'refuel') {
       integer('litres', 1, 1000);
       if (p.litres === undefined) fail('litres required');

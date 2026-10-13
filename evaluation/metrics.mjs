@@ -1,3 +1,5 @@
+import { utilizationMetrics } from '../engine/utilization.mjs';
+
 export function quantile(values, q) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -111,6 +113,8 @@ export function evaluate(world) {
     }));
   return {
     simulatedMs: world.now,
+    utilization: utilizationMetrics(world),
+    humanCapacity: evaluateHumanCapacity(world),
     services,
     collective:{shelterPlaceHours:world.state.map.buildings.filter(b=>b.use==='shelter').reduce((s,b)=>s+((b.servedPlaceMs??0)+(b.state==='operating'?Math.max(0,world.now-(b.serviceIntegratedAt??world.now))*(b.occupancy??0):0))/3600000,0),operatingHours:world.state.map.buildings.reduce((s,b)=>s+((b.operatingMs??0)+(b.state==='operating'?Math.max(0,world.now-(b.serviceIntegratedAt??world.now)):0))/3600000,0),waterProduced:world.state.resources.filter(r=>r.id.startsWith('production-')).reduce((s,r)=>s+(r.produced??0),0),note:'Operating hours alone are not useful service. Occupied shelter place-hours and finite water production are measured separately.'},
     population: world.populationMetrics(),
@@ -226,6 +230,31 @@ export function evaluate(world) {
     },
     eventCounts: { ...world.state.statistics.counts },
   };
+}
+function evaluateHumanCapacity(w) {
+  const tasks=w.state.humanWork??[];
+  const aggregate=rows=>{
+    const finished=rows.filter(t=>['completed','inconclusive','failed'].includes(t.state)),
+      started=rows.filter(t=>t.startedAt!=null),queued=rows.filter(t=>t.state==='queued');
+    return {received:rows.length,completed:rows.filter(t=>t.state==='completed').length,
+      inconclusive:rows.filter(t=>t.state==='inconclusive').length,failed:rows.filter(t=>t.state==='failed').length,
+      queued:queued.length,working:rows.filter(t=>t.state==='working').length,
+      awaitingDelivery:rows.filter(t=>t.state==='awaiting_delivery').length,
+      elapsedWorkPersonMs:started.reduce((s,t)=>s+Math.max(0,Math.min(w.now,t.readyAt)-t.startedAt),0),
+      elapsedQueuePersonMs:rows.reduce((s,t)=>s+Math.max(0,(t.startedAt??t.completedAt??w.now)-t.createdAt),0),
+      startedQueueMs:{p50:quantile(started.map(t=>t.queueMs),.5),p95:quantile(started.map(t=>t.queueMs),.95),samples:started.length},
+      finishedTurnaroundMs:{p50:quantile(finished.map(t=>t.completedAt-t.createdAt),.5),
+        p95:quantile(finished.map(t=>t.completedAt-t.createdAt),.95),samples:finished.length},
+      pendingCensored:rows.filter(t=>!['completed','inconclusive','failed'].includes(t.state)).length,
+      pendingCensoredAt:w.now};
+  };
+  const grouped=rows=>Object.fromEntries(['read','decide','relay'].map(stage=>[stage,aggregate(rows.filter(t=>t.stage===stage))]));
+  return {profile:structuredClone(w.config.humanCapacity),stages:grouped(tasks),
+    perOrg:Object.fromEntries(Object.entries(w.state.humanCapacity?.orgs??{}).map(([org,s])=>[org,
+      {stages:grouped(tasks.filter(t=>t.org===org)),maximumBacklog:s.maximumBacklog,observedAt:s.observedAt,version:s.version}])),
+    maximumBacklog:Math.max(0,...Object.values(w.state.humanCapacity?.orgs??{}).map(o=>o.maximumBacklog)),
+    backgroundDropped:w.state.humanCapacity?.backgroundDropped??0,
+    note:'Declared experimental staffing and work durations, not empirical human performance. Person-ms counts attention work or waiting, not wages or productivity. Percentiles exclude pending work; pending counts and cutoff are reported separately. Work receipt/relay/owner approval never counts as physical aid. Attention lapses are explicit inconclusive outcomes, not invented false facts.'};
 }
 function evaluateInformation(w) {
   const downloaded = new Set(),

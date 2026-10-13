@@ -1,4 +1,5 @@
 import { digest } from './determinism.mjs';
+import { acceptsVehicleReceipt } from './received-vehicle.mjs';
 
 export function installCommunications(w) {
   w.sectorForNode = (node) => w.state.map.sectors.find((s) => s.node === node)?.id;
@@ -14,7 +15,8 @@ export function installCommunications(w) {
   w.send = (
     payload,
     to,
-    { channel = 'internet', sector = null, target = null, ttlMs = 3600000, bytes = 1000 } = {},
+    { channel = 'internet', sector = null, target = null, ttlMs = 3600000, bytes = 1000, randomKey = null,
+      originOrg = null, originSector = null } = {},
   ) => {
     const id = w.nextId('message');
     const m = {
@@ -30,6 +32,8 @@ export function installCommunications(w) {
       attempt: 0,
       state: 'queued',
       times: { created: w.now },
+      ...(randomKey === null ? {} : { randomKey }),
+      ...(originOrg === null ? {} : { originOrg, originSector }),
     };
     if ((w.state.messagePending ?? 0) >= w.config.networkCapacity * 100) {
       m.state = 'dropped';
@@ -59,6 +63,8 @@ export function installCommunications(w) {
       m.target && w.vehicle(m.target) ? w.sectorForNode(w.vehicle(m.target).node) : m.sector;
     if (
       !w.connected(currentSector, m.channel) ||
+      (m.originOrg && (!w.connected(m.originSector,m.channel) ||
+        w.organization(m.originOrg)?.connected === false && m.channel !== 'radio')) ||
       (w.organization(m.to)?.connected === false && m.channel !== 'radio')
     ) {
       m.state = 'offline';
@@ -75,7 +81,7 @@ export function installCommunications(w) {
       (m.channel === 'radio' ? 10000 : 0) +
       Math.ceil((m.bytes / w.config.bandwidthBytesPerSecond) * 1000) +
       congestion;
-    if (w.random('communications', id, 'loss', m.attempt) < w.config.packetLoss) {
+    if (w.random('communications', m.randomKey ?? id, 'loss', m.attempt) < w.config.packetLoss) {
       m.state = 'retrying';
       w.record('packet_lost', { attempt: m.attempt }, id);
       w.schedule(w.now + latency + 5000, 'transmit', { id }, 2, `loss-retry-${id}-${m.attempt}`);
@@ -130,7 +136,8 @@ export function installCommunications(w) {
       // Equal-time lifecycle reports have monotonically increasing versions.
       // A delayed retry from the last road edge cannot overwrite a newer idle
       // receipt and make an available truck appear busy again.
-      if (v && (p.observedAt > priorAt ||
+      const incoming=p.view??(v?{...w.vehicleView(v),node:p.node,at:p.observedAt}:null);
+      if (v && acceptsVehicleReceipt(prior,incoming) && (p.observedAt > priorAt ||
         p.observedAt === priorAt && (p.view?.version ?? 0) >= (prior?.version ?? 0))) {
         v.lastGPS = { node: p.node, at: p.observedAt };
         w.state.observations[m.to].vehicles[v.id] = p.view ?? {
@@ -224,6 +231,7 @@ export function installCommunications(w) {
       if(!prior || (prior.statusObservedAt??-1)<=p.observedAt)
         w.state.observations[m.to].buildings[p.building.id]={...prior,...p.building,statusObservedAt:p.observedAt};
     } else if (p.kind === 'query_result') w.completeQuery(p);
+    else if (p.kind === 'finance_status') w.receiveFinance(m.to, p.snapshot);
   });
   w.reportResource = (resource, org) => w.send({ kind: 'resource_status',
     resource: w.resourceView(resource), observedAt: w.now }, org,

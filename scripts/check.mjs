@@ -22,7 +22,7 @@ for (const file of files) {
 if (
   PRESETS.length < 360 ||
   Object.keys(INPUT_TYPES).length !== 26 ||
-  Object.keys(ACTION_TYPES).length !== 23
+  Object.keys(ACTION_TYPES).length !== 25
 )
   throw new Error('Contract or content coverage mismatch');
 const tracked = spawnSync('git', ['ls-files'], { encoding: 'utf8' });
@@ -34,5 +34,5 @@ if (
 )
   throw new Error('Private development files are tracked');
 console.log(
-  `${files.length} JavaScript modules checked; 26 inputs, 23 actions, ${PRESETS.length} presets; repository hygiene passed.`,
+  `${files.length} JavaScript modules checked; 26 inputs, 25 actions, ${PRESETS.length} presets; repository hygiene passed.`,
 );

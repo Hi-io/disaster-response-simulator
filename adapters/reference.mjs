@@ -31,6 +31,46 @@ export function installReference(w) {
       // The publicFeed projection contains neither observer labels nor future posts.
       const feed = w.publicFeed({ limit: 100 }).posts,
         view = w.actorView(org, { includeQueries: false, includeEdges: false });
+      // The same received dependency and independently reviewed support are
+      // available to every controller. S14 does not immobilize conventional
+      // planning by introducing an action which only the candidate can use.
+      memory.unloadingSupport ??= [];
+      for (const plan of memory.unloadingSupport.filter(p=>!p.ended)) {
+        const proposal=view.proposals.find(p=>p.id===plan.proposal);
+        if (!plan.issued&&proposal?.state==='authorized') {
+          const result=call(plan.type,{...plan.params,proposal:plan.proposal,step:0},true);
+          if(result){plan.issued=true;plan.result=result.id;}else plan.ended=true;
+        }
+        if(plan.issued) {
+          const result=['dispatch','cancel'].includes(plan.type)?view.operations.find(o=>o.id===plan.result):
+            view.unloadingRequests.find(r=>r.id===plan.result);
+          if(['completed','cancelled','failed','inconclusive'].includes(result?.state))plan.ended=true;
+        }
+        if(['rejected','needs_clarification'].includes(proposal?.state))plan.ended=true;
+      }
+      for(const request of view.unloadingRequests.filter(r=>r.receiverOrg===org&&['waiting_for_crew','inconclusive'].includes(r.state))) {
+        if(memory.unloadingSupport.some(p=>!p.ended&&p.building===request.building))continue;
+        const qualified=Object.values(view.known.resources).filter(r=>r.owner===org&&r.type==='staff'&&
+          r.quantity-r.reserved-r.floor>=request.staffQuantity&&request.requiredSkills.every(s=>r.qualifications?.includes(s)));
+        const onsite=qualified.find(r=>r.node===request.node);let type,params;
+        if(onsite){type='unload';params={operation:request.operation,staff:onsite.id,quantity:request.staffQuantity,
+          targetVersion:request.targetVersion,requestVersion:request.version,sourceVersion:request.operationVersion,deliveryQuantity:request.deliveryQuantity};}
+        else{
+          const crew=qualified[0],vehicle=Object.values(view.known.vehicles).find(v=>v.owner===org&&!v.load&&
+            ['idle','arrived'].includes(v.state)&&v.seats>=request.staffQuantity&&v.driverAvailable!==false);
+          if(!crew)continue;
+          if(!vehicle){
+            const spare=view.operations.find(o=>o.org===org&&o.building===request.building&&o.id!==request.operation&&o.state==='waiting_to_unload');
+            if(!spare)continue;
+            type='cancel';params={id:spare.id};
+          }else{type='dispatch';params={resource:crew.id,vehicle:vehicle.id,quantity:request.staffQuantity,staffSkills:request.requiredSkills,
+            destination:request.node,building:request.building};}
+        }
+        const action={type,owner:org,params,dependsOn:[]},proposal=call('propose',{
+          title:type==='unload'?'Assign onsite unloading crew':type==='cancel'?'Recover one spare shipment to free crew transport':'Transport qualified unloading crew',plan:{actions:[action]}});
+        if(proposal){call('review',{id:proposal.id,decision:'approve'},true);
+          memory.unloadingSupport.push({building:request.building,proposal:proposal.id,type,params});}
+      }
       const sample =
         w.config.policy === 'conventional' ? feed.slice(0, w.config.operatorCount * 3) : feed;
       for (const post of sample) {
@@ -133,6 +173,7 @@ export function installReference(w) {
         const used = new Set([
           ...active.map((o) => o.vehicle),
           ...memory.plans.filter((p) => !p.dispatched && !p.ended).map((p) => p.vehicle),
+          ...memory.unloadingSupport.filter(p=>!p.ended).map(p=>p.params.vehicle),
         ]);
         const v = Object.values(view.known.vehicles).find(
           (v) => v.owner === org && !used.has(v.id) && ['idle', 'arrived'].includes(v.state),

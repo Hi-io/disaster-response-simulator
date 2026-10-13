@@ -82,7 +82,7 @@ export function generateMap(c) {
         occupancy: 0,
         reservedPlaces: 0,
         unloadCapacity: 2,
-        unloading: 0,
+        unloadingCount: 0,
         storageCapacity: 10000,
         receiverAvailable: true,
         requiredPower: { powerKw: 10, connector: 'A' },
@@ -255,10 +255,7 @@ export function route(map, from, to, vehicle, knownEdges = null) {
       const view = knownEdges ? (knownEdges[edge.id] ?? { open: true, waterDepth: 0 }) : edge;
       if (
         !view.open ||
-        vehicle.weightKg +
-          (vehicle.load ?? 0) * (vehicle.resourceType === 'energy' ? 150 : 1) +
-          (vehicle.passengers ?? 0) * 75 >
-          edge.maxWeight ||
+        grossVehicleWeight(vehicle) > edge.maxWeight ||
         view.waterDepth > (vehicle.maxWaterDepth ?? 0.3)
       )
         continue;
@@ -288,3 +285,4 @@ export function route(map, from, to, vehicle, knownEdges = null) {
     freeTimeMs: dist.get(to),
   };
 }
+import { grossVehicleWeight } from '../contracts/cargo.mjs';

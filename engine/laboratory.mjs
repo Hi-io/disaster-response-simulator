@@ -97,13 +97,10 @@ export function installLaboratory(w) {
       };
     if (p.target === 'bulletins' || p.target === 'forecasts')
       result = w.state.bulletins.filter((b) => b.availableAt <= w.now).map((b) => clone(b));
-    if (p.target === 'finance')
-      result = {
-        sandbox: true,
-        available: w.organization(a.org).funds,
-        entries: clone(w.state.fundEntries.filter((e) => e.org === a.org)),
-        purchases: clone(w.state.purchases.filter((e) => e.org === a.org)),
-      };
+    if (p.target === 'finance') {
+      check(p.org === undefined || p.org === a.org, 'FORBIDDEN', 'Finance is private to its owner', 403);
+      result = w.financeView(a.org);
+    }
     if (p.target === 'memory') result = clone(w.state.patterns.filter((x) => x.org === a.org));
     if (p.target === 'team') result = w.publicFeed({ ...p, org: a.org, audience: 'team' }).posts;
     if (p.target === 'integrations')

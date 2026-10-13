@@ -1,5 +1,6 @@
 import { route } from '../generators/map.mjs';
 import { pointAlong } from '../viewer/geometry.js';
+import { grossVehicleWeight } from '../contracts/cargo.mjs';
 
 export function installTraffic(w) {
   // A completed physical trip does not make a vehicle instantly observable.
@@ -112,10 +113,7 @@ export function installTraffic(w) {
       return;
     }
     const e = w.edge(v.route[v.routeIndex]);
-    const grossWeight =
-      v.weightKg +
-      (v.load ?? 0) * (v.resourceType === 'energy' ? 150 : 1) +
-      (v.passengers ?? 0) * 75;
+    const grossWeight = grossVehicleWeight(v);
     if (!e?.open || e.waterDepth > v.maxWaterDepth || grossWeight > e.maxWeight) {
       v.state = 'blocked';
       const op = w.state.operations.find((o) => o.id === v.operation);

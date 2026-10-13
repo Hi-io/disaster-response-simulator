@@ -1,6 +1,7 @@
 import { clone, digest } from '../engine/determinism.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { normalizeHumanCapacity, HUMAN_CAPACITY_SCHEMA } from './human-capacity.mjs';
 export const VERSION = '0.2.0';
 // Pin behavior, not only a manually maintained version label. Normalize Git line endings.
 const implementationFiles = ['contracts', 'engine', 'generators', 'content', 'scenarios', 'sources']
@@ -9,7 +10,9 @@ const implementationFiles = ['contracts', 'engine', 'generators', 'content', 'sc
       .filter((name) => name.endsWith('.mjs'))
       .map((name) => `${dir}/${name}`),
   )
-  .concat(['adapters/reference.mjs', 'evaluation/metrics.mjs', 'viewer/geometry.js'])
+  .concat(readdirSync(fileURLToPath(new URL('../viewer/',import.meta.url)),{recursive:true})
+    .filter(name=>/\.(?:m?js|html|css)$/.test(name)).map(name=>'viewer/'+name.replaceAll('\\','/')),
+    ['adapters/reference.mjs', 'evaluation/metrics.mjs'])
   .sort();
 export const ENGINE_BUILD = digest(
   Object.fromEntries(
@@ -89,6 +92,8 @@ export const DEFAULT_CONFIG = {
   modelLatencyMs: 5000,
   modelCallLimit: 1000,
   subsystemSeeds: {},
+  supply: { purchaseTranches: null, purchaseTerminalState: 'backordered' },
+  humanCapacity: { profile: 'zero' },
 };
 const enums = {
   topology: ['grid', 'regional'],
@@ -164,12 +169,34 @@ export function validateConfig(input = {}) {
   for (const key of Object.keys(input))
     if (!(key in DEFAULT_CONFIG)) throw new Error(`Unknown configuration field: ${key}`);
   const c = { ...clone(DEFAULT_CONFIG), ...input };
+  c.humanCapacity = normalizeHumanCapacity(c.humanCapacity, c.operatorCount);
   if (c.mode === 'live' && input.clockLatency === undefined) c.clockLatency = 'wall';
   if (c.mode === 'live' && c.clockLatency !== 'wall')
     throw new Error('Live integration requires a wall-clock latency policy');
   if (input.scenario === 'S19' && input.organizations === undefined) c.organizations = 5;
   if (typeof c.healthReports !== 'boolean') throw new Error('healthReports must be boolean');
   if (typeof c.recurringNeeds !== 'boolean') throw new Error('recurringNeeds must be boolean');
+  if (!c.supply || typeof c.supply !== 'object' || Array.isArray(c.supply) ||
+    Object.keys(c.supply).some(k => !['purchaseTranches', 'purchaseTerminalState'].includes(k)))
+    throw new Error('Invalid supply profile');
+  c.supply = { ...clone(DEFAULT_CONFIG.supply), ...c.supply };
+  if (!['backordered', 'failed'].includes(c.supply.purchaseTerminalState))
+    throw new Error('Invalid purchase terminal state');
+  if (c.supply.purchaseTranches !== null) {
+    if (!Array.isArray(c.supply.purchaseTranches) || !c.supply.purchaseTranches.length ||
+      c.supply.purchaseTranches.length > 32) throw new Error('Invalid supplier tranches');
+    let total = 0, lastAt = -1;
+    for (const tranche of c.supply.purchaseTranches) {
+      if (!tranche || typeof tranche !== 'object' || Array.isArray(tranche) ||
+        Object.keys(tranche).some(k => !['fraction', 'delayMs'].includes(k)) ||
+        !Number.isFinite(tranche.fraction) || tranche.fraction < 0 || tranche.fraction > 1 ||
+        !Number.isSafeInteger(tranche.delayMs) || tranche.delayMs < 1000 ||
+        tranche.delayMs > 604800000 || tranche.delayMs < lastAt)
+        throw new Error('Invalid supplier tranche');
+      total += tranche.fraction; lastAt = tranche.delayMs;
+    }
+    if (total > 1 + 1e-12) throw new Error('Supplier tranches exceed the ordered quantity');
+  }
   if (c.organizations > c.grid * c.grid)
     throw new Error('Not enough distinct sites for organizations');
   if (!['string', 'number'].includes(typeof c.seed) || String(c.seed).length > 128)
@@ -218,7 +245,7 @@ export const CONFIG_SCHEMA = {
   properties: Object.fromEntries(
     Object.entries(DEFAULT_CONFIG).map(([key, value]) => [
       key,
-      enums[key]
+      key === 'humanCapacity' ? HUMAN_CAPACITY_SCHEMA : enums[key]
         ? { enum: enums[key] }
         : ranges[key]
           ? {
