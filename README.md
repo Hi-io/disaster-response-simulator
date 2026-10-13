@@ -1,131 +1,61 @@
-# Disaster Response Simulator
+# AidScaler Disaster Response Simulator
 
-A deterministic laboratory for testing disaster-response platforms against a causal world. It simulates disasters, information delays, transport, finite supplies, independent organizations and population outcomes. An isometric 3D observer lets you inspect what actually happened.
+A deterministic environment for developing and testing disaster-response software. It models needs, reports, communications, traffic, finite resources and independent response teams. The isometric 3D viewer uses simple geometry to make those interactions easy to inspect.
 
-**The simulator does not run Gemini or any other AI model.** The separate [NEXO platform](https://github.com/Hi-io/nexo-platform) reads its scoped HTTP sources, investigates alternatives and submits human-reviewed proposals. The local platform currently uses Gemma 4 through OpenRouter; this is not a Gemini result. This repository supplies the world, action contracts, scripted reference policies and independent measurements. It requires no model API key and makes no paid inference calls.
+The simulator provides the world and its interfaces. The separate [AidScaler platform](https://github.com/Hi-io/aidscaler-platform) connects through organization-scoped APIs and currently supports Gemma 4 through OpenRouter. Running this simulator requires no model API key.
 
-## Run locally
+## Quick start
 
-Requires Node.js **24 or later** (the disk archive uses built-in SQLite) and pnpm 11.
+Install Node.js 24 or later and pnpm 11, then:
 
-```sh
+~~~sh
+git clone --depth 1 https://github.com/Hi-io/disaster-response-simulator.git
+cd disaster-response-simulator
 pnpm install --frozen-lockfile
 pnpm start
-```
+~~~
 
-- Observer: **http://127.0.0.1:4318/**
-- Fictional social network and source API: **http://127.0.0.1:4319/feed**
-- Observer access and scoped organization credentials: `.local/session.json`, generated locally and ignored by Git. Enter the observer key at the login screen. Give an external platform only its organization key, never the observer key.
+- Open the [3D laboratory](http://127.0.0.1:4318/).
+- Explore the [fictional public feed](http://127.0.0.1:4319/feed).
+- Find the generated observer and organization keys in the ignored .local/session.json file. Enter the observer key at the laboratory login. Give an integration only its scoped organization key.
 
-Both servers bind to loopback. This is a local research tool; it is not an internet-facing deployment.
+The servers bind to localhost and the world starts paused. Play, Step and Advance world control the backend clock; camera movement and browser rendering do not advance it.
 
-The **Node.js service owns the clock, disasters, traffic, decisions and metrics**. A browser is an optional observer: it draws the map, interpolates confirmed positions and animates cards. Closing it does not stop a playing simulation. Keep the Node process running; a paused world stays paused until the control API or Play starts it.
+For the same APIs without the 3D viewer, use pnpm service. Add --play to start the clock automatically:
 
-To run the same service without serving the 3D frontend:
-
-```sh
+~~~sh
 pnpm service -- --play
-```
+~~~
 
-This starts the backend clock and retains the observer API on port 4318 and organization/source gateway on port 4319. `pnpm service` starts paused. `pnpm start` serves the optional viewer as well; both modes run the same engine. Use one mode at a time. The fictional social network remains readable for scraping in API-only mode. For accelerated experiments and multiple seeds, use the headless CLI commands below; no browser is needed.
+Use one server mode at a time because both use ports 4318 and 4319.
 
-The default world covers **160 × 160 km**, with 625 irregularly placed settlements, winding roads, four response organizations and **three river crossings**. Road speed, capacity, terrain cost and vehicle restrictions vary. Closing a crossing can create an hours-long detour or make a community inaccessible. The `grid` parameter controls settlement density; regional roads do not form a square grid.
+## Explore the world
 
-The default earthquake runs for 48 simulated hours with disk-backed compact history and a scripted conventional coordination policy. Select **Manual / external platform** to operate it yourself or connect NEXO. A reference policy is ordinary code, not a substitute for a functioning Gemini integration.
+Choose a scenario, seed, map size and response policy in World configuration. Pan and zoom the map, inspect buildings and vehicles, follow a moving vehicle, and switch between observer truth and a team's received knowledge.
 
-Laboratory and API-only launches generate **English reports by default**, as do new scenarios created in the viewer. Explicit `language: "es"` or `"mixed"` configurations remain available for multilingual experiments. The observer renders the built-in Spanish templates from older runs in English, including media descriptions and received source cards. Original source text and versioned receipts remain unchanged in the archive and source APIs; a translated inspector offers the original in a collapsed disclosure.
+The information lanes show world events, circulating reports and information received by the selected team. The Human attention profile selector controls zero, moderate and burst presets; Advanced JSON exposes timings, finite pools, connectivity and other parameters. Built-in response policies are scripted controllers. A manual workflow or model-assisted response connects through the external API.
 
-## Inspect a scenario
+The engine includes:
 
-1. Open the configuration menu. Select S01–S24, seed, disaster, topology and size. **Response organizations** accepts 1–12; four is the default, not a fixed limit. Advanced JSON exposes all other validated parameters.
-2. Use Play and the requested ×1/×10/×100/×1000 speed. Step and Advance world are in the configuration menu. Measured effective speed is in Measurements → diagnostics.
-3. Drag to pan, scroll to zoom, use right-drag to rotate, or Fit region to return to the isometric overview. Selecting a building, organization, vehicle, request or located report opens its inspector and smoothly zooms to it. The camera follows moving targets using confirmed positions. Pan, rotate, zoom, Stop tracking or close the inspector to release it; Track target resumes. Browse archived history when needed.
-4. Switch **Map view** from observer truth to an organization's received knowledge. Unknown information stays unknown. **Organization data** selects the team represented in the third stream. **Layers** controls traffic colors, vehicles, requests, disaster zones, connectivity, communities, routes, organizations and map notifications. Green/amber/coral road colors represent occupancy and queues; an organization view never borrows hidden live congestion.
-5. The three stacked lanes show meaningful world events, communication, and **reports received by the selected organization**. The last shows delivered team messages, known operational observations and actual connector receipts. Stages for one downloaded source/version form one card; separate reposts remain separate messages. **Layers → Information flow** can include consultable sources or reveal routine telemetry. Both are off by default. Available is not received, and received is not understood. Misleading-content labels appear only in observer truth. Select a card for its full contents. Freeze the feed to read it while the world and map continue running.
-6. Use Actions & interventions to submit proposals, review decisions, dispatch resources or introduce disruptions. Agent sessions cannot authorize physical interventions.
-7. Compare A / B creates independent worlds with identical initial conditions and synchronized cameras. The built-in comparison uses scripted references, not Gemini.
+- Procedural maps, earthquake, flood and wildfire events.
+- Traffic queues, route restrictions, fuel, drivers, cargo capacity and staff shifts.
+- Supplies, expiring lots, owner-controlled reservations and transfers.
+- Field checks, qualified teams, facility dependencies, evacuation and physical delivery receipts.
+- Delayed or lost messages, outages, stale information and finite human attention.
+- A fictional social network with reports, reposts, corrections and synthetic media descriptions.
+- Saved checkpoints, replay, headless execution and multiple-seed experiments.
 
-The complete operating view fits the viewport. The default view shows the map, clock, playback controls and three information lanes. **Measurements** opens resource-specific unmet, served and excess quantities, including food as well as water, plus simulated fatalities, injuries and deficit person-hours. Other need types appear as they arise. Missing organization observations remain “not reported”, never zero. Measurements, diagnostics, comparisons and the color key are available on demand rather than permanently taking space from the demonstration.
+## Reproducible runs
 
-Map notifications stay anchored to actual locations; nearby arrivals push older cards upward. Overflow leaves the visible area and is culled. **Card pacing follows pending queue size**, independently of the simulation-speed selector: more than one waiting card accelerates arrivals and movement; an emptying queue returns to a calmer pace. Large bursts and ×1000 show cards without an entry fade. Pausing immediately settles the finite presentation queues to recent records instead of replaying stale animations. Freeze still holds a readable view independently. Sampling details are in Measurements → diagnostics, and the full causal event history remains archived.
-
-The authenticated **`GET /api/activity?org=org0&perspective=truth`** endpoint supplies the recent event/source/receipt window and selected teams' observations without repeatedly transferring the map, query history or complete world state. The viewer polls this lightweight flow separately from its map snapshots. It never steps the clock, acknowledges a source or deletes a record. GPS updates, timestamps and partial supply counts do not rebuild the 3D scene; actual visible changes still do. Short frame stalls catch up with bounded batches instead of leaving a growing animation delay. The animation is a finite visual sample, while the backend retains complete data for inspection and evaluation.
-
-Lane volumes do not have a forced ordering. One physical incident can generate many reports, reposts and unrelated messages. An organization may receive only a few of them, or fetch the entire accessible feed. The simulator does not pretend to perform AI filtering. Routine GPS and transport receipts are hidden in the default visual sample; a received vehicle position has one card when telemetry is enabled.
-
-Motion is buffered between confirmed snapshots, follows the known road shape and never extrapolates past the latest world state. GPS-only organization views retain reported positions instead of inventing travel between reports. Camera movement, visual interpolation and frame rate never advance the simulation. The model represents operational interactions, not photorealistic physics.
-
-“The reference controller did not recognize an actionable request” is a discard explanation, not a runtime error or an AI verdict. It means the scripted controller did not support the post's statement; the source and receipt remain recorded. Interface icons use Lucide under the license in `viewer/icons/LICENSE`.
-
-## What has physical consequences
-
-- Needs change after damage and recur when delivered supplies are consumed.
-- A reservation reduces available stock. It has an owner, version and expiry; partners cannot reserve another owner's inventory without permission.
-- Dispatch sends an instruction through the communication model. A truck moves only after receiving it, loading cargo and accessing a road.
-- Traffic has finite entry/storage capacity, queues, spillback, fuel use, weight restrictions and shift limits.
-- Arrival, unloading, receipt and useful service are separate milestones. Failed plans retain sunk distance, fuel and physical cargo.
-- A shelter or water plant requires a current assessment, permission, compatible equipment and resources physically at the site. Production and generator runtime are finite. Shelter benefit counts actual occupied place-hours after people physically arrive, not unused capacity. Water consumption integrates occupancy over time; closing a shelter stops its useful-service accumulation.
-- Independent organizations can miss needs, duplicate shipments, share observations, make conditional commitments, withdraw offers and transport borrowed equipment back.
-- Internet outages, radio, bandwidth, packet loss, retries, indexing delay and stale observations affect what a platform can know and when an instruction arrives.
-- Water and food shortage, injuries, exposure, unmet person-hours and **simulated fatalities** evolve over time. A deadline alone never kills people. A proposal alone never treats them.
-
-Population response curves are **experimental assumptions**, not clinically validated predictions. Fatalities support sensitivity-tested comparisons inside the laboratory; they do not establish a real number of lives saved. See [CALIBRATION.md](docs/CALIBRATION.md).
-
-## Reproducible experiments
-
-```sh
-pnpm test
+~~~sh
 pnpm check
-node cli.mjs validate --config manifests/region.json
-node cli.mjs generate --config manifests/region.json --output runs/map.json
-node cli.mjs run --config manifests/unit.json --output runs/unit
-node cli.mjs replay --checkpoint runs/unit/checkpoint.json.gz
-node cli.mjs batch --config manifests/city.json --seeds 1,2,3 --policies conventional,rules,federated --workers 2 --output runs/batch
-node cli.mjs export --checkpoint runs/unit/checkpoint.json.gz --output runs/export
-pnpm benchmark
-pnpm benchmark --full
-```
+pnpm test
+node cli.mjs run --config manifests/unit.json --seed demo-01 --output runs/demo-01
+node cli.mjs replay --checkpoint runs/demo-01/checkpoint.json.gz
+node cli.mjs batch --config manifests/unit.json --seeds demo-01,demo-02 --policies conventional,rules --workers 2 --output runs/batch
+node cli.mjs export --checkpoint runs/demo-01/checkpoint.json.gz --output runs/export
+~~~
 
-Runs store a versioned manifest, actions/receipts, metrics, compressed event history and a checkpoint. Compact mode archives posts, messages and events in SQLite; portable saved checkpoints include their database files. Keep the bundle together. Batch jobs support bounded workers, memory/time budgets, cancellation and verified resume (`--resume`).
+Keep the complete run directory, including its checkpoint and compact-history files. Exact replay requires the same engine build, configuration and recorded inputs. A new external model response is a new input.
 
-Batch resume reuses only completed episodes with the same configuration and source build. A cancelled episode retains its artifacts and completion reason, and is rerun on the next resume. The per-episode wall budget is checked between event chunks; hashing/export time is separate from simulation time.
-
-Repeatability requires the **same engine source build, complete manifest and recorded inputs**. The manifest fingerprints causal source files, and checkpoints from a different build are rejected. Keep the recorded Git revision to restore an earlier build. Random streams are keyed by subsystem/entity/event, so extra tool calls do not consume a shared random generator. Running a new external inference is different from replaying its recorded output. CLI forks record their parent checkpoint and receive a distinct branch identity.
-
-For a paired comparison, split `batch.json` into one policy per file and run:
-
-```sh
-node cli.mjs compare --a runs/reference.json --b runs/candidate.json
-```
-
-Comparisons reject duplicate seed/scenario pairs and different initial resources or budgets. Metrics retain losses and gains, include uncertainty across paired seeds and preserve units. The system does not force NEXO to win. A one-seed interval is not meaningful statistical evidence.
-
-## Connect an external platform
-
-Read [API.md](docs/API.md) for public HTML/JSON sources, organization-scoped access, 26 input kinds and 23 actions. `adapters/client.mjs` supplies an HTTP client and HTML discovery helper. It contains no model provider implementation.
-
-The default actor keys have the `agent` role: they can query, record evidence and propose; a human commander must review and authorize physical actions. Reads and proposals do not silently grant authority.
-
-External-computation receipts measure latency and usage without running inference here. Live evaluation uses ×1 wall time. Accelerated modeled evaluation uses declared simulated latency and a barrier while an external result is pending. Keep modes separate when comparing performance.
-
-## Documentation and limits
-
-- [SIMULADOR.md](docs/SIMULADOR.md): complete original design and subsequent map/population requirements.
-- [COVERAGE.md](docs/COVERAGE.md): implementation evidence and remaining validation work.
-- [API.md](docs/API.md): integration and authorization contracts.
-- [SCENARIOS.md](docs/SCENARIOS.md): scenario catalogue, variants and inspection recipes.
-- [CALIBRATION.md](docs/CALIBRATION.md): causal assumptions, parameter ranges and sensitivity plan.
-- [PERFORMANCE.md](docs/PERFORMANCE.md): measured workloads and scaling limits.
-- [PLATAFORMA.md](docs/PLATAFORMA.md) / [DEMO.md](docs/DEMO.md): context for NEXO and its eventual demonstration.
-- [ESTADO_IMPLEMENTACION.md](docs/ESTADO_IMPLEMENTACION.md) / [VALIDACION.md](docs/VALIDACION.md): canonical platform implementation coverage and measured outcomes, including unsuccessful and incomplete campaigns.
-- [LOCAL.md](docs/LOCAL.md) / [VALIDACION_EXTERNA.md](docs/VALIDACION_EXTERNA.md): running the separate local platform and the independent validation still required.
-- [AUDITORIA_SIMULADOR.md](docs/AUDITORIA_SIMULADOR.md): code-based review, a reproduced deadline-metric issue, and remaining evaluation work.
-- [ARQUITECTURA_GCP.md](docs/ARQUITECTURA_GCP.md): proposed cloud architecture after local product validation; no deployment has been performed by this documentation update.
-
-There are 360 content presets across 30 semantic families, plus **102 contextual English/Spanish wordings** used by the live ambient generator: 36 personal/support posts, 18 requests, 12 damage reports and 36 misleading claims. Wording stays tied to actual outstanding needs and building state; extra variety never creates an incident or a completed delivery. The contextual wordings are expressions of existing situations, not 102 additional physical scenarios. Their development, validation and held-out variants are separate.
-
-Fictional residents have stable names across posts, and news/bulletins have publisher identities. Personal support is not presented as a news article. Media descriptions explain what a clip/photo/voice note represents instead of repeating its caption; news and bulletins do not gain a fake duplicate attachment. **Repost** badges and public references preserve intentional diffusion, including repeated content from different accounts. The received-team lane retains the source author and format while grouping actual connector stages for the same source/version. It does not manufacture a more varied narrative on the display side.
-
-Held-out content is separated by variant within a family; this is not a sealed independent evaluation dataset. Synthetic video/audio objects contain descriptions, not real pixels or recordings. Scripted references currently focus on water delivery; they are not calibrated expert human baselines. Changes to authorship or wording change the pinned content build: rerun all compared policies on the new build instead of mixing earlier and later results.
-
-The repository is private. Dependencies, runs, credentials, generated archives, private evaluation data and development-agent instructions are ignored. Changing repository visibility later does not make those files safe to publish.
+See [API integration](docs/API.md), [scenarios](docs/SCENARIOS.md) and [model assumptions](docs/CALIBRATION.md). Simulation outcomes describe the configured world; population and human-work parameters require calibration before making claims about real emergencies.

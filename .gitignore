@@ -58,3 +58,14 @@ codex*.md
 
 .codex*
 **/.codex*
+
+# Keep the public documentation focused on running and integrating the simulator.
+/docs/**
+!/docs/API.md
+!/docs/SCENARIOS.md
+!/docs/CALIBRATION.md
+*.md
+!README.md
+!/docs/API.md
+!/docs/SCENARIOS.md
+!/docs/CALIBRATION.md
