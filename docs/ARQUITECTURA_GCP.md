@@ -1,5 +1,19 @@
 # NEXO — Arquitectura objetivo en Google Cloud y plan de migración desde local
 
+## Estado local vigente · 13 de octubre de 2026
+
+La comprobación temporal más reciente del simulador actualizado compara **Conventional: 44,279 min → NEXO + Gemma 4: 35,162 min**, una mejora del **20,59%**, con **24/24 necesidades atendidas por ambos** y **3,125% menos distancia y combustible** para NEXO. Es una pareja de la misma semilla, con seis llamadas reales por USD 0,00613892; las mantas tardaron más. [Resultado íntegro por recurso y límites](https://github.com/Hi-io/nexo-platform/blob/main/reports/analysis/final-two-response-closed-20261013/readout.md). La primaria de tres semillas se conserva por separado.
+
+El producto funciona en local con **Gemma 4 31B mediante OpenRouter**. La atención humana finita vive dentro del motor: lectura, integración/decisión y transmisión tienen puestos, colas, duración y recibos propios. El visor permite elegir sus perfiles y muestra el trabajo recibido por organización. Terminar una tarea humana no autoriza una acción física. Las plantas exigen `water_operations` y los refugios `shelter_support`, además de evaluación física competente, permisos, suministros, transporte y turnos vigentes.
+
+La comparación primaria de **tres semillas** dio **41,846 min para Conventional → 34,305 min para NEXO + modelo**, una mejora del **18,02%** hasta recibir ayuda suficiente; **ambos cubrieron 72/72 necesidades**. La cohorte, sus versiones y límites están en [los resultados medidos](RESULTADOS_CAPACIDAD_HUMANA.md). Son tiempos del laboratorio bajo supuestos declarados, con pérdida de paquetes y fracción silenciosa efectivas cero; no vidas salvadas ni productividad profesional medida. Esa primaria conserva su motor original: las regresiones actuales no se presentan como una nueva campaña temporal.
+
+El objetivo de esta etapa es **demostrar una mejora sustancial del tiempo**, sin imponer un KPI numérico fijo. La verificación actual distingue **249/249 pruebas del simulador**, **31/31 regresiones de integración afectadas**, **7/7 comprobaciones del visor humano** y **5/5 casos de bytes multimedia**; estos últimos usaron tres llamadas reales y **USD 0,00053242**. Son comprobaciones funcionales. La suite completa anterior de plataforma sigue siendo **486/486** para el candidato `9b4de8b7…`, cuyos bytes no cambiaron; no se afirma una nueva ejecución completa de plataforma. [Recibo de competencias y suite](https://github.com/Hi-io/nexo-platform/blob/main/reports/verifications/facility-default-qualifications-20261013.json) · [integración afectada](https://github.com/Hi-io/nexo-platform/blob/main/reports/verifications/affected-facility-integration-20261013.json) · [visor](https://github.com/Hi-io/nexo-platform/blob/main/reports/human-profile-ui/1791891190000/result.json) · [medios](https://github.com/Hi-io/nexo-platform/blob/main/reports/runs/media-byte-1791891522255.json).
+
+La UI operativa prioriza necesidad, estado, próximo paso y responsable; fuentes, alternativas y comprobaciones se abren bajo demanda. El público ve únicamente información agregada y aprobada. Siguen pendientes la validación con operadores y público, datos/escenarios independientes, calibración de campo, repetición con Gemini y despliegue/verificación en GCP. La historia fechada que sigue conserva su contexto; sus conteos no sustituyen este estado.
+
+---
+
 Documento de diseño · 12 de octubre de 2026. Arquitectura propuesta, no desplegada ni medida. El contrato funcional, UI, KPIs y tests están en [PLATAFORMA.md](PLATAFORMA.md). Este documento no autoriza crear recursos, contratar servicios o ejecutar inferencias de pago durante una revisión documental.
 
 ## 1. Decisión principal
@@ -44,7 +58,7 @@ La capacidad diferenciadora viene de cómo se investiga, compone y mantiene una 
 | Secretos | Archivo/env local ignorado, accesos limitados | Secret Manager + identidades de servicio | Rotación, permiso mínimo y ausencia en logs/cliente |
 | Observabilidad | Logs/OTel/export local | Cloud Logging/Monitoring/Trace según integración elegida | Correlación, redacción, retención y alertas |
 | Imágenes/build | Build local reproducible | Cloud Build + Artifact Registry | Dependencias fijadas, artefacto identificado, permisos y rollback |
-| Modelo | Fixtures/replay; Gemini remoto en pruebas reales | Gemini mediante API gestionada de Google, con vía/versiones fijadas al implementar | Tool calling, cuotas, latencia, coste, región y políticas de datos |
+| Modelo | Fixtures/replay; Gemma 4 mediante OpenRouter en pruebas reales | Gemini mediante API gestionada de Google, con vía/versiones fijadas al implementar | Tool calling, cuotas, latencia, coste, región y políticas de datos |
 | Evaluador | Proceso/volúmenes separados | Entorno de evaluación aislado, opcionalmente proyecto separado | Que el candidato no acceda a verdad, seeds privados ni resultados intermedios |
 
 «Equivalente» significa cumplir el mismo contrato de aplicación; no promete que un emulador reproduzca rendimiento, facturación, IAM o fallos de producción. La infraestructura puede seguir siendo un monolito modular y un pequeño número de workers; no es obligatorio separar un servicio por agente.

@@ -176,11 +176,13 @@ export function generateMap(c) {
     shelter = buildings[Math.min(nodes.length - 1, central + 1)];
   shelter.use = 'shelter';
   shelter.capacity = 300;
+  shelter.requiredStaffSkills = ['shelter_support'];
   shelter.state = 'candidate';
   shelter.damage = 0;
   const plant = buildings[Math.max(0, central - c.grid)];
   plant.use = 'plant';
   plant.capacity = 1000;
+  plant.requiredStaffSkills = ['water_operations'];
   plant.state = 'offline';
   plant.dependencies = { energy: 1, staff: 1 };
   plant.provisioned = { energy: 0, staff: 0 };

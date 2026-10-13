@@ -1,5 +1,19 @@
 # NEXO — Guía para preparar la demo y defender la propuesta
 
+## Estado local vigente · 13 de octubre de 2026
+
+La comprobación temporal más reciente del simulador actualizado compara **Conventional: 44,279 min → NEXO + Gemma 4: 35,162 min**, una mejora del **20,59%**, con **24/24 necesidades atendidas por ambos** y **3,125% menos distancia y combustible** para NEXO. Es una pareja de la misma semilla, con seis llamadas reales por USD 0,00613892; las mantas tardaron más. [Resultado íntegro por recurso y límites](https://github.com/Hi-io/nexo-platform/blob/main/reports/analysis/final-two-response-closed-20261013/readout.md). La primaria de tres semillas se conserva por separado.
+
+El producto funciona en local con **Gemma 4 31B mediante OpenRouter**. La atención humana finita vive dentro del motor: lectura, integración/decisión y transmisión tienen puestos, colas, duración y recibos propios. El visor permite elegir sus perfiles y muestra el trabajo recibido por organización. Terminar una tarea humana no autoriza una acción física. Las plantas exigen `water_operations` y los refugios `shelter_support`, además de evaluación física competente, permisos, suministros, transporte y turnos vigentes.
+
+La comparación primaria de **tres semillas** dio **41,846 min para Conventional → 34,305 min para NEXO + modelo**, una mejora del **18,02%** hasta recibir ayuda suficiente; **ambos cubrieron 72/72 necesidades**. La cohorte, sus versiones y límites están en [los resultados medidos](RESULTADOS_CAPACIDAD_HUMANA.md). Son tiempos del laboratorio bajo supuestos declarados, con pérdida de paquetes y fracción silenciosa efectivas cero; no vidas salvadas ni productividad profesional medida. Esa primaria conserva su motor original: las regresiones actuales no se presentan como una nueva campaña temporal.
+
+El objetivo de esta etapa es **demostrar una mejora sustancial del tiempo**, sin imponer un KPI numérico fijo. La verificación actual distingue **249/249 pruebas del simulador**, **31/31 regresiones de integración afectadas**, **7/7 comprobaciones del visor humano** y **5/5 casos de bytes multimedia**; estos últimos usaron tres llamadas reales y **USD 0,00053242**. Son comprobaciones funcionales. La suite completa anterior de plataforma sigue siendo **486/486** para el candidato `9b4de8b7…`, cuyos bytes no cambiaron; no se afirma una nueva ejecución completa de plataforma. [Recibo de competencias y suite](https://github.com/Hi-io/nexo-platform/blob/main/reports/verifications/facility-default-qualifications-20261013.json) · [integración afectada](https://github.com/Hi-io/nexo-platform/blob/main/reports/verifications/affected-facility-integration-20261013.json) · [visor](https://github.com/Hi-io/nexo-platform/blob/main/reports/human-profile-ui/1791891190000/result.json) · [medios](https://github.com/Hi-io/nexo-platform/blob/main/reports/runs/media-byte-1791891522255.json).
+
+La UI operativa prioriza necesidad, estado, próximo paso y responsable; fuentes, alternativas y comprobaciones se abren bajo demanda. El público ve únicamente información agregada y aprobada. Siguen pendientes la validación con operadores y público, datos/escenarios independientes, calibración de campo, repetición con Gemini y despliegue/verificación en GCP. La historia fechada que sigue conserva su contexto; sus conteos no sustituyen este estado.
+
+---
+
 Documento de trabajo original · 11 de octubre de 2026. Actualización de implementación local · 12 de octubre de 2026. El guion original es una intención; el apartado 0 distingue qué puede mostrarse hoy.
 
 Relacionados: [simulador](SIMULADOR.md) · [plataforma](PLATAFORMA.md).
@@ -12,7 +26,7 @@ Tres recorridos diferentes:
 
 1. **Cadena operacional ×1:** `pnpm demo:live`. Fuente HTTP real, proveedor real, propuesta, propietario de prueba identificado, orden/acuse/transporte/descarga y recibo. Mostrar también cantidades todavía pendientes y coste. Las autorizaciones del script son un proxy; no un estudio con operadores.
 2. **Composición desde una necesidad:** `node --env-file-if-exists=.env.local scripts/service-demo.mjs --from-need`. El operador selecciona una necesidad recibida de refugio, sin dar instalación ni solución. Gemma consulta un directorio conocido, pide inspección y prepara aportes de cuatro propietarios. El sistema exige cada aprobación y sigue entregas, activación, evacuación y ocupación sostenida. El ensayo del 12 de octubre alojó 50 personas; consultar su recibo y mantener los ensayos anteriores fallidos.
-3. **Comparación reproducible:** campaña B1–B6 con protocolo previo, mismo mundo/horizonte, budget fijo y costes/fallos. Enseñar B4 vs B3 y B6 vs B5. La ventaja de compartir datos con reglas no se atribuye al LLM. No sustituir una pérdida real por el porcentaje inventado de la landing.
+3. **Comparación reproducible:** mostrar Conventional y NEXO + modelo con el mismo mundo, horizonte, recursos, revisiones y permisos. Usar la primaria cerrada de tres semillas, sus recibos físicos y costes; distinguir reproducción de una consulta nueva. El resultado principal es ayuda suficiente recibida, con cantidades pendientes visibles cuando las haya.
 
 Durante la explicación, mostrar solo necesidad → comprobación relevante → propuesta exacta → decisión del propietario → cambio físico observado. Abrir fuentes completas bajo demanda. El mapa 3D es observador del laboratorio y nunca una fuente secreta para el agente.
 

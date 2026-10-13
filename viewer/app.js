@@ -1317,6 +1317,7 @@ async function refresh() {
         'organizations',
       ])
         $(k).value = snapshot.manifest.config[k];
+      $('humanProfile').value = snapshot.manifest.config.humanCapacity?.profile ?? 'zero';
     }
     inspect();
     showStreams();
@@ -1350,6 +1351,7 @@ const examples = {
   relate_reports: { claim: 'claim-1', references: [] },
   flag_report: { post: '', state: 'unverified', reason: 'Check capture time' },
   query: { target: 'inventory' },
+  human_work: { stage: 'read', reference: { kind: 'post', id: 'public-source-id', version: 1 } },
   verify: { target: 'building', id: 'b0', method: 'field' },
   propose: { title: 'Deliver water', plan: { need: 'need-water-main' }, conditions: [] },
   review: { id: 'proposal-1', decision: 'approve' },
@@ -1428,6 +1430,9 @@ $('configForm').onsubmit = perform(async () => {
     'organizations',
   ];
   const overrides = JSON.parse($('advancedConfig').value);
+  if (Object.hasOwn(overrides, 'humanCapacity') &&
+      (!overrides.humanCapacity || typeof overrides.humanCapacity !== 'object' || Array.isArray(overrides.humanCapacity)))
+    throw new Error('humanCapacity must be a JSON object.');
   await api('/api/config', {
     language: 'en',
     ...Object.fromEntries(
@@ -1439,6 +1444,7 @@ $('configForm').onsubmit = perform(async () => {
       ]),
     ),
     ...overrides,
+    humanCapacity: { ...overrides.humanCapacity, profile: $('humanProfile').value },
   });
   lastRun = null;
   setConfigOpen(false);
