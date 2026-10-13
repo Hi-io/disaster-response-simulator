@@ -1318,6 +1318,16 @@ Un simulador más rico puede aumentar la validez de una prueba interna, pero no 
 
 ## 44. Correcciones del ciclo temporal y evaluación delegada
 
+### 44.0 Continuidad sin duplicación y decisiones concurrentes
+
+- Una propuesta mantiene una sola continuación durable por organización, incluso si coinciden polling, ejecución directa, recepción de evidencia y reinicio. Los sondeos exitosos pendientes reprograman esa fila; un retry real conserva su backoff y lease. No se reinicia automáticamente una tarea agotada ni se roba una lease activa.
+- Un recibo de transporte describe un cambio material. Observar nuevamente el mismo estado no crea un nuevo transporte ni demora simulada. Mantener cantidad, tiempos físicos, alcance, dueño y autorización exactos; para evaluaciones conservar observación, vigencia, versión y cualificaciones.
+- Después de cinco errores reales de monitoreo, solicitar atención con causa explícita. Conservar órdenes emitidas, autorización histórica, carga y recibos. Falta de confirmación no equivale a fallo físico, no autoriza reenvío ni devolución ficticia de recursos.
+- Recuperar un seguimiento agotado requiere una nueva aprobación humana válida, dentro de su transacción y después de los controles existentes de rol, versión, evidencia, condiciones, capacidad y seguridad. La aprobación idempotente ya consumida no lo vuelve a abrir. Continuar el seguimiento usa los recibos y las claves de las órdenes originales; no vuelve a emitirlas. Si ya no es factible aprobar el mismo alcance, preparar una reparación separada.
+- Cancelación, invalidación o cambio de autorización durante una llamada a una fuente no pueden ser sobrescritos por una respuesta tardía. Registrar el recibo de una orden ya emitida sin restaurar autorización ni emitir la siguiente orden. La autoridad actual y el alcance vigente se comprueban al persistir progreso.
+- La lectura de estado de una activación ya emitida reutiliza su consulta idempotente y evidencia observada. El transcurso del tiempo o un polling adicional no crean consultas equivalentes ilimitadas. Un resultado terminal, cambio material o error pendiente de atención permanece visible.
+- Las regresiones deben recorrer HTTP real, autorizaciones independientes y recibos físicos con distintas cadencias de CPU, además de errores/recovery y cambios concurrentes. El reloj exógeno, órdenes, viajes y cantidad servida deben ser iguales cuando sólo cambia el número de sondeos sin información nueva.
+
 ### 44.1 Una prioridad operativa, muchas tandas de información
 
 Cada interpretación conserva sus fuentes y versiones. Las tandas no reciben flotas privadas ni pueden desplazar la política de prioridad aprobada por su orden de llegada. Al preparar una respuesta se consideran todas las necesidades recibidas y cantidades aún planificables. Un foco manual explícito conserva su alcance; la automatización global no queda encerrada en el primer caso que aparece en pantalla.
@@ -1331,6 +1341,8 @@ La actividad distingue espera de evidencia, capacidad para déficit residual, re
 Con la prioridad del operador intacta, comparar tiempo recibido de viaje del vehículo al stock y del stock al destino. Usar solo mapa y vías observadas, combustible, turno, masa, volumen, capacidad, propiedad y holds. Una carga todavía física en el vehículo sigue ocupando capacidad aunque un acuse diga que la acción anterior terminó. Desempatar de forma estable para poder reproducir el cálculo.
 
 La misma asignación determinista está disponible para las referencias. Su ganancia se atribuye a la ingeniería de planificación; la contribución incremental del modelo se mide por interpretar e investigar fuentes antes de que llegue el canal formal. Un ETA es una estimación condicionada a datos recibidos, no una ruta garantizada ni conocimiento de un bloqueo aún no comunicado.
+
+Después de admitir necesidades por prioridad, el compilador puede intercambiar parejas de asignaciones vehículo/stock para reducir ETA total. El intercambio conserva los IDs y cantidades ya admitidos, pisos de inventario, propiedad, masa/volumen, combustible, ventana de reserva y retrasos frente a deadlines. No se describe como óptimo global. La misma mejora se utiliza en B5/B6/B8; una regresión sintética de cruces prueba el algoritmo, pero no constituye evidencia de ventaja de NEXO.
 
 ### 44.3 Seguridad de instalaciones y equipos compartidos
 
@@ -1347,3 +1359,72 @@ Una réplica, cambio material del objetivo o vencimiento invalida el uso de la e
 Probar el recorrido completo con un responsable sin inspectores propios: metadatos recibidos → oferta consentida → dos aprobaciones → viaje y trabajo finitos → recibo vigente → abastecimiento y servicio ocupado. Conservar negativos de falta de competencia, ruta bloqueada, rechazo, desconexión, versión, vencimiento y replay.
 
 Para la ganancia temporal, conservar todos los mundos de la campaña predeclarada, incluidos fallos/censurados. Informar primera ayuda útil y ayuda suficiente, déficit por unidad nativa, cobertura, sobreprovisión, viajes, combustible, coste y consultas. Remuestrear semillas independientes para incertidumbre; treinta tweets del mismo incidente no son treinta réplicas. Añadir controles de lectura convencional cero/rápida, reportes formales inmediatos, comunidades silenciosas y pérdida de conexión. Los resultados de esta iteración se registran en [MEJORA_RESPUESTA.md](MEJORA_RESPUESTA.md), sin borrar los pilotos negativos previos.
+
+### 44.5 Ventanas de reserva, fallo visible y servicio sin duplicaciones
+
+El dueño recibe y revisa la ventana explícita necesaria para una recogida estimada. El compilador usa únicamente ETA, carga y latencia de órdenes de una política recibida, con margen declarado y límite de fuente. Si no hay política recibida, conserva el default conservador; una reserva o compromiso ya acordados jamás se amplían silenciosamente. Mostrar la ventana y sus supuestos en la revisión, junto al vehículo, cantidad y fuente. Revalidar el contrato antes de reservar; un parámetro inválido no deja recursos retenidos.
+
+Un fallo físico se conserva ligado al paso, vehículo, recurso, destino y autorización exactos. Llega por la fuente del dueño y su canal consentido, libera el hold correspondiente y permite revisión explícita. Conservar carga en tránsito, trabajo completado, combustible gastado, recibos y autorización anterior; un cambio de información no autoriza otra orden. El operador ve una causa y siguiente acción clara, no una propuesta perpetuamente ejecutando.
+
+`plan_service` respeta necesidades efectivas y cantidades pendientes de todas las propuestas activas. Un envío/evacuación ya pendientes producen espera de recibo, no la misma orden repetida. Si llegan recibos de abastecimiento posteriores al último estado de la instalación, solicitar estado actual antes de considerarla disponible. Un recibo histórico demuestra recepción histórica; no que ese stock permanezca utilizable. La reparación excluye sus propios holds sustituidos, pero conserva trabajo ya realizado y los holds ajenos.
+
+No reiniciar razonamiento por cada publicación de progreso correlacionada a un recibo auténtico. Usar reconciliación acotada y auditable, conservar la fuente original como no verificada y no retirar necesidades por texto público. Una modificación, incertidumbre, contradicción, nuevo peligro o nueva demanda sí pueden abrir percepción/investigación. Medir llamadas útiles, tandas vacías evitadas y tiempo hasta ayuda; no vender una llamada ahorrada como una vida salvada.
+### 44.6 Alternativas reales y comparación que conserva su procedencia
+
+`compare_responses` compara únicamente opciones calculadas con hechos recibidos y permisos vigentes. La propuesta compilada de asignación, servicio o reparación puede guardar las alternativas realmente consideradas y un checkpoint privado de esa comparación. No rellenar alternativas con razones inventadas por el modelo ni presentar «pendiente de verificar» como viable. Si no se hizo esa comparación, el campo permanece vacío; el operador conserva la propuesta y su evidencia, sin una apariencia falsa de exhaustividad.
+
+Al preparar y aprobar se revalidan los hechos materiales, versiones de la fuente, permisos, caducidad y condiciones que sustentan las opciones. Una lectura idéntica de geografía o telemetría no es un cambio de hechos; una evaluación nueva donde antes no existía, una modificación de capacidad, un vencimiento o una revocación sí lo son. Una comparación desactualizada exige recomputar o revisión explícita. Una edición manual conserva el historial previo y elimina la vigencia de su comparación anterior.
+
+La UI muestra primero la recomendación, su estado y el responsable. Las alternativas y comprobaciones se abren cuando el operador las necesita; no inundar la primera vista con todas las fuentes ni confundir un resumen de evidencia/herramientas con acceso al razonamiento privado del modelo. Las regresiones recorren preparación de servicio y reparación física, además de propuestas de reparto y cambios concurrentes.
+
+La escritura de propuesta, auditoría, trabajo e idempotencia es atómica. Una excepción de almacenamiento no deja una parte visible como si se hubiera completado. El reintento con la misma clave produce un único resultado. `tests/storage-fault.test.mjs` inyecta un fallo DB `08006`; no es una certificación contra toda corrupción de disco o fallo de infraestructura. La ventaja de elección de alternativas y la comprensión humana se miden por separado de estas pruebas de contrato.
+
+### 44.7 Recuperación de información y entrega son objetivos diferentes
+
+Una campaña de tiempo de respuesta puede detener su controlador al terminar la cohorte física declarada y puntuar al horizonte fijo. Eso no acredita que toda la información recibida haya sido interpretada. El control `scripts/source-recovery.mjs` sella una cohorte de IDs, versiones y contenido **recibidos por HTTP** hasta un cutoff predeclarado. Su parada depende de disposiciones y colas locales observables, sin usar la verdad privada del simulador. El scorer físico se ejecuta separadamente al horizonte.
+
+Conservar cada versión original, sus revisiones y el motivo de su estado: lectura válida no verificada, petición explícita, comentario retenido, progreso correlacionado con un recibo independiente, rechazo, truncación o atención pendiente. Avanzar un offset de lote no significa que sus fuentes se procesaron. Un recibo semántico válido demuestra lectura/procedencia conforme al contrato, no precisión independiente ni autenticidad de una publicación. Registros posteriores quedan fuera del denominador sellado y se informan por separado.
+
+La recuperación mide backlog máximo, tiempo hasta cierre/censura, fuentes y versiones durables en cada organización, trabajos/consultas/propuestas pendientes, revisiones finitas, errores, inferencia/coste y consecuencias físicas. Una cola de revisiones cero en un runner que las solicita secuencialmente no demuestra capacidad humana concurrente. Probar primero el mecanismo con un proveedor público sustituido y HTTP externo bloqueado; después el modelo real en el mismo perfil, conservando ambos resultados y sus límites.
+
+## 45. Capacidad humana causal y atribución de la mejora
+
+### 45.1 Requisito adicional del autor
+
+El simulador debe representar lo que impide a una organización convencional ser instantáneamente eficiente: recibir muchas fuentes, leerlas, integrar información pertinente, decidir y transmitirla a otro dueño con capacidad finita. La demora no se añade al KPI después del ensayo. El origen crea trabajos reales, los encola, ocupa puestos y entrega el resultado únicamente al terminar. Una publicación leída no autoriza una misión; la revisión del responsable sigue siendo obligatoria en todos los brazos.
+
+Las mismas fuentes, versiones, recursos, ubicaciones, canales, reglas físicas y permisos se utilizan en las comparaciones. Los mensajes entregados tarde conservan su observación original; el receptor no obtiene automáticamente el estado actual de todo el mundo. Error humano se modela como trabajo inconcluso y reintento limitado con coste, no como certeza falsa ni un multiplicador aplicado sólo al convencional. El mismo mecanismo de revisión con errores se aplica a NEXO.
+
+### 45.2 Referencias que deben conservarse
+
+| Referencia | Flujo que se compara | Interpretación del contraste |
+|---|---|---|
+| C_manual | Lectores distribuidos, triaje competente después de leer, integración, transmisión al coordinador y coordinación sólo con dueños de capacidad pertinente; asignador común competente. | Mejora frente a un flujo manual específico con sus tiempos y puestos declarados. |
+| C_decentralized | Equipos independientes con recursos propios y comunicación real de necesidades, intenciones y operaciones; no inventar duplicados. | Sensibilidad a comunicación atrasada y coordinación distribuida, no práctica universal de las ONG. |
+| B5 | Parser explícito gratuito y planificación compartida competente; lectura humana finita sólo para otras fuentes. | Incremento frente a automatización convencional disponible. |
+| B8 | Detector amplio gratuito de pistas/lugares y consultas automáticas; sin penalización artificial de lectura. | Control automatizado fuerte. Un empate o derrota debe publicarse. |
+| B6 | Percepción real por modelo, investigación acotada y asignador común; misma revisión humana del dueño. | Plataforma híbrida. Ganar contra C_manual no prueba que toda la ganancia proceda del modelo. |
+
+La familia literal actual contiene IDs públicos y puede ser resuelta por B8 sin aritmética semántica. Mantenerla como control negativo. Interpretación contextual y percepción de bytes se prueban separadamente; no describir un contraste de colas como una capacidad exclusiva de GenAI. La descomposición del beneficio debe separar automatización, investigación, coordinación y modelo.
+
+### 45.3 Variables y condiciones antes del resultado
+
+Declarar lectores, decisores y transmisores por dueño, duración por etapa, carga externa, conexión, pérdida y demora de canal, revisión de dueño, límite de consultas, reporte formal, cobertura de fuentes, cantidad simultánea de necesidades y horizonte. Los valores iniciales son supuestos del laboratorio, no cifras empíricas de productividad humana.
+
+Conservar demora cero, lectura rápida, más lectores, error cero y una sensibilidad de error pequeña aplicada simétricamente. Conservar cargas moderada y saturada, 24/48/96 necesidades, y el resultado cuando la referencia automatizada gana. Una condición puede representar un desastre plausible sin estar calibrada para un país concreto. No ajustar semillas, flota, fuentes o reglas después de observar qué brazo gana.
+
+### 45.4 Evidencia mínima de cierre
+
+Demostrar una mejora sustancial en primera ayuda útil y ayuda suficiente, con medios restringidos que incluyen necesidades no atendidas al horizonte. Añadir déficit por unidad, deadlines, exceso físico, duplicados físicos, utilización, combustible, stock, filas pendientes y todos los errores/costes. Registrar espera, trabajo y transmisión por separado, además del tiempo HTTP/modelo y del tiempo de ejecución del laboratorio.
+
+La autoridad, conservación de stock/carga y reproducción por seed/checkpoint no pueden degradarse para ganar velocidad. El controlador sólo usa información recibida. El scorer privado puntúa después y no elige acciones. Un ACK, una hipótesis o una propuesta no cuentan como ayuda. No calcular vidas salvadas a partir de minutos ahorrados sin un modelo clínico y evidencia independiente.
+
+### 45.5 Producto y experiencia
+
+El operador ve primero necesidad, estado, próximo paso y responsable. El detalle muestra fuente y versión, qué comprobación está pendiente, antigüedad y explicación breve de la recomendación. Actividad del modelo significa estados y herramientas reales; no se fabrica ni expone razonamiento privado. Una hipótesis sin contexto se conserva como `waiting_context`, no se oculta como resuelta; una consulta equivalente pendiente se reutiliza sin perder fuentes contradictorias.
+
+El visor del laboratorio debe mostrar colas nativas de lectura/decisión/transmisión filtradas por organización; la verdad privada pertenece sólo a la perspectiva de observador. Las columnas verdad, publicado y consumido son diagnósticas, nunca un atajo para el controlador. El exceso sólo aparece cuando hubo entregas reales. Gate funcional, comparación física y validación con personas son tres requisitos distintos.
+
+### 45.6 Registro del cierre primario actual
+
+La primaria de doce mundos cerró en la versión indicada en [RESULTADOS_CAPACIDAD_HUMANA.md](RESULTADOS_CAPACIDAD_HUMANA.md). Todos los casos y contrastes se conservan: NEXO mejoró un 18,02% el tiempo hasta recibir ayuda suficiente frente al flujo manual declarado; B5 fue más rápido y el contraste con B8 fue mixto. Mantas y combustible empeoraron frente al manual. El resultado cumple una mejora aproximada bajo esos supuestos; no acredita una ventaja exclusiva del LLM ni una superioridad universal. Los controles de capacidad/carga y demás gates físicos tienen evidencia separada y se incorporarán al cerrar, sin modificar los requisitos o desechar negativos.

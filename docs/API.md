@@ -125,3 +125,9 @@ Mutation endpoints: `/api/config`, `/api/control`, `/api/action`, `/api/inject`,
 Control supports play, requested rate, one event step, advance-to-time and next relevant entity event. Config values are validated against `CONFIG_SCHEMA`; unknown fields fail. Interventions include damage, road changes, connectivity/hazard events and typed laboratory faults. Use declared interventions, not arbitrary internal event handlers.
 
 An observer is intentionally omniscient for laboratory inspection. The separate actor gateway is the platform's interface. Browser organization views are useful for demonstrations, but the browser still has observer access; do not hand that observer tab to an evaluated autonomous actor.
+## Native finite human attention
+
+`O25 human_work` schedules actor-owned `read`, `decide` and `relay` work against a typed reference to received evidence. The engine provides finite stage pools, dependencies, queue time, explicit inconclusive outcomes, and delayed communication receipts. An ordinary `query` with `target:'human_work'` returns only the authenticated owner's tasks and inbox. Completion never supplies hidden facts, authorization or physical aid. Active human-capacity profiles make all formal owner reviews share the finite decision pool; the `zero` profile retains legacy scheduling. See [the full contract, assumptions and fairness rules](HUMAN_CAPACITY.md).
+
+`GET /api/activity` is an authenticated observer-side diagnostic endpoint in both embedded and standalone viewer servers. Its requested organization perspective restricts returned information to that owner's received observations. A public-source or actor gateway credential does not grant observer access.
+
