@@ -161,7 +161,7 @@ export function installTasks(w) {
       v = i.requestedVehicle ? w.state.vehicles.find(v => v.id === i.requestedVehicle && v.owner === i.org &&
         !v.background && v.state === 'idle' && !v.load && !v.passengers && w.vehicleDriverAvailable?.(v)!==false) : idleVehicle(i.org),
       r = w.resource(i.staffResource);
-    if (w.now >= w.config.durationMs) {
+    if (!w.config.continuousDemo && w.now >= w.config.durationMs) {
       i.state = 'timeout';
       return;
     }

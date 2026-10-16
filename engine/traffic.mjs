@@ -233,7 +233,7 @@ export function installTraffic(w) {
         maxWaterDepth: 0.15,
         fuel: 100000,
         fuelUsed: 0,
-        shiftEnd: w.config.durationMs,
+        shiftEnd: w.config.continuousDemo ? Number.MAX_SAFE_INTEGER : w.config.durationMs,
         load: 0,
         state: 'idle',
         edge: null,
@@ -248,7 +248,7 @@ export function installTraffic(w) {
         nodes[Math.floor(w.random('traffic', id, `target-${w.now}`) * nodes.length)].id;
       w.startTrip(v, target);
     }
-    if (w.now + 120000 < w.config.durationMs)
+    if (w.config.continuousDemo || w.now + 120000 < w.config.durationMs)
       w.schedule(w.now + 120000, 'background_trip', { index }, 3, `background-${index}-${w.now}`);
   });
   w.vehiclePosition = (v) => {

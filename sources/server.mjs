@@ -10,12 +10,8 @@ import { SimError, ACTION_SCHEMA } from '../contracts/actions.mjs';
 import { INPUT_TYPES, OBSERVATION_SCHEMA } from '../contracts/inputs.mjs';
 import { CONFIG_SCHEMA } from '../contracts/config.mjs';
 import { clone } from '../engine/determinism.mjs';
+import { sourceHTML } from './social-view.mjs';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const esc = (s) =>
-  String(s ?? '').replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
-  );
 const json = (res, status, data) => {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -40,9 +36,6 @@ async function body(req, limit = 2000000) {
   } catch {
     throw new SimError('JSON', 'Invalid JSON');
   }
-}
-function sourceHTML(title, posts, next = null) {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title)} · Signal</title><style>body{font:16px system-ui;background:#f2f4f8;color:#172332;max-width:760px;margin:40px auto;padding:0 24px}a{color:#405cda}article{background:white;border:1px solid #dde2ea;border-radius:16px;padding:22px;margin:16px 0}header{display:flex;justify-content:space-between}small{color:#6b7484}.media{background:#e6e9ef;border-radius:10px;padding:20px;margin-top:15px}input{padding:12px;border:1px solid #ccd2dc;border-radius:8px}nav{display:flex;gap:20px}</style></head><body><nav><strong>◉ Signal</strong><a href="/feed">Timeline</a><a href="/search">Search</a><a href="/public">Relief updates</a></nav><h1>${esc(title)}</h1><p><small>Fictional disaster information source. Posts may be inaccurate.</small></p><form action="/search"><input name="q" placeholder="Search reports"><button>Search</button></form>${posts.map((p) => `<article data-post-id="${esc(p.id)}" data-version="${p.version}"><header><a href="/users/${esc(p.authorId)}">${esc(p.authorName)}</a><small>${new Date(Date.UTC(2026, 0, 1) + p.publishedAt).toISOString()}</small></header><p>${esc(p.text)}</p>${p.attachments.map((m) => `<div class="media" data-media-kind="${esc(m.kind)}">${m.kind === 'video' ? '▶' : m.kind === 'audio' ? '◖' : '▧'} ${esc(m.kind)} ${m.duration ? `· ${m.duration}s` : ''}<p>${esc(m.description)}</p></div>`).join('')}<small>${esc(p.location)} · ${p.likes} reactions · <a href="/posts/${esc(p.id)}">Permalink</a></small>${p.references.map((id) => ` <a href="/posts/${esc(id)}">Referenced post</a>`).join('')}</article>`).join('')}${next !== null ? `<a rel="next" href="/feed?cursor=${next}">Older posts →</a>` : ''}</body></html>`;
 }
 
 export async function createLabServers({
@@ -82,7 +75,7 @@ export async function createLabServers({
     if (!playing) return;
     const before = world.now;
     try {
-      world.advance(Math.min(world.config.durationMs, Math.round(world.now + wall * rate)), {
+      world.advance(world.config.continuousDemo ? Math.round(world.now + wall * rate) : Math.min(world.config.durationMs, Math.round(world.now + wall * rate)), {
         maxEvents: 2500,
       });
       effective = wall ? (world.now - before) / wall : 0;
@@ -92,7 +85,7 @@ export async function createLabServers({
           progress = comparison.advance(world.now, { maxEvents: 100000 });
         } while (!progress.reached && !progress.blocked);
       }
-      if (world.now >= world.config.durationMs) playing = false;
+      if (!world.config.continuousDemo && world.now >= world.config.durationMs) playing = false;
     } catch (e) {
       playing = false;
       world.record('runtime_error', { message: e.message });
@@ -145,6 +138,8 @@ export async function createLabServers({
             playing,
             rate,
             effectiveRate: effective,
+            continuousDemo: world.config.continuousDemo,
+            benchmarkEligible: !world.config.continuousDemo,
             comparison: comparison
               ? {
                   policyA: world.config.policy,
@@ -277,6 +272,8 @@ export async function createLabServers({
         }
         if (url.pathname === '/api/checkpoint') return json(res, 200, world.checkpoint());
         if (url.pathname === '/api/comparison') {
+          if (world.config.continuousDemo)
+            throw new SimError('DEMO_COMPARISON', 'Create a finite modeled or live world before starting a benchmark comparison', 409);
           const base = { ...world.config, policy: b.policyA ?? 'conventional' };
           const a = new World(base),
             other = new World({ ...base, policy: b.policyB ?? 'federated' });
@@ -367,6 +364,17 @@ export async function createLabServers({
   const sources = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
+      const sourceAssets = {
+        '/assets/social.css': ['social.css', 'text/css; charset=utf-8'],
+        '/assets/social-feed.mjs': ['social-feed.mjs', 'text/javascript; charset=utf-8'],
+        '/assets/social-view.mjs': ['social-view.mjs', 'text/javascript; charset=utf-8'],
+      };
+      if (Object.hasOwn(sourceAssets, url.pathname)) {
+        if (req.method !== 'GET') throw new SimError('METHOD', 'Method not allowed', 405);
+        const [file, mime] = sourceAssets[url.pathname];
+        res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(await readFile(path.join(root, 'sources', file)));
+      }
       const actorMutation = [
         '/api/actor/action',
         '/api/actor/ingestion',
@@ -451,6 +459,12 @@ export async function createLabServers({
           items: world.publicFeed(params).posts,
         });
       if (url.pathname === '/api/feed') return json(res, 200, world.publicFeed(params));
+      const publicPresentation = (feed) => ({
+        ...feed,
+        posts: feed.posts.map((post) => ({ ...post, locationName: world.building(post.location)?.name ?? post.location })),
+        runId: world.runId, playing, rate, continuousDemo: world.config.continuousDemo,
+      });
+      if (url.pathname === '/api/timeline') return json(res, 200, publicPresentation(world.publicFeed(params)));
       if (url.pathname === '/public') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(
@@ -478,8 +492,9 @@ export async function createLabServers({
         return res.end(
           sourceHTML(
             url.pathname === '/search' ? 'Search results' : 'Community signals',
-            feed.posts,
+            publicPresentation(feed).posts,
             feed.nextCursor,
+            { ...publicPresentation(feed), query: Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'limit')), live: !params.cursor },
           ),
         );
       }
@@ -488,12 +503,12 @@ export async function createLabServers({
           post = world.post(id);
         if (!world.sourceVisible(post)) throw new SimError('NOT_FOUND', 'Post not found', 404);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(sourceHTML('Community report', [post.public]));
+        return res.end(sourceHTML('Community report', publicPresentation({ posts: [post.public] }).posts, null, { now: world.now, runId: world.runId }));
       }
       if (url.pathname.startsWith('/users/')) {
         const feed = world.publicFeed({ ...params, author: url.pathname.slice(7) });
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(sourceHTML('Resident reports', feed.posts));
+        return res.end(sourceHTML('Resident reports', publicPresentation(feed).posts, feed.nextCursor, { ...publicPresentation(feed), query: { ...params, author: url.pathname.slice(7) }, live: !params.cursor }));
       }
       throw new SimError('NOT_FOUND', 'Not found', 404);
     } catch (e) {

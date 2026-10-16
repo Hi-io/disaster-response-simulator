@@ -173,6 +173,7 @@ export class World {
       for (let j = 0; j < 2; j++) {
         const v = {
           id: `v-${org.id}-${j}`,
+          name: `${org.name} · Vehicle ${j + 1}`,
           owner: org.id,
           node: org.node,
           capacity: 300,
@@ -321,6 +322,7 @@ export class World {
     }
     return next;
   }
+  withinHorizon(at) { return this.config.continuousDemo || at <= this.config.durationMs; }
   advance(target = this.config.durationMs, { maxEvents = 100000 } = {}) {
     if (!Number.isSafeInteger(target) || target < this.now)
       throw new Error('Invalid advance target');
@@ -547,6 +549,7 @@ export class World {
   vehicleView(v) {
     return {
       id: v.id,
+      name: v.name ?? `${this.organization(v.owner)?.name ?? "Response"} Vehicle`,
       owner: v.owner,
       node: v.lastGPS.node,
       at: v.lastGPS.at,

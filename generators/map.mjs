@@ -161,7 +161,7 @@ export function generateMap(c) {
   const organizations = Array.from({ length: c.organizations }, (_, i) => ({
     id: `org${i}`,
     name:
-      ['Local Response', 'Relief Team', 'Medical Team', 'Regional NGO'][i] ?? `Partner ${i + 1}`,
+      ['Relief North', 'Community East', 'Rescue South', 'Medical West', 'Independent Contractor'][i] ?? `Response Partner ${i + 1}`,
     node: orgNode(i),
     operators: c.operatorCount,
     reviewSlots: Array(c.operatorCount).fill(0),
@@ -186,6 +186,18 @@ export function generateMap(c) {
   plant.state = 'offline';
   plant.dependencies = { energy: 1, staff: 1 };
   plant.provisioned = { energy: 0, staff: 0 };
+  const placeCounts = new Map(),
+    sectorsById = new Map(sectors.map((sector) => [sector.id, sector])),
+    nodesById = new Map(nodes.map((node) => [node.id, node]));
+  for (const building of buildings) {
+    const sector = sectorsById.get(building.sector);
+    const type = { residential: 'Community', school: 'School', clinic: 'Clinic', warehouse: 'Warehouse', shelter: 'Shelter', plant: 'Water Plant', depot: 'Depot' }[building.use] ?? 'Facility';
+    const base = `${sector.name} ${type}`;
+    const ordinal = (placeCounts.get(base) ?? 0) + 1;
+    placeCounts.set(base, ordinal);
+    building.name = ordinal > 1 ? `${base} ${ordinal}` : base;
+    nodesById.get(building.node).name = `${building.name} Junction`;
+  }
   return {
     nodes,
     edges,

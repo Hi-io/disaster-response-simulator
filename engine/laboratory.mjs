@@ -10,6 +10,7 @@ export function installLaboratory(w) {
     w.state.personnel = w.state.map.organizations.flatMap((o) => [
       ...Array.from({ length: o.operators }, (_, i) => ({
         id: `operator-${o.id}-${i}`,
+        name: `${['Aiko', 'Kai', 'Mei', 'Hana', 'Rin', 'Leo'][Math.floor(w.random('personnel', `${o.id}-operator-${i}`, 'first') * 6)]} ${['Mori', 'Sato', 'Tan', 'Lin', 'Park', 'Lee'][Math.floor(w.random('personnel', `${o.id}-operator-${i}`, 'last') * 6)]}`,
         org: o.id,
         role: 'operator',
         competence: ['review'],
@@ -21,6 +22,7 @@ export function installLaboratory(w) {
         .filter((v) => v.owner === o.id)
         .map((v) => ({
           id: v.driver,
+          name: `${['Yuna', 'Ren', 'Mika', 'Noah', 'Niko', 'Emi'][Math.floor(w.random('personnel', v.driver, 'first') * 6)]} ${['Mori', 'Sato', 'Tan', 'Lin', 'Park', 'Lee'][Math.floor(w.random('personnel', v.driver, 'last') * 6)]}`,
           org: o.id,
           role: 'driver',
           competence: ['transport'],
@@ -30,6 +32,7 @@ export function installLaboratory(w) {
         })),
       {
         id: `crew-${o.id}`,
+        name: `${o.name} Field Team`,
         org: o.id,
         role: 'crew',
         competence: ['inspection', 'debris_clearance'],

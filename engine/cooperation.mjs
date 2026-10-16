@@ -242,7 +242,7 @@ export function installCooperation(w) {
       op.state = 'waiting_to_unload';
       w.record('unloading_queued', { building: b.id }, op.id);
       w.reportOperation(op);
-      if (w.now + 30000 <= w.config.durationMs)
+      if (w.withinHorizon(w.now + 30000))
         w.schedule(w.now + 30000, 'request_unload', p, 4, `unload-queue-${op.id}-${w.now}`);
       return;
     }
@@ -278,7 +278,7 @@ export function installCooperation(w) {
             : 'storage_or_unloading_capacity';
       w.record('unloading_blocked', { reason: op.waitingReason }, op.id);
       w.reportOperation(op);
-      if (w.now + 30000 <= w.config.durationMs)
+      if (w.withinHorizon(w.now + 30000))
         w.schedule(w.now + 30000, 'request_unload', p, 4, `unload-wait-${op.id}-${w.now}`);
       return;
     }

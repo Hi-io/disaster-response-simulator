@@ -307,7 +307,7 @@ export function installPopulation(w) {
       }
     }
     const next = w.now + w.config.resupplyReviewHours * HOUR;
-    if (next <= w.config.durationMs)
+    if (w.withinHorizon(next))
       w.schedule(next, 'population_resupply', {}, 1, `resupply-${next}`);
   });
   w.on('population_tick', () => {
@@ -368,7 +368,7 @@ export function installPopulation(w) {
           }
         }
       }
-    if (w.now + w.config.healthTickMs <= w.config.durationMs)
+    if (w.withinHorizon(w.now + w.config.healthTickMs))
       w.schedule(w.now + w.config.healthTickMs, 'population_tick', {}, 0, `population-${w.now}`);
   });
   w.populationMetrics = () => {

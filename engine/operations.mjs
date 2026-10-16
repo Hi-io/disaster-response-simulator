@@ -836,7 +836,7 @@ export function installActions(w) {
     r.produced += amount;
     r.version++;
     w.record('water_produced', { building: id, quantity: amount });
-    if (w.now + 60000 <= w.config.durationMs)
+    if (w.withinHorizon(w.now + 60000))
       w.schedule(w.now + 60000, 'produce', { building: id, org }, 4, `produce-${id}-${w.now}`);
   });
   w.onAction('evacuate', (a, p) => {

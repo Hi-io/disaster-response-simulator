@@ -56,6 +56,7 @@ export const DEFAULT_CONFIG = {
   reservedWater: 100,
   policy: 'conventional',
   mode: 'interactive',
+  continuousDemo: false,
   clockLatency: 'modeled',
   split: 'development',
   language: 'mixed',
@@ -171,6 +172,9 @@ export function validateConfig(input = {}) {
   const c = { ...clone(DEFAULT_CONFIG), ...input };
   c.humanCapacity = normalizeHumanCapacity(c.humanCapacity, c.operatorCount);
   if (c.mode === 'live' && input.clockLatency === undefined) c.clockLatency = 'wall';
+  if (typeof c.continuousDemo !== 'boolean') throw new Error('continuousDemo must be boolean');
+  if (c.continuousDemo && (!['interactive', 'live'].includes(c.mode) || c.clockLatency !== 'wall'))
+    throw new Error('Continuous demo requires an interactive/live wall-clock world; use finite modeled runs for benchmarks');
   if (c.mode === 'live' && c.clockLatency !== 'wall')
     throw new Error('Live integration requires a wall-clock latency policy');
   if (input.scenario === 'S19' && input.organizations === undefined) c.organizations = 5;

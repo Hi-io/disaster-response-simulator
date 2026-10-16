@@ -29,6 +29,10 @@ pnpm service -- --play
 
 Use one server mode at a time because both use ports 4318 and 4319.
 
+The public feed uses a dark social timeline and refreshes from the same source-indexed world clock. It keeps the newest 30 posts on screen and moves existing posts down as updates arrive; older posts remain accessible through pagination. Images, clips and voice notes are explicitly simulated media.
+
+For a continuously running integration demo, use `continuousDemo: true`, `mode: 'interactive'`, and `clockLatency: 'wall'` in the world configuration. The world continues through model inference and past the finite scenario horizon, with recurring content and physical processes intact. It never silently resets the seed, resources or operations. The viewer labels this mode; benchmark runners reject it. Use a finite modeled/live configuration for measurements. Explicit event, post and provider budgets still apply, and real-time acceleration is demonstration pacing rather than a latency benchmark.
+
 ## Explore the world
 
 Choose a scenario, seed, map size and response policy in World configuration. Pan and zoom the map, inspect buildings and vehicles, follow a moving vehicle, and switch between observer truth and a team's received knowledge.

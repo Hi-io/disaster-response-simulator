@@ -171,7 +171,7 @@ export function installFacilities(w) {
     r.version++;
     w.observeResource(org, r);
     w.record('water_produced', { building: id, quantity });
-    if (w.now + 60000 <= w.config.durationMs)
+    if (w.withinHorizon(w.now + 60000))
       w.schedule(w.now + 60000, 'produce', { building: id, org }, 4, `produce-${id}-${w.now}`);
   });
   w.on('shelter_service', ({ building: id, org }) => {
@@ -192,7 +192,7 @@ export function installFacilities(w) {
       if (!remaining) break;
     }
     b.provisioned.water = usableWater(b);
-    if (w.now + 60000 <= w.config.durationMs)
+    if (w.withinHorizon(w.now + 60000))
       w.schedule(
         w.now + 60000,
         'shelter_service',

@@ -10,6 +10,8 @@ import path from 'node:path';
 import { gzipSync, gunzipSync, createGzip } from 'node:zlib';
 
 export function runWorld(config = {}, inputs = [], checkpoint = null, { fork = false } = {}) {
+  if (config.continuousDemo || checkpoint?.manifest?.config?.continuousDemo)
+    throw new Error('Continuous demos are not benchmark runs. Use a finite modeled or live configuration.');
   const start = performance.now(),
     w = new World(config, checkpoint);
   if (fork) {
@@ -140,6 +142,8 @@ export async function readJSON(file) {
   return result;
 }
 export function pairedComparison(rowsA, rowsB) {
+  if ([...rowsA, ...rowsB].some((row) => row.config?.continuousDemo || row.manifest?.config?.continuousDemo))
+    throw new Error('Continuous demos are not eligible for paired benchmark comparisons.');
   const key = (r) => JSON.stringify([r.seed, r.scenario, r.variant]);
   const b = new Map(rowsB.map((r) => [key(r), r]));
   if (b.size !== rowsB.length || new Set(rowsA.map(key)).size !== rowsA.length)

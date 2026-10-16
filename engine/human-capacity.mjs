@@ -235,7 +235,7 @@ export function installHumanCapacity(w) {
         catch(e){if(e.code!=='HUMAN_BACKLOG')throw e;state().backgroundDropped++;w.record('human_background_dropped',{org:org.id,stage,minute,ordinal});}
       }
     }
-    if((minute+1)*60000<=w.config.durationMs)w.schedule((minute+1)*60000,'human_background',{minute:minute+1},3,'human-background-'+(minute+1));
+    if(w.withinHorizon((minute+1)*60000))w.schedule((minute+1)*60000,'human_background',{minute:minute+1},3,'human-background-'+(minute+1));
   });
   const query=w.actionHandlers.get('query');
   w.onAction('query',(a,p,request)=>{

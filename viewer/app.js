@@ -1281,7 +1281,8 @@ async function refresh() {
     $('clock').textContent = clock(snapshot.now);
     $('play').textContent = snapshot.playing ? 'Pause' : 'Play';
     $('speed').value = snapshot.rate;
-    $('runId').textContent = `run ${snapshot.runId.slice(0, 8)}`;
+    $('runId').textContent = `${snapshot.continuousDemo ? 'continuous demo' : 'run'} ${snapshot.runId.slice(0, 8)}`;
+    $('runId').title = snapshot.continuousDemo ? 'Continuous demonstration. This run is not eligible for benchmark comparisons.' : 'Finite seeded simulation run';
     $('sourceLink').href = snapshot.sourceUrl + '/feed';
     $('effective').textContent =
       `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
