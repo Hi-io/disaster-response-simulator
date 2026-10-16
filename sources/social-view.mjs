@@ -71,6 +71,11 @@ export function postRateSample(previous, incoming) {
   return { posts, elapsedMs, perMinute: posts * 60000 / elapsedMs };
 }
 
+export function postRateCaption(sample) {
+  const seconds = sample.elapsedMs / 1000;
+  return `${sample.posts.toLocaleString('en')} new ${sample.posts === 1 ? 'post' : 'posts'} over ${seconds.toLocaleString('en', { maximumFractionDigits: 1 })} simulated ${seconds === 1 ? 'second' : 'seconds'} \u00b7 scaled to one minute`;
+}
+
 export function sourceHTML(title, posts, next = null, options = {}) {
   const data = { runId: options.runId ?? '', now: options.now ?? 0, total: options.total ?? posts.length, publicPostsPublished: options.publicPostsPublished, playing: options.playing ?? false, rate: options.rate ?? 1, posts, query: options.query ?? {}, live: options.live ?? false };
   const nav = (href, glyph, label, active) => `<a href="${href}" class="nav-item ${active ? 'active' : ''}">${icon(glyph, 25)}<span>${label}</span></a>`;

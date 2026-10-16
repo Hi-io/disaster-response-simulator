@@ -1,4 +1,4 @@
-import { FEED_LIMIT, reconcileSnapshot, renderPost, simTime, postRateSample } from '/assets/social-view.mjs';
+import { FEED_LIMIT, reconcileSnapshot, renderPost, simTime, postRateSample, postRateCaption } from '/assets/social-view.mjs';
 
 const container = document.querySelector('#timeline-posts');
 const initial = JSON.parse(document.querySelector('#timeline-data').textContent);
@@ -16,7 +16,7 @@ function reconcile(next) {
   const sampleNode = document.querySelector('#posting-rate-sample');
   if (sample && rateNode && sampleNode) {
     rateNode.textContent = sample.perMinute.toLocaleString('en', { maximumFractionDigits: sample.perMinute < 10 ? 1 : 0 });
-    sampleNode.textContent = `${sample.posts.toLocaleString('en')} new posts over ${(sample.elapsedMs / 1000).toLocaleString('en', { maximumFractionDigits: 1 })} simulated seconds · scaled to one minute`;
+    sampleNode.textContent = postRateCaption(sample);
     rateNode.title = 'Public posts published during the latest received simulation interval. Edits, private messages and deletions do not count as new posts.';
   } else if (rateNode && sampleNode) {
     rateNode.textContent = '\u2014';

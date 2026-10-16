@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createLabServers } from '../sources/server.mjs';
-import { FEED_LIMIT, reconcileSnapshot, renderPost, sourceHTML, postRateSample } from '../sources/social-view.mjs';
+import { FEED_LIMIT, reconcileSnapshot, renderPost, sourceHTML, postRateSample, postRateCaption } from '../sources/social-view.mjs';
 import { World } from '../engine/world.mjs';
 import { replay, runWorld, pairedComparison } from '../evaluation/runs.mjs';
 
@@ -132,6 +132,8 @@ test('posting pace scales the latest complete public snapshot chunk by simulated
   assert.equal(postRateSample(old, { ...old, now: 75000, total: 5 }), null, 'removal rebases rather than showing negative generation');
   assert.equal(postRateSample(null, old), null);
   assert.equal(postRateSample(old, { ...old, now: 75000, total: 120 }).perMinute, 0);
+  assert.equal(postRateCaption({ posts: 1, elapsedMs: 8900 }), '1 new post over 8.9 simulated seconds \u00b7 scaled to one minute');
+  assert.equal(postRateCaption({ posts: 2, elapsedMs: 1000 }), '2 new posts over 1 simulated second \u00b7 scaled to one minute');
   assert.match(sourceHTML('Latest', [], null, {}), /posting-rate.*posts per minute/s);
   assert.match(sourceHTML('Latest', [], null, {}), /of simulation time/);
 });
