@@ -80,6 +80,9 @@ test('enabling the optional 3D viewer does not change a seeded world or its resu
   t.after(() => Promise.all([headless.close(), visual.close()]));
   assert.equal(headless.world.stateHash(), visual.world.stateHash());
   const origin = `http://127.0.0.1:${visual.observerPort}`;
+  assert.equal(visual.world.config.topology, 'regional', 'the standalone launcher inherits the irregular region default');
+  const page = await (await fetch(origin + '/')).text();
+  assert.ok(page.indexOf('option value="regional"') < page.indexOf('option value="grid"'), 'new-world configuration presents the irregular region first');
   assert.equal((await fetch(origin + '/')).status, 200);
   assert.equal(
     headless.world.stateHash(),
