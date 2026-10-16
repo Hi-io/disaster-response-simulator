@@ -26,12 +26,17 @@ const equal = (a, b) =>
   a.length === b.length &&
   timingSafeEqual(Buffer.from(a), Buffer.from(b));
 async function body(req, limit = 2000000) {
-  let text = '';
+  const chunks = [];
+  let bytes = 0;
   for await (const chunk of req) {
-    text += chunk;
-    if (text.length > limit) throw new SimError('BODY_LIMIT', 'Request too large', 413);
+    bytes += chunk.length;
+    if (bytes > limit) throw new SimError('BODY_LIMIT', 'Request too large', 413);
+    chunks.push(chunk);
   }
   try {
+    // Buffer boundaries may split a multibyte UTF-8 road name. Decode once,
+    // after collecting the bounded body, so restoring a checkpoint is exact.
+    const text = Buffer.concat(chunks, bytes).toString('utf8');
     return text ? JSON.parse(text) : {};
   } catch {
     throw new SimError('JSON', 'Invalid JSON');

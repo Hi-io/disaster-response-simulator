@@ -205,6 +205,9 @@ export function installActions(w) {
     }
     if (p.target === 'map')
       result = {
+        topology: w.state.map.topology,
+        extentM: w.state.map.extentM,
+        ...(w.state.map.geography ? { geography: clone(w.state.map.geography) } : {}),
         nodes: w.state.map.nodes.map((n) => ({ ...n })),
         roads: w.state.map.edges.map((e) => ({
           id: e.id,
@@ -212,6 +215,7 @@ export function installActions(w) {
           ...(Array.isArray(e.aliases) ? { aliases: e.aliases.filter(x => typeof x === 'string') } : {}),
           from: e.from,
           to: e.to,
+          ...(Array.isArray(e.points) ? { points: e.points.map(({ x, z }) => ({ x, z })) } : {}),
           lengthM: e.lengthM,
           speedMps: e.speedMps,
           maxWeight: e.maxWeight,
