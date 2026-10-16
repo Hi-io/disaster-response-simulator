@@ -40,7 +40,7 @@ export async function createService({ autoPlay = false, ...options } = {}) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2).filter((arg) => arg !== '--');
   if (args.some((arg) => arg !== '--play')) throw new Error('Supported option: --play');
-  const lab = await createService({ autoPlay: args.includes('--play') });
+  const lab = await createService({ autoPlay: args.includes('--play'), isolated: true });
   console.log(
     `Simulation service: http://127.0.0.1:${lab.observerPort}/api/\nSources: http://127.0.0.1:${lab.sourcePort}/feed\n3D viewer disabled. Credentials are in ignored .local/session.json.`,
   );

@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { createLabServers } from './sources/server.mjs';
 
-// Presentation transport is separate from the versioned causal engine. The
-// full observer state and all source/action APIs remain available unchanged.
+// Legacy inline-library presentation; interactive launchers use the isolated
+// engine and compact presentation transport in sources/isolated-server.mjs.
 export function activityView(world, organizations = ['org0'], limit = 200) {
   return {
     runId: world.runId,
@@ -38,6 +38,7 @@ export function activityView(world, organizations = ['org0'], limit = 200) {
 
 export async function createLab({ config = {}, ...options } = {}) {
   const lab = await createLabServers({ ...options, config: { language: 'en', ...config } });
+  if (lab.runtime) return lab;
   const [original] = lab.observer.listeners('request');
   lab.observer.removeListener('request', original);
   lab.observer.on('request', (req, res) => {
@@ -73,7 +74,7 @@ export async function createLab({ config = {}, ...options } = {}) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const lab = await createLab();
+  const lab = await createLab({ isolated: true });
   console.log(
     `Observer: http://127.0.0.1:${lab.observerPort}\nSources: http://127.0.0.1:${lab.sourcePort}\nObserver access and actor keys are saved in ignored .local/session.json.`,
   );

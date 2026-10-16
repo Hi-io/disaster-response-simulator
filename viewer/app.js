@@ -12,10 +12,23 @@ import {
 } from './presentation.js';
 import { MotionBuffer } from './motion.js';
 import { FlowLane, MapNotices, iconHTML, applyIcons } from './flow.js';
-import { serviceRows, selectionPoint, trackingStep, mapVisualKey, humanQueueRows } from './display.js';
+import {
+  serviceRows,
+  selectionPoint,
+  trackingStep,
+  mapVisualKey,
+  humanQueueRows,
+} from './display.js';
 import { mapTheme } from './theme.js';
 import { englishText } from './english.js';
-import { roadCorridors, corridorTrafficLevel, visibleRoutePlans, routeOverlayKey, fixedTopologyProfile } from './map-layout.js';
+import {
+  roadCorridors,
+  corridorTrafficLevel,
+  visibleRoutePlans,
+  routeOverlayKey,
+  fixedTopologyProfile,
+} from './map-layout.js';
+import { mergeViewerFrame } from './projection.js';
 
 const $ = (id) => document.getElementById(id);
 const escape = (s) =>
@@ -31,6 +44,7 @@ const timelineCache = new Map();
 const eventCache = new Map();
 const number = (n) => new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(n ?? 0);
 let snapshot,
+  viewerMap,
   activity,
   activityBusy = false,
   activitySupported = true,
@@ -80,7 +94,9 @@ let nodeIndex = new Map(),
 const mapNotices = new MapNotices($('mapNotices'), locateNotice, projectNotice);
 applyIcons();
 const orgColors = mapTheme.organizations;
-const trafficColors = Object.fromEntries(Object.entries(mapTheme.traffic).map(([key, color]) => [key, new THREE.Color(color)]));
+const trafficColors = Object.fromEntries(
+  Object.entries(mapTheme.traffic).map(([key, color]) => [key, new THREE.Color(color)]),
+);
 let snapshotReceivedAt = performance.now();
 let lastAnimationTime = performance.now();
 let renderer,
@@ -329,15 +345,36 @@ function renderMeasurements() {
     ) +
     (obs
       ? ''
-      : property('Resource conservation', m.ledgerValid ? 'Verified' : 'Check failed') +
+      : property(
+          'Resource conservation',
+          m.ledgerValid == null
+            ? 'Full check on export'
+            : m.ledgerValid
+              ? 'Verified'
+              : 'Check failed',
+        ) +
         property('Queueing vehicles', number(m.physical.trafficQueue)) +
         property('Closed crossings', number(m.physical.closedCrossings)));
   const humanRows = humanQueueRows(snapshot, perspective);
-  if (humanRows.some(r => r.queued + r.working + r.awaitingDelivery + r.completed + r.unconfirmed > 0)) {
-    $('informationStats').innerHTML += '<h3>Finite human attention</h3><table class="serviceTable"><thead><tr><th>Stage</th><th>Waiting</th><th>Busy</th><th>Done</th></tr></thead><tbody>' +
-      humanRows.map(r => `<tr><td>${escape({read:'Read',decide:'Decide / review',relay:'Relay'}[r.stage])}</td><td>${number(r.queued)}</td><td>${number(r.working + r.awaitingDelivery)}</td><td>${number(r.completed)}</td></tr>`).join('') + '</tbody></table>' +
-      property('Oldest task still waiting', clock(Math.max(...humanRows.map(r => r.oldestQueuedMs ?? 0)))) +
-      property('Unconfirmed work', number(humanRows.reduce((n,r) => n + r.unconfirmed,0))) +
+  if (
+    humanRows.some(
+      (r) => r.queued + r.working + r.awaitingDelivery + r.completed + r.unconfirmed > 0,
+    )
+  ) {
+    $('informationStats').innerHTML +=
+      '<h3>Finite human attention</h3><table class="serviceTable"><thead><tr><th>Stage</th><th>Waiting</th><th>Busy</th><th>Done</th></tr></thead><tbody>' +
+      humanRows
+        .map(
+          (r) =>
+            `<tr><td>${escape({ read: 'Read', decide: 'Decide / review', relay: 'Relay' }[r.stage])}</td><td>${number(r.queued)}</td><td>${number(r.working + r.awaitingDelivery)}</td><td>${number(r.completed)}</td></tr>`,
+        )
+        .join('') +
+      '</tbody></table>' +
+      property(
+        'Oldest task still waiting',
+        clock(Math.max(...humanRows.map((r) => r.oldestQueuedMs ?? 0))),
+      ) +
+      property('Unconfirmed work', number(humanRows.reduce((n, r) => n + r.unconfirmed, 0))) +
       '<p class="measurementNote">These queues use declared experimental timings. Reading or approval is not physical aid received. Relay remains busy until its message arrives.</p>';
   }
 }
@@ -466,11 +503,13 @@ function home() {
   const aspect = Math.max(0.1, rect.width / rect.height);
   const rise = Math.max(0.45, Math.min(1.1, 1.6 / aspect));
   const verticalProjection = rise / Math.sqrt(2 + rise * rise);
-  const xs = map.geography ? map.nodes.map(n => n.x) : [0, map.extentM];
-  const zs = map.geography ? map.nodes.map(n => n.z) : [0, map.extentM];
+  const xs = map.geography ? map.nodes.map((n) => n.x) : [0, map.extentM];
+  const zs = map.geography ? map.nodes.map((n) => n.z) : [0, map.extentM];
   const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
   const centerZ = (Math.min(...zs) + Math.max(...zs)) / 2;
-  const span = map.geography ? Math.max(Math.max(...xs)-Math.min(...xs), Math.max(...zs)-Math.min(...zs)) * 1.2 : map.extentM;
+  const span = map.geography
+    ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) * 1.2
+    : map.extentM;
   extent = span * Math.max(0.7072 * verticalProjection * 1.28, (0.7072 / aspect) * 1.16);
   camera.position.set(centerX + span, span * rise, centerZ + span);
   camera.far = map.extentM * 8;
@@ -525,12 +564,8 @@ function buildScene() {
     const edge = corridor.edge;
     const a = position(edge.from),
       b = position(edge.to),
-      closed = corridor.edges.some(e => obs ? obs.edges[e.id]?.open === false : !e.open);
-    const target = closed
-      ? damaged
-      : corridor.edges.some(e => e.bridge)
-        ? bridges
-        : vertices;
+      closed = corridor.edges.some((e) => (obs ? obs.edges[e.id]?.open === false : !e.open));
+    const target = closed ? damaged : corridor.edges.some((e) => e.bridge) ? bridges : vertices;
     const path = edge.points ?? [a, b];
     for (let i = 0; i < path.length - 1; i++)
       target.push(path[i].x, 1, path[i].z, path[i + 1].x, 1, path[i + 1].z);
@@ -557,7 +592,12 @@ function buildScene() {
     for (let i = 0; i < path.length - 1; i++) {
       trafficPositions.push(path[i].x, 3, path[i].z, path[i + 1].x, 3, path[i + 1].z);
     }
-    trafficSpans.push({ ids: corridor.edges.map(e => e.id), start, count: trafficPositions.length / 3 - start, level: null });
+    trafficSpans.push({
+      ids: corridor.edges.map((e) => e.id),
+      start,
+      count: trafficPositions.length / 3 - start,
+      level: null,
+    });
   }
   const trafficGeometry = new THREE.BufferGeometry();
   trafficGeometry.setAttribute('position', new THREE.Float32BufferAttribute(trafficPositions, 3));
@@ -753,16 +793,25 @@ function buildScene() {
       }),
     ),
   );
-  const outageSectors = obs ? [] : map.sectors.filter(s => s.coverage === 0);
+  const outageSectors = obs ? [] : map.sectors.filter((s) => s.coverage === 0);
   if (outageSectors.length) {
     const dots = new THREE.InstancedMesh(
       new THREE.CircleGeometry(1, 20),
-      new THREE.MeshBasicMaterial({ color: mapTheme.slate, transparent: true, opacity: 0.25, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({
+        color: mapTheme.slate,
+        transparent: true,
+        opacity: 0.25,
+        side: THREE.DoubleSide,
+      }),
       outageSectors.length,
     );
     outageSectors.forEach((sector, i) => {
       const n = position(sector.node);
-      matrix.compose(new THREE.Vector3(n.x, 2, n.z), ringRotation, new THREE.Vector3(scale * 0.18, scale * 0.18, scale * 0.18));
+      matrix.compose(
+        new THREE.Vector3(n.x, 2, n.z),
+        ringRotation,
+        new THREE.Vector3(scale * 0.18, scale * 0.18, scale * 0.18),
+      );
       dots.setMatrixAt(i, matrix);
     });
     dots.instanceMatrix.needsUpdate = true;
@@ -845,11 +894,12 @@ function updateTraffic() {
     obs = snapshot.state.observations[$('perspective').value];
   const attribute = trafficLines.geometry.attributes.color;
   let changed = false;
-  trafficLines.userData.spans.forEach(span => {
+  trafficLines.userData.spans.forEach((span) => {
     const level = corridorTrafficLevel(span.ids, edgeIndex, obs?.edges, truth);
     if (level === span.level) return;
     const color = trafficColors[level];
-    for (let i = span.start; i < span.start + span.count; i++) attribute.setXYZ(i, color.r, color.g, color.b);
+    for (let i = span.start; i < span.start + span.count; i++)
+      attribute.setXYZ(i, color.r, color.g, color.b);
     span.level = level;
     changed = true;
   });
@@ -878,7 +928,12 @@ function updateRoutes() {
     if (!points.length) continue;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-    group.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: mapTheme.violet, transparent: true, opacity: 0.6 })));
+    group.add(
+      new THREE.LineSegments(
+        geometry,
+        new THREE.LineBasicMaterial({ color: mapTheme.violet, transparent: true, opacity: 0.6 }),
+      ),
+    );
   }
   previousRouteKey = key;
 }
@@ -1253,7 +1308,21 @@ async function refresh() {
   busy = true;
   try {
     const previousTime = snapshot?.now;
-    snapshot = await api('/api/state');
+    const scope = `?org=${encodeURIComponent($('focusOrg').value || 'org0')}&perspective=${encodeURIComponent($('perspective').value || 'truth')}`;
+    let frame;
+    if (!viewerMap) {
+      const bootstrap = await api('/api/viewer/bootstrap' + scope);
+      viewerMap = bootstrap.map;
+      frame = bootstrap.frame;
+    } else {
+      frame = await api('/api/viewer/frame' + scope);
+      if (viewerMap.projectionId !== frame.mapId) {
+        const bootstrap = await api('/api/viewer/bootstrap' + scope);
+        viewerMap = bootstrap.map;
+        frame = bootstrap.frame;
+      }
+    }
+    snapshot = mergeViewerFrame(viewerMap, frame);
     if (playbackOverride === snapshot.playing) playbackOverride = null;
     nodeIndex = new Map(snapshot.state.map.nodes.map((n) => [n.id, n]));
     buildingIndex = new Map(snapshot.state.map.buildings.map((b) => [b.id, b]));
@@ -1294,18 +1363,24 @@ async function refresh() {
         : snapshot.state.map.organizations[0]?.id;
     }
     const geographic = snapshot.state.map.geography;
-    const geographicSummary = snapshot.state.map.topology === 'takamatsu'
-      ? '100 km² · 4,300 synthetic community sites' : 'Synthetic facilities & emergency scenario';
+    const geographicSummary =
+      snapshot.state.map.topology === 'takamatsu'
+        ? '100 km² · 4,300 synthetic community sites'
+        : 'Synthetic facilities & emergency scenario';
     $('mapAttribution').hidden = !geographic;
-    $('mapAttribution').innerHTML = geographic ?
-      `<strong>${escape(geographic.name)}</strong><span>${escape(geographicSummary)}</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Map data © OpenStreetMap contributors · ODbL</a>` : '';
+    $('mapAttribution').innerHTML = geographic
+      ? `<strong>${escape(geographic.name)}</strong><span>${escape(geographicSummary)}</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Map data © OpenStreetMap contributors · ODbL</a>`
+      : '';
     motion.accept(snapshot, snapshotReceivedAt, $('perspective').value);
     lastRun = snapshot.runId;
     $('clock').textContent = clock(snapshot.now);
     $('play').textContent = snapshot.playing ? 'Pause' : 'Play';
     $('speed').value = snapshot.rate;
-    $('runId').textContent = `${snapshot.continuousDemo ? 'continuous demo' : 'run'} ${snapshot.runId.slice(0, 8)}`;
-    $('runId').title = snapshot.continuousDemo ? 'Continuous demonstration. This run is not eligible for benchmark comparisons.' : 'Finite seeded simulation run';
+    $('runId').textContent =
+      `${snapshot.continuousDemo ? 'continuous demo' : 'run'} ${snapshot.runId.slice(0, 8)}`;
+    $('runId').title = snapshot.continuousDemo
+      ? 'Continuous demonstration. This run is not eligible for benchmark comparisons.'
+      : 'Finite seeded simulation run';
     $('sourceLink').href = snapshot.sourceUrl + '/feed';
     $('effective').textContent =
       `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
@@ -1456,8 +1531,12 @@ $('configForm').onsubmit = perform(async () => {
     'organizations',
   ];
   const overrides = JSON.parse($('advancedConfig').value);
-  if (Object.hasOwn(overrides, 'humanCapacity') &&
-      (!overrides.humanCapacity || typeof overrides.humanCapacity !== 'object' || Array.isArray(overrides.humanCapacity)))
+  if (
+    Object.hasOwn(overrides, 'humanCapacity') &&
+    (!overrides.humanCapacity ||
+      typeof overrides.humanCapacity !== 'object' ||
+      Array.isArray(overrides.humanCapacity))
+  )
     throw new Error('humanCapacity must be a JSON object.');
   await api('/api/config', {
     language: 'en',
@@ -1535,17 +1614,13 @@ $('metricsExport').onclick = perform(async () =>
   download(`metrics-${snapshot.runId}.json`, await api('/api/metrics')),
 );
 $('exportMeasurements').onclick = $('metricsExport').onclick;
-$('perspective').onchange = () => {
+$('perspective').onchange = async () => {
   if ($('perspective').value !== 'truth') $('focusOrg').value = $('perspective').value;
   motion.reset();
-  motion.accept(snapshot, performance.now(), $('perspective').value);
-  buildScene();
-  inspect();
-  renderMeasurements();
   feedScope = null;
-  showStreams();
-  refreshActivity();
-  refresh();
+  previousSceneHash = null;
+  await refresh();
+  await refreshActivity();
 };
 $('focusOrg').onchange = () => {
   if ($('perspective').value !== 'truth') {
@@ -1553,7 +1628,7 @@ $('focusOrg').onchange = () => {
     $('perspective').onchange();
   } else {
     feedScope = null;
-    showStreams();
+    refresh();
     refreshActivity();
   }
 };
@@ -1680,12 +1755,11 @@ try {
   await loadCatalog();
 } catch {}
 await refresh();
-// Full city snapshots contain thousands of sites. Leave space between those
-// reads; the lightweight activity channel and local 3D animation remain live.
-// Hidden tabs must not repeatedly serialize the entire city in the background.
+// Geometry is fetched once. Compact latest-state frames can skip intermediate
+// samples without losing changes; hidden tabs do not request any frames.
 async function pollSnapshot() {
   if (!document.hidden) await refresh();
-  setTimeout(pollSnapshot, snapshot?.state.map.buildings.length >= 2000 ? 3000 : 1000);
+  setTimeout(pollSnapshot, 750);
 }
 setTimeout(pollSnapshot, 1000);
 async function pollActivity() {

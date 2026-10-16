@@ -11,6 +11,7 @@ import { INPUT_TYPES, OBSERVATION_SCHEMA } from '../contracts/inputs.mjs';
 import { CONFIG_SCHEMA } from '../contracts/config.mjs';
 import { clone } from '../engine/determinism.mjs';
 import { sourceHTML } from './social-view.mjs';
+import { createViewerBootstrap, createViewerFrame } from './projections.mjs';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const json = (res, status, data) => {
   res.writeHead(status, {
@@ -50,7 +51,33 @@ export async function createLabServers({
   observerKey = randomBytes(24).toString('hex'),
   actorKeys = null,
   persistCredentials = true,
+  isolated = false,
+  checkpoint,
+  storageDir,
+  bus,
+  documents,
+  tickMs,
+  workBudgetMs,
+  projectionMs,
 } = {}) {
+  if (isolated) {
+    const { createIsolatedLabServers } = await import('./isolated-server.mjs');
+    return createIsolatedLabServers({
+      config,
+      observerPort,
+      sourcePort,
+      observerKey,
+      actorKeys,
+      persistCredentials,
+      checkpoint,
+      storageDir,
+      bus,
+      documents,
+      tickMs,
+      workBudgetMs,
+      projectionMs,
+    });
+  }
   let world = new World(config),
     comparison = null,
     playing = false,
@@ -80,9 +107,14 @@ export async function createLabServers({
     if (!playing) return;
     const before = world.now;
     try {
-      world.advance(world.config.continuousDemo ? Math.round(world.now + wall * rate) : Math.min(world.config.durationMs, Math.round(world.now + wall * rate)), {
-        maxEvents: 2500,
-      });
+      world.advance(
+        world.config.continuousDemo
+          ? Math.round(world.now + wall * rate)
+          : Math.min(world.config.durationMs, Math.round(world.now + wall * rate)),
+        {
+          maxEvents: 2500,
+        },
+      );
       effective = wall ? (world.now - before) / wall : 0;
       if (comparison) {
         let progress;
@@ -133,10 +165,38 @@ export async function createLabServers({
           '/api/credentials',
           '/api/events',
           '/api/compare',
+          '/api/viewer/bootstrap',
+          '/api/viewer/frame',
         ];
         if (req.method !== (reads.includes(url.pathname) ? 'GET' : 'POST'))
           throw new SimError('METHOD', 'Method not allowed', 405);
         if (req.method === 'POST') requireSameOrigin(req);
+        if (url.pathname === '/api/viewer/bootstrap' || url.pathname === '/api/viewer/frame') {
+          const options = {
+            org: url.searchParams.get('org') ?? 'org0',
+            perspective: url.searchParams.get('perspective') ?? 'truth',
+            runtime: {
+              playing,
+              rate,
+              effectiveRate: effective,
+              sourceUrl: `http://127.0.0.1:${sources.address().port}`,
+              comparison: comparison
+                ? {
+                    policyA: world.config.policy,
+                    policyB: comparison.config.policy,
+                    now: comparison.now,
+                  }
+                : null,
+            },
+          };
+          return json(
+            res,
+            200,
+            url.pathname.endsWith('/bootstrap')
+              ? createViewerBootstrap(world, options)
+              : createViewerFrame(world, options),
+          );
+        }
         if (url.pathname === '/api/state')
           return json(res, 200, {
             ...world.observer(),
@@ -165,44 +225,95 @@ export async function createLabServers({
             limit = 200;
           if (!world.organization(org) || (!truth && perspective !== org))
             throw new SimError('ACTIVITY_SCOPE', 'Choose truth or the requested organization');
-          const posts = world.state.posts.slice(-limit).filter(p => truth ||
-            (!p.deleted && p.public.publishedAt !== null && p.public.publishedAt <= world.now &&
-              (p.private?.audience === 'public' || p.private?.audience?.includes(org))));
+          const posts = world.state.posts
+            .slice(-limit)
+            .filter(
+              (p) =>
+                truth ||
+                (!p.deleted &&
+                  p.public.publishedAt !== null &&
+                  p.public.publishedAt <= world.now &&
+                  (p.private?.audience === 'public' || p.private?.audience?.includes(org))),
+            );
           const observations = world.state.observations[org],
-            known = Object.fromEntries(Object.entries(observations).map(([key,value]) =>
-              [key,Array.isArray(value) ? value.slice(-limit) : value && typeof value === 'object'
-                ? Object.fromEntries(Object.entries(value).slice(-limit)) : value]));
-          const events = world.log.slice(-limit).filter(e => truth ||
-            (e.type === 'message_delivered' && e.data?.to === org) ||
-            (e.type === 'sharing_received' && e.data?.to === org) ||
-            (e.type === 'query_completed' && e.data?.org === org));
-          return json(res, 200, clone({
-            runId:world.runId,now:world.now,org,perspective,sampleLimit:limit,
-            state:{
-              posts:truth ? posts : posts.map(p => ({public:p.public,indexAt:p.indexAt,deleted:p.deleted,
-                private:{audience:p.private.audience}})),
-              ingestion:world.state.ingestion.filter(r => truth || r.org === org).slice(-limit),
-              observations:{[org]:known},
-            },
-            events,
-            totals:{posts:world.state.posts.length,ingestion:world.state.ingestion.length},
-          }));
+            known = Object.fromEntries(
+              Object.entries(observations).map(([key, value]) => [
+                key,
+                Array.isArray(value)
+                  ? value.slice(-limit)
+                  : value && typeof value === 'object'
+                    ? Object.fromEntries(Object.entries(value).slice(-limit))
+                    : value,
+              ]),
+            );
+          const events = world.log
+            .slice(-limit)
+            .filter(
+              (e) =>
+                truth ||
+                (e.type === 'message_delivered' && e.data?.to === org) ||
+                (e.type === 'sharing_received' && e.data?.to === org) ||
+                (e.type === 'query_completed' && e.data?.org === org),
+            );
+          return json(
+            res,
+            200,
+            clone({
+              runId: world.runId,
+              now: world.now,
+              org,
+              perspective,
+              sampleLimit: limit,
+              state: {
+                posts: truth
+                  ? posts
+                  : posts.map((p) => ({
+                      public: p.public,
+                      indexAt: p.indexAt,
+                      deleted: p.deleted,
+                      private: { audience: p.private.audience },
+                    })),
+                ingestion: world.state.ingestion
+                  .filter((r) => truth || r.org === org)
+                  .slice(-limit),
+                observations: { [org]: known },
+              },
+              events,
+              totals: { posts: world.state.posts.length, ingestion: world.state.ingestion.length },
+            }),
+          );
         }
         const b =
           req.method === 'POST'
             ? await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000)
             : {};
         if (url.pathname === '/api/actors/provision') {
-          if (!world.organization(b.org) || !['agent', 'commander', 'dispatcher', 'field'].includes(b.role))
+          if (
+            !world.organization(b.org) ||
+            !['agent', 'commander', 'dispatcher', 'field'].includes(b.role)
+          )
             throw new SimError('ACTOR', 'A valid organization and scoped role are required');
-          if (!Number.isSafeInteger(b.ttlMs ?? 86400000) || (b.ttlMs ?? 86400000) < 1000 || (b.ttlMs ?? 86400000) > 604800000)
-            throw new SimError('ACTOR_TTL', 'Actor credentials last between one second and seven days');
+          if (
+            !Number.isSafeInteger(b.ttlMs ?? 86400000) ||
+            (b.ttlMs ?? 86400000) < 1000 ||
+            (b.ttlMs ?? 86400000) > 604800000
+          )
+            throw new SimError(
+              'ACTOR_TTL',
+              'Actor credentials last between one second and seven days',
+            );
           const key = randomBytes(24).toString('hex');
-          actorKeys[key] = { id: b.id ?? `operator-${b.org}-${randomBytes(4).toString('hex')}`, org: b.org, role: b.role, expiresAt: Date.now() + (b.ttlMs ?? 86400000) };
+          actorKeys[key] = {
+            id: b.id ?? `operator-${b.org}-${randomBytes(4).toString('hex')}`,
+            org: b.org,
+            role: b.role,
+            expiresAt: Date.now() + (b.ttlMs ?? 86400000),
+          };
           return json(res, 201, { key, actor: actorKeys[key] });
         }
         if (url.pathname === '/api/actors/revoke') {
-          if (!Object.hasOwn(actorKeys, b.key)) throw new SimError('ACTOR', 'Credential not found', 404);
+          if (!Object.hasOwn(actorKeys, b.key))
+            throw new SimError('ACTOR', 'Credential not found', 404);
           delete actorKeys[b.key];
           return json(res, 200, { revoked: true });
         }
@@ -278,7 +389,11 @@ export async function createLabServers({
         if (url.pathname === '/api/checkpoint') return json(res, 200, world.checkpoint());
         if (url.pathname === '/api/comparison') {
           if (world.config.continuousDemo)
-            throw new SimError('DEMO_COMPARISON', 'Create a finite modeled or live world before starting a benchmark comparison', 409);
+            throw new SimError(
+              'DEMO_COMPARISON',
+              'Create a finite modeled or live world before starting a benchmark comparison',
+              409,
+            );
           const base = { ...world.config, policy: b.policyA ?? 'conventional' };
           const a = new World(base),
             other = new World({ ...base, policy: b.policyB ?? 'federated' });
@@ -377,7 +492,11 @@ export async function createLabServers({
       if (Object.hasOwn(sourceAssets, url.pathname)) {
         if (req.method !== 'GET') throw new SimError('METHOD', 'Method not allowed', 405);
         const [file, mime] = sourceAssets[url.pathname];
-        res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+        res.writeHead(200, {
+          'Content-Type': mime,
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+        });
         return res.end(await readFile(path.join(root, 'sources', file)));
       }
       const actorMutation = [
@@ -415,7 +534,8 @@ export async function createLabServers({
         const key = req.headers.authorization?.replace(/^Bearer /, ''),
           actor = Object.hasOwn(actorKeys, key) ? actorKeys[key] : null;
         if (!actor) throw new SimError('AUTHENTICATION', 'Actor key required', 401);
-        if (actor.expiresAt && actor.expiresAt <= Date.now()) throw new SimError('AUTHENTICATION', 'Actor key expired', 401);
+        if (actor.expiresAt && actor.expiresAt <= Date.now())
+          throw new SimError('AUTHENTICATION', 'Actor key expired', 401);
         if (
           !world.organization(actor.org) ||
           world.state.integrations.revokedOrgs.includes(actor.org)
@@ -441,9 +561,20 @@ export async function createLabServers({
         if (url.pathname === '/api/actor/ingestion')
           return json(res, 200, world.acknowledge(actor, await body(req)));
         if (url.pathname === '/api/actor/ingestion/batch') {
-          const input=await body(req);
-          if(!Array.isArray(input.items)||input.items.length>100)throw new SimError('BATCH','One to one hundred ingestion receipts required',400);
-          return json(res,200,input.items.map(p=>{try{return {id:p.id,ok:true,receipt:world.acknowledge(actor,p)};}catch(e){return {id:p.id,ok:false,error:e.code??'RECEIPT',message:e.message};}}));
+          const input = await body(req);
+          if (!Array.isArray(input.items) || input.items.length > 100)
+            throw new SimError('BATCH', 'One to one hundred ingestion receipts required', 400);
+          return json(
+            res,
+            200,
+            input.items.map((p) => {
+              try {
+                return { id: p.id, ok: true, receipt: world.acknowledge(actor, p) };
+              } catch (e) {
+                return { id: p.id, ok: false, error: e.code ?? 'RECEIPT', message: e.message };
+              }
+            }),
+          );
         }
         throw new SimError('NOT_FOUND', 'Actor endpoint not found', 404);
       }
@@ -466,11 +597,18 @@ export async function createLabServers({
       if (url.pathname === '/api/feed') return json(res, 200, world.publicFeed(params));
       const publicPresentation = (feed) => ({
         ...feed,
-        posts: feed.posts.map((post) => ({ ...post, locationName: world.building(post.location)?.name ?? post.location })),
-        runId: world.runId, playing, rate, continuousDemo: world.config.continuousDemo,
+        posts: feed.posts.map((post) => ({
+          ...post,
+          locationName: world.building(post.location)?.name ?? post.location,
+        })),
+        runId: world.runId,
+        playing,
+        rate,
+        continuousDemo: world.config.continuousDemo,
         publicPostsPublished: world.state.statistics.publicPostsPublished ?? 0,
       });
-      if (url.pathname === '/api/timeline') return json(res, 200, publicPresentation(world.publicFeed(params)));
+      if (url.pathname === '/api/timeline')
+        return json(res, 200, publicPresentation(world.publicFeed(params)));
       if (url.pathname === '/public') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(
@@ -500,7 +638,11 @@ export async function createLabServers({
             url.pathname === '/search' ? 'Search results' : 'Community signals',
             publicPresentation(feed).posts,
             feed.nextCursor,
-            { ...publicPresentation(feed), query: Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'limit')), live: !params.cursor },
+            {
+              ...publicPresentation(feed),
+              query: Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'limit')),
+              live: !params.cursor,
+            },
           ),
         );
       }
@@ -509,12 +651,23 @@ export async function createLabServers({
           post = world.post(id);
         if (!world.sourceVisible(post)) throw new SimError('NOT_FOUND', 'Post not found', 404);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(sourceHTML('Community report', publicPresentation({ posts: [post.public] }).posts, null, { now: world.now, runId: world.runId }));
+        return res.end(
+          sourceHTML('Community report', publicPresentation({ posts: [post.public] }).posts, null, {
+            now: world.now,
+            runId: world.runId,
+          }),
+        );
       }
       if (url.pathname.startsWith('/users/')) {
         const feed = world.publicFeed({ ...params, author: url.pathname.slice(7) });
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end(sourceHTML('Resident reports', publicPresentation(feed).posts, feed.nextCursor, { ...publicPresentation(feed), query: { ...params, author: url.pathname.slice(7) }, live: !params.cursor }));
+        return res.end(
+          sourceHTML('Resident reports', publicPresentation(feed).posts, feed.nextCursor, {
+            ...publicPresentation(feed),
+            query: { ...params, author: url.pathname.slice(7) },
+            live: !params.cursor,
+          }),
+        );
       }
       throw new SimError('NOT_FOUND', 'Not found', 404);
     } catch (e) {
@@ -568,7 +721,7 @@ export async function createLabServers({
   };
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const lab = await createLabServers();
+  const lab = await createLabServers({ isolated: true });
   console.log(
     `Observer: http://127.0.0.1:${lab.observerPort}\nSources: http://127.0.0.1:${lab.sourcePort}\nObserver access and actor keys are saved in ignored .local/session.json.`,
   );

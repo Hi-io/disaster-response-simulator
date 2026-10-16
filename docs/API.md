@@ -89,3 +89,21 @@ Times are simulated milliseconds; distances are metres. Water inventory uses lit
 
 Observer controls, configuration, interventions, metrics and checkpoints are on port 4318 under /api/*. They are for the laboratory operator and must not be exposed as an organization's source of knowledge. API-only hosting uses the same engine and source gateway; see the [quick start](../README.md).
 
+## Compact presentation transport
+
+Interactive launchers isolate the physical engine from HTTP readers and the local durable queue. Reads represent the latest published simulation boundary and may lag the engine; they do not wait for a viewer or integration to acknowledge data. Commands still enter the same ordered, authoritative engine. A transport acknowledgement does not approve an operation or confirm a delivery.
+
+| Observer endpoint | Purpose |
+|---|---|
+| GET /api/viewer/bootstrap?org=org0&perspective=truth | Static map baseline and the current presentation frame |
+| GET /api/viewer/frame?org=org0&perspective=truth | Compact changes relative to that baseline; reload bootstrap when mapId changes |
+| GET /api/state | Hydrated presentation state in isolated mode; inline library mode retains the full observer snapshot |
+| GET /api/activity | Bounded recent information lanes |
+| GET /api/runtime | Tick/work timing, simulation lag, queue backlog and transport health |
+| GET /api/checkpoint | Complete authoritative checkpoint for exact recovery/replay |
+| GET /api/metrics | Exact evaluation captured at one simulation boundary and computed in a separate worker |
+
+Organization clients may request `GET /api/actor/state?compact=1`. Query bodies become `resultRef: {id, version}`; retrieve a result with `GET /api/actor/query-result?id=...&version=...` using the same organization credential. Cache by organization, run and content revision. The `compact.mapQueryId` identifies the retained query that supplies `known.map`. Reconstructing those references yields the existing actor-state shape. A stale revision returns HTTP 409; refetch state rather than combine revisions. The plain actor-state endpoint continues to hydrate results for older clients.
+
+The local bus uses stable event IDs, scoped audiences, ordered deliveries, leases, explicit acknowledgements and replay. It retains authoritative events; acknowledged presentation messages and unreferenced presentation blobs have bounded retention. Restart rebuilds read views from a fresh baseline. Future Pub/Sub consumers must retain event-ID deduplication and acknowledge after their side effects commit. `createLocalEventBus` and the injected document store are replaceable transport ports; no cloud SDK is imported by the engine.
+
