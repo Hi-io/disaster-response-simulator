@@ -1558,12 +1558,15 @@ $('advanceForm').onsubmit = perform(async () => {
   const parts = $('advanceTime').value.split(':').map(Number);
   if (
     parts.length !== 3 ||
-    parts.some((n) => !Number.isFinite(n)) ||
+    parts.some((n) => !Number.isSafeInteger(n) || n < 0) ||
     parts[1] > 59 ||
     parts[2] > 59
   )
     throw new Error('Use HH:MM:SS');
-  await api('/api/control', { advanceTo: ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000 });
+  const advanceTo = ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000;
+  if (!Number.isSafeInteger(advanceTo)) throw new Error('Choose a smaller time in HH:MM:SS.');
+  if (snapshot && advanceTo < snapshot.now) throw new Error('Choose a time at or after the current simulation time. Restore a checkpoint to go back.');
+  await api('/api/control', { advanceTo });
 });
 $('nextEntity').onclick = perform(() => api('/api/control', { nextRelevant: selected.id }));
 async function loadTimeline(offset = 0) {
@@ -1762,6 +1765,10 @@ async function pollSnapshot() {
   setTimeout(pollSnapshot, 750);
 }
 setTimeout(pollSnapshot, 1000);
+document.addEventListener('visibilitychange', () => {
+  motion.reset();
+  if (!document.hidden) { refresh(); refreshActivity(); }
+});
 async function pollActivity() {
   await refreshActivity();
   if (activitySupported) setTimeout(pollActivity, document.hidden ? 1000 : isPlaying() ? 150 : 500);

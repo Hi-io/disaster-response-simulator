@@ -98,7 +98,15 @@ test('cached public feeds retain exact default and explicit pagination, totals a
   assert.equal(timeline.posts.length, 30); assert.equal(timeline.nextCursor, 30); assert.equal(timeline.total, full.total);
   assert.ok(timeline.posts.every(post => Object.hasOwn(post, 'locationName')));
   const html = await (await fetch(f.source + '/feed')).text();
-  assert.ok(html.includes('rel="next" href="/feed?cursor=30"'));
+  const nextLink=html.match(/rel="next" href="([^"]+)"/)?.[1]?.replaceAll('&amp;','&');
+  assert.ok(nextLink,'HTML exposes the actual next page');
+  const nextURL=new URL(nextLink,f.source);
+  assert.equal(nextURL.pathname,'/feed');assert.equal(nextURL.searchParams.get('cursor'),'30');
+  assert.equal(nextURL.searchParams.get('limit'),'30');
+  const nextHTML=await (await fetch(nextURL)).text();
+  const visibleIDs=[...nextHTML.matchAll(/data-post-id="([^"]+)"/g)].map(match=>match[1]);
+  const expectedPage=await f.lab.runtime.request('feed',{cursor:30,limit:30});
+  assert.deepEqual(visibleIDs,expectedPage.posts.map(post=>post.id),'HTML navigation preserves the native page size and source order');
   for (const pagination of ['cursor=-1', 'limit=1.5', 'since=no'])
     assert.equal((await fetch(f.source + '/api/feed?' + pagination)).status, 400);
 });

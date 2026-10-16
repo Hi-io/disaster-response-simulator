@@ -1,3 +1,4 @@
+import { observerCredential, observerSessionCookie } from './observer-session.mjs';
 import http from 'node:http';
 import path from 'node:path';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -12,6 +13,8 @@ import { CONFIG_SCHEMA } from '../contracts/config.mjs';
 import { clone } from '../engine/determinism.mjs';
 import { sourceHTML } from './social-view.mjs';
 import { createViewerBootstrap, createViewerFrame } from './projections.mjs';
+import { publicPostingRate } from './posting-rate.mjs';
+import { createCompactActorProjector } from './compact-actor.mjs';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const json = (res, status, data) => {
   res.writeHead(status, {
@@ -84,6 +87,7 @@ export async function createLabServers({
     rate = world.config.mode === 'live' ? 1 : 10,
     previous = performance.now(),
     effective = 0;
+  const compactActors = createCompactActorProjector(() => world);
   actorKeys ??= Object.fromEntries(
     world.state.map.organizations.map((o) => [
       randomBytes(24).toString('hex'),
@@ -130,15 +134,13 @@ export async function createLabServers({
   }, 80);
   tick.unref();
   const authorizeObserver = (req) => {
-    const bearer = req.headers.authorization?.replace(/^Bearer /, '');
-    const cookie = req.headers.cookie?.match(/(?:^|; )observer=([^;]+)/)?.[1];
-    if (!equal(bearer ?? cookie, observerKey))
+    if (!equal(observerCredential(req, observer.address()?.port ?? observerPort), observerKey))
       throw new SimError('OBSERVER_AUTH', 'Observer authentication required', 401);
   };
   const requireSameOrigin = (req) => {
     if (
       req.headers.origin &&
-      !['http://127.0.0.1:' + observerPort, 'http://localhost:' + observerPort].includes(
+      !['http://127.0.0.1:' + (observer.address()?.port ?? observerPort), 'http://localhost:' + (observer.address()?.port ?? observerPort)].includes(
         req.headers.origin,
       )
     )
@@ -151,7 +153,7 @@ export async function createLabServers({
         requireSameOrigin(req);
         const b = await body(req);
         if (!equal(b.key, observerKey)) throw new SimError('LOGIN', 'Invalid observer key', 401);
-        res.setHeader('Set-Cookie', `observer=${observerKey}; HttpOnly; SameSite=Strict; Path=/`);
+        res.setHeader('Set-Cookie', observerSessionCookie(observerKey, observer.address()?.port ?? observerPort));
         return json(res, 200, { authenticated: true });
       }
       if (url.pathname.startsWith('/api/')) {
@@ -543,7 +545,10 @@ export async function createLabServers({
           throw new SimError('ACCESS_REVOKED', 'Actor access has been revoked', 403);
         if (url.pathname === '/api/actor/inbox')
           return json(res, 200, world.publicFeed({ ...params, org: actor.org, audience: 'team' }));
-        if (url.pathname === '/api/actor/state') return json(res, 200, world.actorView(actor.org));
+        if (url.pathname === '/api/actor/state') return json(res, 200,
+          url.searchParams.get('compact') === '1' ? compactActors.project(actor.org).state : world.actorView(actor.org));
+        if (url.pathname === '/api/actor/query-result') return json(res, 200,
+          compactActors.queryResult(actor.org, url.searchParams.get('id'), url.searchParams.get('version')));
         if (url.pathname === '/api/actor/action')
           return json(res, 200, world.act(actor, await body(req)));
         if (url.pathname === '/api/actor/model/start')
@@ -606,6 +611,7 @@ export async function createLabServers({
         rate,
         continuousDemo: world.config.continuousDemo,
         publicPostsPublished: world.state.statistics.publicPostsPublished ?? 0,
+        postingRate: publicPostingRate(world),
       });
       if (url.pathname === '/api/timeline')
         return json(res, 200, publicPresentation(world.publicFeed(params)));

@@ -1,13 +1,14 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { World } from '../engine/world.mjs';
-import { clone, digest } from '../engine/determinism.mjs';
 import { SimError } from '../contracts/actions.mjs';
 import { evaluate } from '../evaluation/metrics.mjs';
 import { createViewerBootstrap, createViewerFrame, getViewerMap } from './projections.mjs';
 import { mergeViewerFrame } from '../viewer/projection.js';
 import { createEvaluationInput } from './evaluation-snapshot.mjs';
 import { createActorDeltaProjector } from './actor-delta.mjs';
+import { publicPostingRate } from './posting-rate.mjs';
+import { createCompactActorProjector } from './compact-actor.mjs';
 
 // This thread is the sole owner of physical state. Projection and event
 // consumers acknowledge their own delivery; neither ACK controls World.step.
@@ -29,7 +30,8 @@ const workBudgetMs = Math.max(1, workerData.workBudgetMs ?? 8);
 const projectionMs = Math.max(20, workerData.projectionMs ?? 500);
 const requests = [], tickIntervals = [], workSamples = [], projectionSamples = [];
 let tickCount = 0, workCount = 0;
-let queryDigests = new WeakMap(), sentResults = new Set();
+const compactActors = createCompactActorProjector(() => world);
+const compactActor = (org, options) => compactActors.project(org, options);
 const actorProjector = createActorDeltaProjector();
 const keep = (rows, value) => { rows.push(value); if (rows.length > 256) rows.shift(); };
 const summary = rows => {
@@ -57,78 +59,6 @@ function meta() {
       modelBlocked: world.modelBarrier(), eventBacklog: world.log.length - eventCursor } };
 }
 
-function revision(query) {
-  const result = query.result;
-  if (!result || typeof result !== 'object') return digest(result);
-  const stamp = `${query.version ?? ''}:${query.state ?? ''}:${query.completedAt ?? ''}`;
-  let previous = queryDigests.get(result);
-  if (previous?.has(stamp)) return previous.get(stamp);
-  const version = digest(result);
-  if (!previous) { previous = new Map(); queryDigests.set(result, previous); }
-  previous.set(stamp, version);
-  return version;
-}
-
-function compactActor(org, { onlyNewResults = false } = {}) {
-  const o = world.organization(org);
-  if (!o) throw new SimError('AUTHENTICATION', 'Unknown organization', 401);
-  if (world.state.integrations.revokedOrgs.includes(org))
-    throw new SimError('ACCESS_REVOKED', 'Actor access has been revoked', 403);
-  const source = world.state.observations[org], { map: knownMap, ...known } = source;
-  let mapQueryId = null;
-  const results = [], queries = (world.state.queries ?? []).filter(q => q.org === org).slice(-100).map(q => {
-    if (!Object.hasOwn(q, 'result') || q.result === undefined) return q;
-    const { result, ...rest } = q, version = revision(q);
-    if (Object.hasOwn(source, 'map') && result === knownMap) mapQueryId = q.id;
-    const key = `${org}:${version}`;
-    if (!onlyNewResults || !sentResults.has(key)) {
-      results.push({ id: q.id, version, result });
-      if (onlyNewResults) sentResults.add(key);
-    }
-    return { ...rest, resultRef: { id: q.id, version } };
-  });
-  // Completed map queries normally own the received map by reference. Restored
-  // checkpoints detach aliases, so compare a digest only when that alias was
-  // actually lost, then cache its result revision for subsequent frames.
-  if (Object.hasOwn(source, 'map') && knownMap !== undefined && mapQueryId === null) {
-    const maps = (world.state.queries ?? []).filter(q => q.org === org && q.target === 'map' && q.result !== undefined).slice(-100);
-    const mapVersion = revision({ result: knownMap, state: 'known-map' });
-    mapQueryId = maps.findLast(q => revision(q) === mapVersion)?.id ?? null;
-    if (mapQueryId && !queries.some(q => q.id === mapQueryId)) mapQueryId = null;
-    // Unusual legacy observations without a matching retained map query must
-    // remain observable; they cannot be represented by an invented reference.
-    if (!mapQueryId) known.map = knownMap;
-  }
-  const humanCapacity = world.humanCapacityView(org);
-  const state = {
-    runId: world.runId, now: world.now,
-    organization: { id: o.id, name: o.name, sharing: o.sharing, funds: o.funds },
-    known,
-    operations: Object.values(source.operations),
-    proposals: world.state.proposals.filter(p => p.org === org),
-    commitments: world.state.commitments.filter(p => p.owner === org),
-    offers: world.state.partnerOffers?.[org] ?? [],
-    transfers: (world.state.transfers ?? []).filter(t => t.from === org || world.state.partnerOffers?.[org]?.some(o => o.id === t.id)),
-    sharedCommitments: world.state.sharedCommitments?.[org] ?? [],
-    inspections: world.state.inspections.filter(p => p.org === org).map(p => {
-      if (['completed', 'inconclusive', 'timeout'].includes(p.state)) return p;
-      return Object.fromEntries(['id', 'org', 'target', 'entity', 'method', 'purpose', 'validForMs',
-        'targetVersion', 'reportTo', 'requestProposal', 'requestStep', 'authorizedBy', 'staffResource',
-        'requestedVehicle', 'state', 'createdAt'].filter(key => p[key] !== undefined).map(key => [key, p[key]]));
-    }),
-    queries,
-    claims: world.state.claims.filter(p => p.org === org),
-    patterns: world.state.patterns.filter(p => p.org === org),
-    modelRequests: (world.state.modelRequests ?? []).filter(p => p.org === org),
-    publicUpdates: world.state.publicUpdates,
-    unloadingRequests: Object.values(source.unloadingRequests ?? {}),
-    humanCapacity,
-    humanWork: humanCapacity.tasks,
-    humanInbox: source.humanInbox ?? [],
-    compact: { version: 1, runId: world.runId, mapQueryId },
-  };
-  return { state, results };
-}
 
 function activity({ org = 'org0', perspective = 'truth' } = {}) {
   const truth = perspective === 'truth', limit = 200;
@@ -153,7 +83,8 @@ function activity({ org = 'org0', perspective = 'truth' } = {}) {
 function timeline(params = {}, feed = world.publicFeed(params)) {
   return { ...feed, posts: feed.posts.map(p => ({ ...p, locationName: world.building(p.location)?.name ?? p.location })),
     runId: world.runId, playing, rate, continuousDemo: world.config.continuousDemo,
-    publicPostsPublished: world.state.statistics.publicPostsPublished ?? 0 };
+    publicPostsPublished: world.state.statistics.publicPostsPublished ?? 0,
+    postingRate: publicPostingRate(world) };
 }
 function publicSource() {
   if (!world.state.integrations.sourceAvailable) throw new SimError('SOURCE_UNAVAILABLE', 'Source is temporarily unavailable', 503);
@@ -204,7 +135,7 @@ function replaceWorld(next, { resume = false } = {}) {
   playing = false; world.close(); comparison?.close(); comparison = null; world = next;
   rate = world.config.mode === 'live' ? 1 : 10; effectiveRate = 0; barrierActive = false;
   generation++; eventCursor = resume ? world.log.length : 0; eventPending = null;
-  bootstrapId = null; projectionPending = null; queryDigests = new WeakMap(); sentResults = new Set();
+  bootstrapId = null; projectionPending = null; compactActors.reset();
   actorProjector.reset();
   reanchor();
 }
@@ -223,15 +154,7 @@ const methods = {
       throw new SimError('ACCESS_REVOKED', 'Actor access has been revoked', 403);
     return (world.state.queries ?? []).filter(q => q.org === org).slice(-200);
   },
-  queryResult(org, id, version) {
-    if (!world.organization(org) || world.state.integrations.revokedOrgs.includes(org))
-      throw new SimError('ACCESS_REVOKED', 'Actor access has been revoked', 403);
-    const query = (world.state.queries ?? []).find(q => q.org === org && q.id === id);
-    if (!query || !Object.hasOwn(query, 'result') || query.result === undefined) throw new SimError('NOT_FOUND', 'Query result not found', 404);
-    const current = revision(query);
-    if (version !== current) throw new SimError('SOURCE_RESULT_CHANGED', 'Query result revision changed', 409);
-    return { id, version: current, result: query.result };
-  },
+  queryResult: (org, id, version) => compactActors.queryResult(org, id, version),
   actorAction: (actor, input) => world.act(actor, input),
   checkpoint: () => world.checkpoint(),
   metrics: () => evaluate(world),

@@ -1,3 +1,4 @@
+import { observerCredential, observerSessionCookie } from './observer-session.mjs';
 import http from 'node:http';
 import path from 'node:path';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -77,9 +78,7 @@ export async function createIsolatedLabServers({
   const observerAuth = (req) => {
     if (
       !equal(
-        req.headers.authorization?.replace(/^Bearer /, '') ??
-          req.headers.cookie?.match(/(?:^|; )observer=([^;]+)/)?.[1] ??
-          '',
+        observerCredential(req, actualObserver),
         observerKey,
       )
     )
@@ -146,7 +145,7 @@ export async function createIsolatedLabServers({
         const input = await body(req);
         if (!equal(input.key, observerKey))
           throw new SimError('LOGIN', 'Invalid observer key', 401);
-        res.setHeader('Set-Cookie', `observer=${observerKey}; HttpOnly; SameSite=Strict; Path=/`);
+        res.setHeader('Set-Cookie', observerSessionCookie(observerKey, actualObserver));
         return json(res, 200, { authenticated: true });
       }
       if (!url.pathname.startsWith('/api/'))
