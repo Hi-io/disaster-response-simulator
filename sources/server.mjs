@@ -463,6 +463,7 @@ export async function createLabServers({
         ...feed,
         posts: feed.posts.map((post) => ({ ...post, locationName: world.building(post.location)?.name ?? post.location })),
         runId: world.runId, playing, rate, continuousDemo: world.config.continuousDemo,
+        publicPostsPublished: world.state.statistics.publicPostsPublished ?? 0,
       });
       if (url.pathname === '/api/timeline') return json(res, 200, publicPresentation(world.publicFeed(params)));
       if (url.pathname === '/public') {

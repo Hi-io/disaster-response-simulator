@@ -209,20 +209,23 @@ export function installHazards(w) {
   });
   w.on('flood_level', ({ generation, depth }) => {
     const strip = w.state.map.extentM * 0.035;
+    // Geographic fixtures have no invented procedural river. This is explicitly
+    // a synthetic port-area disruption, not a real flood-risk or tsunami model.
+    const coastal = w.state.map.hazardProfile?.kind === 'synthetic_coastal' ? w.state.map.hazardProfile : null;
     w.state.hazards ??= [];
     w.state.hazards.push({
       id: `flood-${generation}`,
       kind: 'flood',
-      x: w.state.map.extentM * 0.5,
-      z: w.state.map.extentM * 0.5,
-      radius: strip,
+      x: coastal?.center.x ?? w.state.map.extentM * 0.5,
+      z: coastal?.center.z ?? w.state.map.extentM * 0.5,
+      radius: coastal?.radiusM ?? strip,
       depth,
       at: w.now,
     });
     for (const e of w.state.map.edges)
       if (
-        e.bridge ||
-        Math.abs(w.node(e.from).x - riverX(w.state.map.extentM, w.node(e.from).z)) < strip
+        coastal ? Math.hypot(w.node(e.from).x - coastal.center.x, w.node(e.from).z - coastal.center.z) < coastal.radiusM :
+        e.bridge || Math.abs(w.node(e.from).x - riverX(w.state.map.extentM, w.node(e.from).z)) < strip
       )
         w.schedule(
           w.now,

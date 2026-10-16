@@ -174,6 +174,10 @@ export function installInformation(w) {
     const p = w.post(id);
     if (!p || p.public.publishedAt !== null) return;
     p.public.publishedAt = w.now;
+    // Public source volume is monotonic: edits, deletions and re-indexing are
+    // not new posts. Team-only messages must not affect this public metric.
+    if (p.private.audience === 'public')
+      w.state.statistics.publicPostsPublished = (w.state.statistics.publicPostsPublished ?? 0) + 1;
     p.indexAt = w.now + w.config.sourceIndexMs;
     p.history.push(structuredClone(p.public));
     w.state.posts.persist?.(p);

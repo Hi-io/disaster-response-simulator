@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createLabServers } from '../sources/server.mjs';
-import { FEED_LIMIT, reconcileSnapshot, renderPost, sourceHTML } from '../sources/social-view.mjs';
+import { FEED_LIMIT, reconcileSnapshot, renderPost, sourceHTML, postRateSample } from '../sources/social-view.mjs';
 import { World } from '../engine/world.mjs';
 import { replay, runWorld, pairedComparison } from '../evaluation/runs.mjs';
 
@@ -120,4 +120,64 @@ test('benchmark barriers remain strict and demo maps have stable readable names 
     assert.throws(() => runWorld({ ...config, continuousDemo: true, clockLatency: 'wall' }), /not benchmark/);
     assert.throws(() => pairedComparison([{ config: { continuousDemo: true } }], []), /not eligible/);
   } finally { w.close(); a.close(); b.close(); }
+});
+
+test('posting pace scales the latest complete public snapshot chunk by simulated elapsed time', () => {
+  const old = { runId: 'a', now: 60000, total: 120 };
+  assert.deepEqual(postRateSample(old, { ...old, now: 75000, total: 170 }), { posts: 50, elapsedMs: 15000, perMinute: 200 });
+  assert.deepEqual(postRateSample(old, { ...old, now: 120000, total: 10120 }), { posts: 10000, elapsedMs: 60000, perMinute: 10000 }, 'burst count is not limited to the 30 rendered cards');
+  assert.equal(postRateSample(old, { ...old, total: 200 }), null, 'stationary clock cannot inflate the rate');
+  assert.equal(postRateSample(old, { ...old, now: 50000, total: 200 }), null);
+  assert.equal(postRateSample(old, { ...old, runId: 'b', now: 75000, total: 170 }), null);
+  assert.equal(postRateSample(old, { ...old, now: 75000, total: 5 }), null, 'removal rebases rather than showing negative generation');
+  assert.equal(postRateSample(null, old), null);
+  assert.equal(postRateSample(old, { ...old, now: 75000, total: 120 }).perMinute, 0);
+  assert.match(sourceHTML('Latest', [], null, {}), /posting-rate.*posts per minute/s);
+  assert.match(sourceHTML('Latest', [], null, {}), /of simulation time/);
+});
+
+test('public publication pace counts new public posts once without leaking team message volume', async (t) => {
+  const lab = await createLabServers({ observerPort: 0, sourcePort: 0, persistCredentials: false, config: { ...config, logMode: 'full' } });
+  t.after(() => lab.close());
+  const world = lab.world, base = `http://127.0.0.1:${lab.sourcePort}`;
+  const read = async () => (await fetch(base + '/api/timeline')).json();
+  const before = await read();
+  const privateId = world.generateSignal('P01', { text: 'PRIVATE VOLUME', causeEvent: 'private-rate-test', audience: ['org0'] });
+  world.publishPost(privateId.public.id);
+  assert.equal((await read()).publicPostsPublished, before.publicPostsPublished);
+  const publicId = world.generateSignal('P01', { text: 'A public report', causeEvent: 'public-rate-test' });
+  world.publishPost(publicId.public.id);
+  world.publishPost(publicId.public.id);
+  assert.equal((await read()).publicPostsPublished, before.publicPostsPublished + 1);
+  world.inject('post_update', { id: publicId.public.id, text: 'A corrected public report' });
+  assert.equal((await read()).publicPostsPublished, before.publicPostsPublished + 1);
+  const sample = postRateSample({ runId:'a', now:0, total:60, publicPostsPublished:60 },
+    { runId:'a', now:15000, total:40, publicPostsPublished:85 });
+  assert.equal(sample.posts,25,'deletion/re-indexing of old rows does not change new publication count');
+  assert.equal(sample.perMinute,100);
+});
+
+test('older full and compact checkpoints reconstruct the public counter without losing the run or counting private posts', () => {
+  for (const logMode of ['full','compact']) {
+    const w=new World({...config,postsPerHour:0,logMode});
+    let restored, again;
+    try {
+      const report=w.generateSignal('P01',{text:'Public example',causeEvent:'migration-public'});
+      const privateReport=w.generateSignal('P01',{text:'Team example',causeEvent:'migration-private',audience:['org0']});
+      w.publishPost(report.public.id);w.publishPost(privateReport.public.id);
+      w.advance(1000);
+      const expected=w.state.statistics.publicPostsPublished;
+      const checkpoint=w.checkpoint();
+      delete checkpoint.state.statistics.publicPostsPublished;
+      restored=new World(checkpoint.manifest.config,checkpoint);
+      assert.equal(restored.state.statistics.publicPostsPublished,expected);
+      assert.equal(restored.runId,w.runId);assert.equal(restored.now,w.now);
+      const next=restored.generateSignal('P01',{text:'Next public example',causeEvent:'migration-next'});
+      restored.publishPost(next.public.id);
+      assert.equal(restored.state.statistics.publicPostsPublished,expected+1);
+      again=new World(restored.config,restored.checkpoint());
+      assert.equal(again.state.statistics.publicPostsPublished,expected+1);
+      assert.deepEqual(again.invariants(),[]);
+    } finally {w.close();restored?.close();again?.close();}
+  }
 });

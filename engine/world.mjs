@@ -78,7 +78,7 @@ export class World {
       toolQuota: {},
       knownRouteVersion: 0,
       actorMoves: [],
-      statistics: { counts: {}, reviewMs: 0, firstSignalAt: {} },
+      statistics: { counts: {}, reviewMs: 0, firstSignalAt: {}, publicPostsPublished: 0 },
     };
     this.state.cohorts = this.state.map.sectors.map((s) => ({
       id: `community-${s.id}`,
@@ -686,6 +686,12 @@ export class World {
       this.state.posts = new RecordArchive('posts', snapshot.state.posts);
     if (snapshot.state.messages.archive)
       this.state.messages = new RecordArchive('messages', snapshot.state.messages);
+    // Older demonstration checkpoints predate the public publication counter.
+    // Rebuild it once from public published records, including removed rows;
+    // private and not-yet-published posts must not contribute.
+    if (!Number.isSafeInteger(this.state.statistics.publicPostsPublished))
+      this.state.statistics.publicPostsPublished = this.state.posts.reduce((count, post) =>
+        count + (post.public?.publishedAt != null && post.private?.audience === 'public' ? 1 : 0), 0);
     this.queue = new EventQueue(clone(snapshot.queue));
     this.log = snapshot.log.archive
       ? new RecordArchive('events', snapshot.log)
@@ -739,7 +745,7 @@ export class World {
       (total, c) => total + c.population + c.inTransit + (c.deceased ?? 0),
       0,
     );
-    if (people !== this.config.grid ** 2 * this.config.populationPerSector)
+    if (people !== this.state.initialPopulation)
       errors.push('population_conservation');
     for (const c of this.state.cohorts)
       if (

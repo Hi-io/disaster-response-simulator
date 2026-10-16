@@ -464,13 +464,18 @@ function home() {
   const aspect = Math.max(0.1, rect.width / rect.height);
   const rise = Math.max(0.45, Math.min(1.1, 1.6 / aspect));
   const verticalProjection = rise / Math.sqrt(2 + rise * rise);
-  extent = map.extentM * Math.max(0.7072 * verticalProjection * 1.28, (0.7072 / aspect) * 1.16);
-  camera.position.set(mid + map.extentM, map.extentM * rise, mid + map.extentM);
+  const xs = map.geography ? map.nodes.map(n => n.x) : [0, map.extentM];
+  const zs = map.geography ? map.nodes.map(n => n.z) : [0, map.extentM];
+  const centerX = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const centerZ = (Math.min(...zs) + Math.max(...zs)) / 2;
+  const span = map.geography ? Math.max(Math.max(...xs)-Math.min(...xs), Math.max(...zs)-Math.min(...zs)) * 1.2 : map.extentM;
+  extent = span * Math.max(0.7072 * verticalProjection * 1.28, (0.7072 / aspect) * 1.16);
+  camera.position.set(centerX + span, span * rise, centerZ + span);
   camera.far = map.extentM * 8;
   camera.zoom = 1;
   $('canvas').dataset.cameraZoom = '1';
   $('canvas').dataset.tracking = '';
-  controls.target.set(mid, 0, mid);
+  controls.target.set(centerX, 0, centerZ);
   initialize3D.resize();
   controls.update();
 }
@@ -1276,6 +1281,10 @@ async function refresh() {
         ? focus
         : snapshot.state.map.organizations[0]?.id;
     }
+    const geographic = snapshot.state.map.geography;
+    $('mapAttribution').hidden = !geographic;
+    $('mapAttribution').innerHTML = geographic ?
+      `<strong>${escape(geographic.name)}</strong><span>Synthetic facilities & emergency scenario</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Map data © OpenStreetMap contributors · ODbL</a>` : '';
     motion.accept(snapshot, snapshotReceivedAt, $('perspective').value);
     lastRun = snapshot.runId;
     $('clock').textContent = clock(snapshot.now);
@@ -1319,6 +1328,7 @@ async function refresh() {
       ])
         $(k).value = snapshot.manifest.config[k];
       $('humanProfile').value = snapshot.manifest.config.humanCapacity?.profile ?? 'zero';
+      updateTopologyControls();
     }
     inspect();
     showStreams();
@@ -1661,3 +1671,12 @@ async function pollActivity() {
   if (activitySupported) setTimeout(pollActivity, document.hidden ? 1000 : isPlaying() ? 150 : 500);
 }
 pollActivity();
+
+function updateTopologyControls() {
+  const fixed = $('topology').value === 'honmura';
+  $('grid').disabled = fixed;
+  $('extentKm').disabled = fixed;
+  $('geographicHint').hidden = !fixed;
+  if (fixed) { $('grid').value = 7; $('extentKm').value = 1; }
+}
+$('topology').addEventListener('change', updateTopologyControls);

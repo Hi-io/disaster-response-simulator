@@ -1,4 +1,4 @@
-import { FEED_LIMIT, reconcileSnapshot, renderPost, simTime } from '/assets/social-view.mjs';
+import { FEED_LIMIT, reconcileSnapshot, renderPost, simTime, postRateSample } from '/assets/social-view.mjs';
 
 const container = document.querySelector('#timeline-posts');
 const initial = JSON.parse(document.querySelector('#timeline-data').textContent);
@@ -11,6 +11,17 @@ function reconcile(next) {
   const before = new Map([...container.children].filter((node) => node.dataset.postId)
     .map((node) => [node.dataset.postId, node.getBoundingClientRect().top]));
   const focused = document.activeElement?.closest('[data-post-id]')?.dataset.postId;
+  const sample = postRateSample(snapshot, next);
+  const rateNode = document.querySelector('#posting-rate');
+  const sampleNode = document.querySelector('#posting-rate-sample');
+  if (sample && rateNode && sampleNode) {
+    rateNode.textContent = sample.perMinute.toLocaleString('en', { maximumFractionDigits: sample.perMinute < 10 ? 1 : 0 });
+    sampleNode.textContent = `${sample.posts.toLocaleString('en')} new posts over ${(sample.elapsedMs / 1000).toLocaleString('en', { maximumFractionDigits: 1 })} simulated seconds · scaled to one minute`;
+    rateNode.title = 'Public posts published during the latest received simulation interval. Edits, private messages and deletions do not count as new posts.';
+  } else if (rateNode && sampleNode) {
+    rateNode.textContent = '\u2014';
+    sampleNode.textContent = next.playing ? 'Measuring the next update...' : 'Resume the simulation to measure posting pace.';
+  }
   const result = reconcileSnapshot(snapshot, next);
   const nodes = new Map([...container.children].filter((node) => node.dataset.postId)
     .map((node) => [node.dataset.postId, node]));

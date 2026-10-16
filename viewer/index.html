@@ -139,9 +139,11 @@
             <label
               >Topology<select id="topology">
                 <option value="regional">Irregular region · scarce bridges</option>
+                <option value="honmura">Honmura, Japan - real street layout</option>
                 <option value="grid">Small grid · unit experiments</option>
               </select></label
             >
+            <p id="geographicHint" class="muted" hidden>Fixed Honmura town core · 43 mapped junctions. Buildings, facilities and emergencies are synthetic.</p>
             <details>
               <summary>Advanced configuration</summary>
               <label
@@ -234,6 +236,7 @@
               </div>
             </div>
             <div id="canvas"></div>
+            <div id="mapAttribution" class="mapAttribution" hidden></div>
             <div id="labels"></div>
             <span id="selectionMarker" hidden aria-hidden="true"></span>
             <div id="mapNotices" aria-label="Live map reports"></div>

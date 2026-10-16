@@ -1,7 +1,9 @@
 import { keyedRandom, integerDraw, digest } from '../engine/determinism.mjs';
 import { regionalRoads, riverX } from './region.mjs';
+import { honmuraRoads } from './honmura.mjs';
 
 export function generateMap(c) {
+  if (c.topology === 'honmura') return generateHonmuraMap(c);
   const nodes = [],
     edges = [],
     buildings = [],
@@ -213,6 +215,45 @@ export function generateMap(c) {
     river: geography.river,
     hash: digest({ nodes, edges, buildings, organizations, river: geography.river }),
   };
+}
+
+// Reuse the same synthetic facility/resource parameters as the procedural world,
+// but replace the road geometry and connectivity with the fixed geographic graph.
+// This does not turn real homes or landmarks into real response facilities.
+function generateHonmuraMap(c) {
+  const geography = honmuraRoads();
+  const map = generateMap({ ...c, topology: 'grid', grid: 7, extentKm: 1 });
+  map.nodes = geography.nodes;
+  map.edges = geography.edges;
+  map.buildings = map.buildings.slice(0, map.nodes.length);
+  map.sectors = map.sectors.slice(0, map.nodes.length);
+  for (let index = 0; index < map.nodes.length; index++) {
+    const node = map.nodes[index], building = map.buildings[index], sector = map.sectors[index];
+    Object.assign(sector, { x: node.x, z: node.z, name: `Honmura District ${String(index + 1).padStart(2, '0')}`,
+      locality: 'honmura-demo', jurisdiction: `org${Math.min(c.organizations - 1, (node.x < 300 ? 0 : 1) + (node.z < 400 ? 0 : 2))}`,
+      terrain: 'urban' });
+    const use = { residential: 'Community', school: 'School', clinic: 'Clinic', warehouse: 'Warehouse', shelter: 'Shelter', plant: 'Water Plant' }[building.use] ?? 'Facility';
+    Object.assign(building, { x: node.x + 8, z: node.z + 8,
+      width: 10, height: 6 + (index % 4) * 3,
+      name: `Honmura Demo ${use}${['shelter', 'plant'].includes(building.use) ? '' : ` ${String(index + 1).padStart(2, '0')}`}`,
+      synthetic: true });
+  }
+  const occupied = new Set();
+  for (let i = 0; i < map.organizations.length; i++) {
+    const target = [
+      [130,450], [440,290], [400,680], [290,420],
+    ][i] ?? [100 + (i % 3) * 150, 300 + Math.floor(i / 3) * 70];
+    const node = map.nodes.filter(n=>!occupied.has(n.id)).sort((a,b)=>
+      Math.hypot(a.x-target[0],a.z-target[1])-Math.hypot(b.x-target[0],b.z-target[1]) || a.id.localeCompare(b.id))[0];
+    occupied.add(node.id);
+    map.organizations[i].node = node.id;
+  }
+  Object.assign(map, { topology: 'honmura', extentM: 1000, grid: 7, river: null, crossings: [],
+    geography: geography.source,
+    hazardProfile: { kind: 'synthetic_coastal', center: { x: geography.nodes.find(n => n.name === 'Honmura Port approach').x, z: geography.nodes.find(n => n.name === 'Honmura Port approach').z }, radiusM: 95 } });
+  map.hash = digest({ nodes: map.nodes, edges: map.edges, buildings: map.buildings,
+    organizations: map.organizations, geography: map.geography });
+  return map;
 }
 
 const routeIndexes = new WeakMap();
