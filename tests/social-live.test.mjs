@@ -113,6 +113,9 @@ test('benchmark barriers remain strict and demo maps have stable readable names 
     assert.equal(new Set(a.state.map.buildings.map((building) => building.name)).size, a.state.map.buildings.length);
     assert.ok(a.state.map.nodes.every((node) => node.name?.endsWith('Junction')));
     assert.equal(a.state.map.organizations[0].name, 'Relief North');
+    assert.equal(a.state.vehicles.find(vehicle=>vehicle.id==='v-org0-0').name, 'Relief North - Vehicle 1');
+    assert.ok(a.state.vehicles.every(vehicle=>!/[\ufffd]|NaN/.test(vehicle.name)));
+    assert.equal(a.vehicleView(a.state.vehicles[0]).name, a.state.vehicles[0].name);
     assert.throws(() => new World({ ...config, continuousDemo: true }), /wall-clock/);
     assert.throws(() => runWorld({ ...config, continuousDemo: true, clockLatency: 'wall' }), /not benchmark/);
     assert.throws(() => pairedComparison([{ config: { continuousDemo: true } }], []), /not eligible/);

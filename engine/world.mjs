@@ -173,7 +173,7 @@ export class World {
       for (let j = 0; j < 2; j++) {
         const v = {
           id: `v-${org.id}-${j}`,
-          name: `${org.name} · Vehicle ${j + 1}`,
+          name: `${org.name} - Vehicle ${j + 1}`,
           owner: org.id,
           node: org.node,
           capacity: 300,
