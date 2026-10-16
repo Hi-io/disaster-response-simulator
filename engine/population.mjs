@@ -6,6 +6,30 @@ const CAUSES = ['water', 'food', 'exposure', 'injury'];
 // These are explicit experimental response curves, not validated clinical predictions.
 // A need deadline never kills people. Only elapsed exposure and unmet intake affect risk.
 export function installPopulation(w) {
+  // Event-local indexes never outlive the synchronous population handler.
+  // Rebuild them after physical movement, reservations, damage or restore;
+  // no derived cache is serialized or used by an ordinary actor observation.
+  let populationLookups = null;
+  const withPopulationLookups = (run) => {
+    const previous = populationLookups;
+    const shelters = new Set(), staff = new Map(), cohorts = new Map(),
+      cohortIds = new Map(), buildings = new Map();
+    for (const b of w.state.map.buildings) {
+      if (b.state === 'operating' && b.use === 'shelter') shelters.add(b.node);
+      if (!buildings.has(b.sector)) buildings.set(b.sector, b);
+    }
+    for (const r of w.state.resources)
+      if (r.type === 'staff' && r.quantity - r.reserved > 0)
+        staff.set(r.node, (staff.get(r.node) ?? 0) + r.quantity - r.reserved);
+    for (const c of w.state.cohorts) {
+      if (!cohorts.has(c.sector)) cohorts.set(c.sector, []);
+      cohorts.get(c.sector).push(c);
+      if (!cohortIds.has(c.id)) cohortIds.set(c.id, c);
+    }
+    populationLookups = { shelters, staff, cohorts, cohortIds, buildings };
+    try { return run(); }
+    finally { populationLookups = previous; }
+  };
   const newHealth = (c) => ({
     affected: false,
     waterDisrupted: false,
@@ -47,7 +71,9 @@ export function installPopulation(w) {
     return c.health;
   };
   w.healthForSector = (sector) =>
-    w.state.cohorts.filter((c) => c.sector === sector && c.population > 0);
+    populationLookups
+      ? (populationLookups.cohorts.get(sector) ?? []).filter((c) => c.population > 0)
+      : w.state.cohorts.filter((c) => c.sector === sector && c.population > 0);
   w.activatePopulationNeed = (n) => {
     const b = w.building(n.building);
     if (!b) return;
@@ -132,12 +158,12 @@ export function installPopulation(w) {
       'dehydrationMs',
     );
     const foodMs = intake('foodKcal', w.config.foodKcalPerPersonDay, h.foodDisrupted, 'hungerMs');
-    const shelter = w.state.map.buildings.find(
+    const shelter = populationLookups ? populationLookups.shelters.has(c.node) : w.state.map.buildings.find(
       (b) => b.node === c.node && b.state === 'operating' && b.use === 'shelter',
     );
     const exposureMs = h.unsheltered && !shelter ? elapsed : 0;
     h.exposureMs = exposureMs ? h.exposureMs + exposureMs : Math.max(0, h.exposureMs - elapsed);
-    const care = w.state.resources
+    const care = populationLookups ? (populationLookups.staff.get(c.node) ?? 0) : w.state.resources
       .filter((r) => r.node === c.node && r.type === 'staff' && r.quantity - r.reserved > 0)
       .reduce((n, r) => n + r.quantity - r.reserved, 0);
     if (care && h.injured) {
@@ -256,23 +282,22 @@ export function installPopulation(w) {
         'resupply-initial',
       );
   };
-  w.on('population_resupply', () => {
+  w.on('population_resupply', () => withPopulationLookups(() => {
+    const unmetTypes = new Map();
+    for (const n of w.state.needs) {
+      if (!(n.served < n.quantity)) continue;
+      const sector = w.building(n.building)?.sector;
+      if (!unmetTypes.has(sector)) unmetTypes.set(sector, new Set());
+      unmetTypes.get(sector).add(n.type);
+    }
     for (const sector of w.state.map.sectors) {
       const cohorts = w.healthForSector(sector.id).filter((c) => c.health?.affected);
       if (!cohorts.length) continue;
       const population = cohorts.reduce((n, c) => n + c.population, 0);
-      const building = w.state.map.buildings.find((b) => b.sector === sector.id);
+      const building = populationLookups.buildings.get(sector.id);
       for (const type of ['water', 'food']) {
         if (!cohorts.some((c) => c.health[`${type}Disrupted`])) continue;
-        if (
-          w.state.needs.some(
-            (n) =>
-              w.building(n.building)?.sector === sector.id &&
-              n.type === type &&
-              n.served < n.quantity,
-          )
-        )
-          continue;
+        if (unmetTypes.get(sector.id)?.has(type)) continue;
         const stock = cohorts.reduce(
           (n, c) => n + c.health[type === 'water' ? 'waterMl' : 'foodKcal'],
           0,
@@ -296,6 +321,8 @@ export function installPopulation(w) {
             w.random('population', sector.id, `resupply-report-${type}-${w.now}`) >=
             w.config.observationRate,
         });
+        if (!unmetTypes.has(sector.id)) unmetTypes.set(sector.id, new Set());
+        unmetTypes.get(sector.id).add(type);
         if (!n.silent)
           w.generateSignal('P01', {
             sector: sector.id,
@@ -309,8 +336,8 @@ export function installPopulation(w) {
     const next = w.now + w.config.resupplyReviewHours * HOUR;
     if (w.withinHorizon(next))
       w.schedule(next, 'population_resupply', {}, 1, `resupply-${next}`);
-  });
-  w.on('population_tick', () => {
+  }));
+  w.on('population_tick', () => withPopulationLookups(() => {
     for (const c of w.state.cohorts) {
       w.advancePopulation(c, w.now);
       if (c.health?.affected)
@@ -336,7 +363,7 @@ export function installPopulation(w) {
       ) {
         w.generateSignal('P01', {
           sector: c.sector,
-          building: w.state.map.buildings.find((b) => b.sector === c.sector)?.id,
+          building: populationLookups.buildings.get(c.sector)?.id,
           text: `Update from ${w.sector(c.sector).name}: ${c.population} people remain here. ${c.health.injured ? 'Injured people need care. ' : ''}${c.health.dehydrationMs ? 'Water is running out. ' : ''}${c.health.hungerMs ? 'Food is running out. ' : ''}Please verify access and supplies.`,
           causeEvent: `health-${c.id}-${w.now}`,
         });
@@ -345,7 +372,7 @@ export function installPopulation(w) {
     for (const t of w.state.evacuations ?? [])
       if (t.health && !['completed', 'failed', 'cancelled'].includes(t.state)) {
         const v = w.vehicle(t.vehicle),
-          origin = w.state.cohorts.find((c) => c.id === t.cohort);
+          origin = populationLookups.cohortIds.get(t.cohort);
         if (!origin) continue;
         const group = {
           id: `transit-${t.id}`,
@@ -370,7 +397,7 @@ export function installPopulation(w) {
       }
     if (w.withinHorizon(w.now + w.config.healthTickMs))
       w.schedule(w.now + w.config.healthTickMs, 'population_tick', {}, 0, `population-${w.now}`);
-  });
+  }));
   w.populationMetrics = () => {
     const rows = w.state.cohorts.map((c) => ({
       id: c.id,

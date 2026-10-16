@@ -97,7 +97,7 @@ export const DEFAULT_CONFIG = {
   humanCapacity: { profile: 'zero' },
 };
 const enums = {
-  topology: ['grid', 'regional', 'honmura'],
+  topology: ['grid', 'regional', 'honmura', 'takamatsu'],
   hazard: ['earthquake', 'wildfire', 'flood', 'compound', 'none'],
   variant: ['standard', 'adverse', 'infeasible'],
   compositionVariant: ['standard', 'distributed', 'incompatible', 'unsafe', 'insufficient_staff', 'occupied', 'delayed'],
@@ -173,6 +173,7 @@ export function validateConfig(input = {}) {
   // The geographic fixture is a fixed town core in metres, not a scaled template.
   // Density/extent controls apply to generated worlds only.
   if (c.topology === 'honmura') { c.grid = 7; c.extentKm = 1; }
+  if (c.topology === 'takamatsu') { c.grid = 66; c.extentKm = 10; }
   c.humanCapacity = normalizeHumanCapacity(c.humanCapacity, c.operatorCount);
   if (c.mode === 'live' && input.clockLatency === undefined) c.clockLatency = 'wall';
   if (typeof c.continuousDemo !== 'boolean') throw new Error('continuousDemo must be boolean');

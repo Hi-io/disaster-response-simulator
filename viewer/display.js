@@ -11,7 +11,7 @@ export function feedTiming(backlog) {
 
 // Changes that alter geometry, visibility or color. Timestamps, stock counts,
 // GPS and messages update separately and must not rebuild the entire 3D map.
-export function mapVisualKey(snapshot, perspective = 'truth') {
+export function mapVisualKey(snapshot, perspective = 'truth', { includeRoutes = true } = {}) {
   const s = snapshot.state,
     obs = perspective === 'truth' ? null : s.observations[perspective];
   const needs = obs ? Object.values(obs.needs ?? {}) : s.needs;
@@ -26,7 +26,7 @@ export function mapVisualKey(snapshot, perspective = 'truth') {
     s.map.edges.filter((e) => (obs ? obs.edges?.[e.id]?.open === false : !e.open)).map((e) => e.id),
     needs.filter((n) => n.served < n.quantity).map((n) => [n.id, n.building, n.type]),
     s.vehicles.filter((v) => !obs || obs.vehicles?.[v.id]).map((v) => v.id),
-    obs
+    obs || !includeRoutes
       ? []
       : s.vehicles
           .filter(

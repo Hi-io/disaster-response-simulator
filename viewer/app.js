@@ -9,13 +9,13 @@ import {
   humanize,
   entityKind,
   placeName,
-  trafficLevel,
 } from './presentation.js';
 import { MotionBuffer } from './motion.js';
 import { FlowLane, MapNotices, iconHTML, applyIcons } from './flow.js';
 import { serviceRows, selectionPoint, trackingStep, mapVisualKey, humanQueueRows } from './display.js';
 import { mapTheme } from './theme.js';
 import { englishText } from './english.js';
+import { roadCorridors, corridorTrafficLevel, visibleRoutePlans, routeOverlayKey, fixedTopologyProfile } from './map-layout.js';
 
 const $ = (id) => document.getElementById(id);
 const escape = (s) =>
@@ -71,7 +71,8 @@ let feedScope,
   trafficLines,
   vehiclePoints,
   vehicleIds = [],
-  dotTexture;
+  dotTexture,
+  previousRouteKey;
 let nodeIndex = new Map(),
   buildingIndex = new Map(),
   edgeIndex = new Map(),
@@ -79,6 +80,7 @@ let nodeIndex = new Map(),
 const mapNotices = new MapNotices($('mapNotices'), locateNotice, projectNotice);
 applyIcons();
 const orgColors = mapTheme.organizations;
+const trafficColors = Object.fromEntries(Object.entries(mapTheme.traffic).map(([key, color]) => [key, new THREE.Color(color)]));
 let snapshotReceivedAt = performance.now();
 let lastAnimationTime = performance.now();
 let renderer,
@@ -518,14 +520,15 @@ function buildScene() {
   const vertices = [],
     damaged = [],
     bridges = [];
-  for (const edge of map.edges) {
-    if (edge.from > edge.to) continue;
+  const corridors = roadCorridors(map.edges);
+  for (const corridor of corridors) {
+    const edge = corridor.edge;
     const a = position(edge.from),
       b = position(edge.to),
-      known = obs?.edges[edge.id];
-    const target = (obs ? known?.open === false : !edge.open)
+      closed = corridor.edges.some(e => obs ? obs.edges[e.id]?.open === false : !e.open);
+    const target = closed
       ? damaged
-      : edge.bridge
+      : corridor.edges.some(e => e.bridge)
         ? bridges
         : vertices;
     const path = edge.points ?? [a, b];
@@ -546,14 +549,15 @@ function buildScene() {
   lines(damaged, mapTheme.coral, roads);
   lines(bridges, mapTheme.blue, roads);
   const trafficPositions = [];
-  const trafficRoadIds = [];
-  for (const edge of map.edges) {
-    if (edge.from > edge.to) continue;
+  const trafficSpans = [];
+  for (const corridor of corridors) {
+    const edge = corridor.edge;
     const path = edge.points ?? [position(edge.from), position(edge.to)];
+    const start = trafficPositions.length / 3;
     for (let i = 0; i < path.length - 1; i++) {
       trafficPositions.push(path[i].x, 3, path[i].z, path[i + 1].x, 3, path[i + 1].z);
-      trafficRoadIds.push(edge.id, edge.id);
     }
+    trafficSpans.push({ ids: corridor.edges.map(e => e.id), start, count: trafficPositions.length / 3 - start, level: null });
   }
   const trafficGeometry = new THREE.BufferGeometry();
   trafficGeometry.setAttribute('position', new THREE.Float32BufferAttribute(trafficPositions, 3));
@@ -565,7 +569,7 @@ function buildScene() {
     trafficGeometry,
     new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.62 }),
   );
-  trafficLines.userData.edges = trafficRoadIds;
+  trafficLines.userData.spans = trafficSpans;
   subgroup('traffic').add(trafficLines);
   updateTraffic();
   if (map.river) {
@@ -749,22 +753,20 @@ function buildScene() {
       }),
     ),
   );
-  for (const s of map.sectors) {
-    if (!obs && s.coverage === 0) {
-      const dot = new THREE.Mesh(
-        new THREE.CircleGeometry(scale * 0.18, 20),
-        new THREE.MeshBasicMaterial({
-          color: mapTheme.slate,
-          transparent: true,
-          opacity: 0.25,
-          side: THREE.DoubleSide,
-        }),
-      );
-      const n = position(s.node);
-      dot.rotation.x = -Math.PI / 2;
-      dot.position.set(n.x, 2, n.z);
-      network.add(dot);
-    }
+  const outageSectors = obs ? [] : map.sectors.filter(s => s.coverage === 0);
+  if (outageSectors.length) {
+    const dots = new THREE.InstancedMesh(
+      new THREE.CircleGeometry(1, 20),
+      new THREE.MeshBasicMaterial({ color: mapTheme.slate, transparent: true, opacity: 0.25, side: THREE.DoubleSide }),
+      outageSectors.length,
+    );
+    outageSectors.forEach((sector, i) => {
+      const n = position(sector.node);
+      matrix.compose(new THREE.Vector3(n.x, 2, n.z), ringRotation, new THREE.Vector3(scale * 0.18, scale * 0.18, scale * 0.18));
+      dots.setMatrixAt(i, matrix);
+    });
+    dots.instanceMatrix.needsUpdate = true;
+    network.add(dots);
   }
   if (!obs)
     for (const h of snapshot.state.hazards ?? []) {
@@ -784,21 +786,6 @@ function buildScene() {
   for (const v of snapshot.state.vehicles) {
     if (obs && !obs.vehicles[v.id]) continue;
     vehicleMeshes.set(v.id, { position: new THREE.Vector3(), index: vehicleMeshes.size });
-    if (
-      v.route?.length &&
-      !v.background &&
-      !obs &&
-      ['en_route', 'dispatched', 'queued', 'spillback', 'blocked'].includes(v.state)
-    ) {
-      const ps = [];
-      for (const eid of v.route.slice(v.routeIndex ?? 0)) {
-        const e = edgeIndex.get(eid);
-        const path = e.points ?? [position(e.from), position(e.to)];
-        for (let i = 0; i < path.length - 1; i++)
-          ps.push(path[i].x, 5, path[i].z, path[i + 1].x, 5, path[i + 1].z);
-      }
-      lines(ps, mapTheme.violet, routes, 0.6);
-    }
   }
   vehicleIds = [...vehicleMeshes.keys()];
   const dotGeometry = new THREE.BufferGeometry();
@@ -830,6 +817,8 @@ function buildScene() {
   vehicleGroup.add(vehiclePoints);
   vehicleIds.forEach((id, i) => pickMap.set(`${vehiclePoints.uuid}:${i}`, { kind: 'vehicle', id }));
   rayTargets.push(vehiclePoints);
+  previousRouteKey = undefined;
+  updateRoutes();
   for (const name of Object.keys(layers))
     if (layerGroups[name]) layerGroups[name].visible = layers[name];
   vehicleGroup.visible = layers.vehicles;
@@ -854,21 +843,44 @@ function updateTraffic() {
   if (!trafficLines) return;
   const truth = $('perspective').value === 'truth',
     obs = snapshot.state.observations[$('perspective').value];
-  const edges = new Map(snapshot.state.map.edges.map((e) => [e.id, e]));
-  const directions = new Map(snapshot.state.map.edges.map((e) => [`${e.from}:${e.to}`, e]));
-  const colors = mapTheme.traffic;
   const attribute = trafficLines.geometry.attributes.color;
-  trafficLines.userData.edges.forEach((id, i) => {
-    const edge = edges.get(id),
-      reverse = directions.get(`${edge.to}:${edge.from}`);
-    const levels = ['unknown', 'clear', 'slow', 'heavy', 'closed'];
-    const forwardLevel = trafficLevel(edge, obs?.edges[id], truth);
-    const reverseLevel = reverse ? trafficLevel(reverse, obs?.edges[reverse.id], truth) : 'unknown';
-    const level = levels[Math.max(levels.indexOf(forwardLevel), levels.indexOf(reverseLevel))];
-    const color = new THREE.Color(colors[level]);
-    attribute.setXYZ(i, color.r, color.g, color.b);
+  let changed = false;
+  trafficLines.userData.spans.forEach(span => {
+    const level = corridorTrafficLevel(span.ids, edgeIndex, obs?.edges, truth);
+    if (level === span.level) return;
+    const color = trafficColors[level];
+    for (let i = span.start; i < span.start + span.count; i++) attribute.setXYZ(i, color.r, color.g, color.b);
+    span.level = level;
+    changed = true;
   });
-  attribute.needsUpdate = true;
+  if (changed) attribute.needsUpdate = true;
+}
+function updateRoutes() {
+  const group = layerGroups.routes;
+  if (!group) return;
+  const perspective = $('perspective').value;
+  const key = routeOverlayKey(snapshot, perspective);
+  if (key === previousRouteKey) return;
+  for (const child of group.children) {
+    child.geometry?.dispose();
+    child.material?.dispose();
+  }
+  group.clear();
+  for (const plan of visibleRoutePlans(snapshot, perspective)) {
+    const points = [];
+    for (const id of plan.edges) {
+      const edge = edgeIndex.get(id);
+      if (!edge) continue;
+      const path = edge.points ?? [position(edge.from), position(edge.to)];
+      for (let i = 0; i < path.length - 1; i++)
+        points.push(path[i].x, 5, path[i].z, path[i + 1].x, 5, path[i + 1].z);
+    }
+    if (!points.length) continue;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    group.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: mapTheme.violet, transparent: true, opacity: 0.6 })));
+  }
+  previousRouteKey = key;
 }
 function updateVehicles(now = performance.now()) {
   if (!snapshot) return;
@@ -1282,9 +1294,11 @@ async function refresh() {
         : snapshot.state.map.organizations[0]?.id;
     }
     const geographic = snapshot.state.map.geography;
+    const geographicSummary = snapshot.state.map.topology === 'takamatsu'
+      ? '100 km² · 4,300 synthetic community sites' : 'Synthetic facilities & emergency scenario';
     $('mapAttribution').hidden = !geographic;
     $('mapAttribution').innerHTML = geographic ?
-      `<strong>${escape(geographic.name)}</strong><span>Synthetic facilities & emergency scenario</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Map data © OpenStreetMap contributors · ODbL</a>` : '';
+      `<strong>${escape(geographic.name)}</strong><span>${escape(geographicSummary)}</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">Map data © OpenStreetMap contributors · ODbL</a>` : '';
     motion.accept(snapshot, snapshotReceivedAt, $('perspective').value);
     lastRun = snapshot.runId;
     $('clock').textContent = clock(snapshot.now);
@@ -1297,12 +1311,13 @@ async function refresh() {
       `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
     renderMeasurements();
     $('scenarioTitle').textContent = `${humanize(snapshot.manifest.config.hazard)} simulation`;
-    const sceneHash = mapVisualKey(snapshot, $('perspective').value);
+    const sceneHash = mapVisualKey(snapshot, $('perspective').value, { includeRoutes: false });
     if (changed || sceneHash !== previousSceneHash) {
       buildScene();
       previousSceneHash = sceneHash;
     }
     updateTraffic();
+    updateRoutes();
     if (changed) {
       home();
       selected = null;
@@ -1665,7 +1680,14 @@ try {
   await loadCatalog();
 } catch {}
 await refresh();
-setInterval(refresh, 1000);
+// Full city snapshots contain thousands of sites. Leave space between those
+// reads; the lightweight activity channel and local 3D animation remain live.
+// Hidden tabs must not repeatedly serialize the entire city in the background.
+async function pollSnapshot() {
+  if (!document.hidden) await refresh();
+  setTimeout(pollSnapshot, snapshot?.state.map.buildings.length >= 2000 ? 3000 : 1000);
+}
+setTimeout(pollSnapshot, 1000);
 async function pollActivity() {
   await refreshActivity();
   if (activitySupported) setTimeout(pollActivity, document.hidden ? 1000 : isPlaying() ? 150 : 500);
@@ -1673,10 +1695,15 @@ async function pollActivity() {
 pollActivity();
 
 function updateTopologyControls() {
-  const fixed = $('topology').value === 'honmura';
+  const profile = fixedTopologyProfile($('topology').value);
+  const fixed = !!profile;
   $('grid').disabled = fixed;
   $('extentKm').disabled = fixed;
   $('geographicHint').hidden = !fixed;
-  if (fixed) { $('grid').value = 7; $('extentKm').value = 1; }
+  if (fixed) {
+    $('grid').value = profile.grid;
+    $('extentKm').value = profile.extentKm;
+    $('geographicHint').textContent = profile.hint;
+  }
 }
 $('topology').addEventListener('change', updateTopologyControls);

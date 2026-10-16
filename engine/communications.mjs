@@ -2,7 +2,28 @@ import { digest } from './determinism.mjs';
 import { acceptsVehicleReceipt } from './received-vehicle.mjs';
 
 export function installCommunications(w) {
-  w.sectorForNode = (node) => w.state.map.sectors.find((s) => s.node === node)?.id;
+  let nodeSectors;
+  w.sectorForNode = (node) => {
+    const { sectors, nodes } = w.state.map;
+    if (!nodeSectors || nodeSectors.sectors !== sectors || nodeSectors.nodes !== nodes ||
+      nodeSectors.sectorCount !== sectors.length || nodeSectors.nodeCount !== nodes.length) {
+      const own = new Map(), byId = new Map(), sectorIds = new Set();
+      // Several community sites may share one routing junction. Preserve the
+      // original Array.find rule: the first own sector always wins.
+      for (const sector of sectors) {
+        if (!own.has(sector.node)) own.set(sector.node, sector.id);
+        sectorIds.add(sector.id);
+      }
+      for (const item of nodes) if (!byId.has(item.id)) byId.set(item.id, item);
+      nodeSectors = { sectors, nodes, sectorCount: sectors.length, nodeCount: nodes.length,
+        own, byId, sectorIds };
+    }
+    if (nodeSectors.own.has(node)) return nodeSectors.own.get(node);
+    // Only explicitly modelled coverage may cover a road-only junction. An
+    // ordinary generated/Honmura map keeps its existing lookup semantics.
+    const coverage = nodeSectors.byId.get(node)?.coverageSectorId;
+    return nodeSectors.sectorIds.has(coverage) ? coverage : undefined;
+  };
   w.connected = (sector, channel = 'internet') => {
     if (!sector) return true;
     const s = w.sector(sector);

@@ -1,0 +1,14 @@
+{
+  "topology": "takamatsu",
+  "seed": "takamatsu-city-scale-001",
+  "scenario": "S01",
+  "hazard": "earthquake",
+  "mode": "headless",
+  "clockLatency": "modeled",
+  "policy": "none",
+  "organizations": 4,
+  "durationMs": 21600000,
+  "postsPerHour": 1000,
+  "backgroundTraffic": 160,
+  "maxEvents": 2000000
+}

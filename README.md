@@ -47,6 +47,14 @@ No tiles, live map service, or third-party routing is used at runtime. Density a
 
 Geographic arrays in [generators/honmura.mjs](generators/honmura.mjs) are an adapted database © OpenStreetMap contributors, available under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The fixture retains source way/node IDs, retrieval date, source URL and snapshot fingerprint; attribution is also visible on the map. The fixture records the curated town core rather than every path or restriction in the area.
 
+For city-scale scenarios, select **Takamatsu, Japan · 10 × 10 km · scale scenarios**. This fixed 100 km² region has 100 times Honmura's configured simulation area and 4,300 synthetic community/facility sites, compared with Honmura's 43. Its offline OpenStreetMap extract retains the strategic road network, actual mapped junctions, curved geometry and one-way streets. It does not include every residential alley or constitute a navigation map. Roads and community sites are separate layers; the 4,300 sites are modelled groups, not actual mapped buildings. Attribution and source provenance accompany the bundled geographic database under ODbL 1.0.
+
+The seed controls synthetic events and site details while the real road layout stays fixed. A repeatable headless starting configuration is available in [manifests/takamatsu.json](manifests/takamatsu.json):
+
+```sh
+node cli.mjs run --config manifests/takamatsu.json --output runs/takamatsu
+```
+
 The engine includes:
 
 - Procedural maps, earthquake, flood and wildfire events.

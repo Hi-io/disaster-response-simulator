@@ -14,7 +14,7 @@ for (let i = 0; i < args.length; i++) {
 }
 const loadConfig = async () => {
   const c = opts.config ? await readJSON(opts.config) : {};
-  for (const key of ['seed', 'scenario', 'policy', 'hazard', 'variant', 'split'])
+  for (const key of ['seed', 'scenario', 'policy', 'hazard', 'variant', 'split', 'topology'])
     if (opts[key]) c[key] = opts[key];
   for (const key of [
     'grid',

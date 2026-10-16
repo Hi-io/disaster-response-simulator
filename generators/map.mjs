@@ -1,9 +1,11 @@
 import { keyedRandom, integerDraw, digest } from '../engine/determinism.mjs';
 import { regionalRoads, riverX } from './region.mjs';
 import { honmuraRoads } from './honmura.mjs';
+import { takamatsuRoads } from './takamatsu.mjs';
 
 export function generateMap(c) {
   if (c.topology === 'honmura') return generateHonmuraMap(c);
+  if (c.topology === 'takamatsu') return generateTakamatsuMap(c);
   const nodes = [],
     edges = [],
     buildings = [],
@@ -251,6 +253,70 @@ function generateHonmuraMap(c) {
   Object.assign(map, { topology: 'honmura', extentM: 1000, grid: 7, river: null, crossings: [],
     geography: geography.source,
     hazardProfile: { kind: 'synthetic_coastal', center: { x: geography.nodes.find(n => n.name === 'Honmura Port approach').x, z: geography.nodes.find(n => n.name === 'Honmura Port approach').z }, radiusM: 95 } });
+  map.hash = digest({ nodes: map.nodes, edges: map.edges, buildings: map.buildings,
+    organizations: map.organizations, geography: map.geography });
+  return map;
+}
+
+// A city-sized street graph and community sites are separate layers. Each site
+// represents a synthetic group of residents/facilities, not an actual OSM home.
+// Keeping 4,300 sites makes the operational workload 100x Honmura's 43 sites
+// without requiring an individual simulation object for every real resident.
+function generateTakamatsuMap(c) {
+  const geography = takamatsuRoads(), siteCount = 4300;
+  const map = generateMap({ ...c, topology: 'grid', grid: 66, extentKm: 10 });
+  map.nodes = geography.nodes;
+  map.edges = geography.edges;
+  map.buildings = map.buildings.slice(0, siteCount);
+  map.sectors = map.sectors.slice(0, siteCount);
+  const draw = (id, field) => keyedRandom(c.subsystemSeeds?.map ?? c.seed, 'map', id, field);
+  for (let index = 0; index < siteCount; index++) {
+    const building = map.buildings[index], sector = map.sectors[index];
+    const node = map.nodes[Math.floor(index * map.nodes.length / siteCount)];
+    const column = Math.min(9, Math.floor(node.x / 1000)), row = Math.min(9, Math.floor(node.z / 1000));
+    const district = `${row < 3 ? 'North' : row > 6 ? 'South' : 'Central'} ${column < 3 ? 'West' : column > 6 ? 'East' : 'City'}`;
+    Object.assign(sector, { node: node.id, x: node.x, z: node.z,
+      name: `Takamatsu ${district}`, locality: `takamatsu-demo-${column}-${row}`,
+      jurisdiction: `org${Math.min(c.organizations - 1, (column < 5 ? 0 : 1) + (row < 5 ? 0 : 2))}` });
+    const use = { residential: 'Community', school: 'School', clinic: 'Clinic', warehouse: 'Warehouse', shelter: 'Shelter', plant: 'Water Plant' }[building.use] ?? 'Facility';
+    const angle = draw(building.id, 'site_bearing') * Math.PI * 2;
+    const setback = 15 + draw(building.id, 'site_setback') * 20;
+    Object.assign(building, { node: node.id,
+      x: Math.max(5, Math.min(9995, node.x + Math.cos(angle) * setback)),
+      z: Math.max(5, Math.min(9995, node.z + Math.sin(angle) * setback)),
+      width: 10 + Math.floor(draw(building.id, 'site_width') * 8),
+      height: 8 + Math.floor(draw(building.id, 'site_height') * 24),
+      name: `Takamatsu ${district} ${use} ${index + 1} (Demo)`, synthetic: true });
+  }
+  // Routing-only junctions still belong to a synthetic communication zone.
+  // Otherwise a truck at one of these junctions would silently bypass outages.
+  const coverageByNode = new Map(map.sectors.map(sector=>[sector.node,sector.id]));
+  for (const node of map.nodes) {
+    if (coverageByNode.has(node.id)) { node.coverageSectorId=coverageByNode.get(node.id); continue; }
+    let nearest=null, distance=Infinity;
+    for (const sector of map.sectors) {
+      const next=(sector.x-node.x)**2+(sector.z-node.z)**2;
+      if(next<distance) { nearest=sector;distance=next; }
+    }
+    node.coverageSectorId=nearest.id;
+  }
+  const occupied = new Set();
+  for (let index = 0; index < map.organizations.length; index++) {
+    const column = index % 4, row = Math.floor(index / 4);
+    const target = [[2000,2000],[8000,2000],[2000,8000],[8000,8000]][index];
+    const x = target?.[0] ?? (0.15 + column * 0.23) * 10000;
+    const z = target?.[1] ?? (0.2 + row * 0.3) * 10000;
+    let nearest = null, distance = Infinity;
+    for (const node of map.nodes) {
+      if (occupied.has(node.id)) continue;
+      const next = Math.hypot(node.x - x, node.z - z);
+      if (next < distance) { nearest = node; distance = next; }
+    }
+    occupied.add(nearest.id); map.organizations[index].node = nearest.id;
+  }
+  Object.assign(map, { topology: 'takamatsu', extentM: 10000, grid: 66,
+    river: geography.river, crossings: geography.crossings, geography: geography.source,
+    hazardProfile: { kind: 'synthetic_coastal', center: { x: 5000, z: 500 }, radiusM: 1100 } });
   map.hash = digest({ nodes: map.nodes, edges: map.edges, buildings: map.buildings,
     organizations: map.organizations, geography: map.geography });
   return map;
