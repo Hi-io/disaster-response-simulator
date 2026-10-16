@@ -218,6 +218,7 @@ export function installActions(w) {
         })),
         places: w.state.map.buildings.map((b) => ({
           id: b.id,
+          ...(typeof b.name === 'string' ? { name: b.name } : {}),
           node: b.node,
           x: b.x,
           z: b.z,

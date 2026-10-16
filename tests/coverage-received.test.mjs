@@ -51,3 +51,19 @@ test('a bounded directory sweep discovers an otherwise silent S07 need only afte
   assert.ok(w.state.operations.some(o=>o.type==='inspection'&&o.times.service>o.times.authorized));
   assert.deepEqual(w.invariants(),[]);w.advance(w.now);const result=replay(w.checkpoint());assert.equal(result.matches,true);result.world.close();w.close();
 });
+
+
+test('the authorized public map directory carries declared place names without dynamic truth',()=>{
+  const w=fixture(),query=act(w,'query',{target:'map'});w.advance(30000);
+  const map=w.actorView('org0').queries.find(q=>q.id===query.id).result;
+  for(const place of map.places){
+    assert.equal(place.name,w.building(place.id).name);
+    assert.ok(Object.keys(place).every(key=>['id','name','node','x','z','use','sector'].includes(key)));
+    assert.equal(Object.hasOwn(place,'damage'),false);
+    assert.equal(Object.hasOwn(place,'safe'),false);
+    assert.equal(Object.hasOwn(place,'occupancy'),false);
+    assert.equal(Object.hasOwn(place,'needs'),false);
+  }
+  assert.ok(map.nodes.every(node=>typeof node.name==='string'));
+  assert.deepEqual(w.invariants(),[]);w.close();
+});
