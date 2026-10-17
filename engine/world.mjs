@@ -551,6 +551,7 @@ export class World {
       id: v.id,
       name: v.name ?? `${this.organization(v.owner)?.name ?? "Response"} Vehicle`,
       owner: v.owner,
+      background: v.background === true,
       node: v.lastGPS.node,
       at: v.lastGPS.at,
       capacity: v.capacity,
