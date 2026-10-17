@@ -1,23 +1,7 @@
 import { trafficLevel } from './presentation.js';
+export { roadCorridors } from './geometry.js';
 
 // Presentation-only indexes. They neither infer road permissions nor change routing.
-export function roadCorridors(edges) {
-  const groups = new Map();
-  for (const edge of edges) {
-    const endpoints = [String(edge.from), String(edge.to)].sort();
-    // Explicit corridor IDs keep parallel mapped streets distinct. Endpoints
-    // also prevent an OSM way spanning several junctions from being collapsed.
-    const key = JSON.stringify([edge.corridor ?? null, ...endpoints]);
-    let group = groups.get(key);
-    if (!group) {
-      group = { key, edge, edges: [] };
-      groups.set(key, group);
-    }
-    group.edges.push(edge);
-  }
-  return [...groups.values()];
-}
-
 export function corridorTrafficLevel(ids, edgeIndex, observations = null, truth = true) {
   const levels = ['unknown', 'clear', 'slow', 'heavy', 'closed'];
   let severity = 0;

@@ -17,6 +17,7 @@ import { publicPostingRate } from './posting-rate.mjs';
 import { createCompactActorProjector } from './compact-actor.mjs';
 import { SOURCE_INSTANCE_HEADER, requireSourceInstance } from './source-instance.mjs';
 import { writeAtomicJson } from './atomic-json.mjs';
+import { demoMap, demoFrame } from './demo-projection.mjs';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const json = (res, status, data) => {
   res.writeHead(status, {
@@ -182,10 +183,19 @@ export async function createLabServers({
           '/api/compare',
           '/api/viewer/bootstrap',
           '/api/viewer/frame',
+          '/api/demo/bootstrap',
+          '/api/demo/frame',
         ];
         if (req.method !== (reads.includes(url.pathname) ? 'GET' : 'POST'))
           throw new SimError('METHOD', 'Method not allowed', 405);
         if (req.method === 'POST') requireSameOrigin(req);
+        if (url.pathname === '/api/demo/bootstrap' || url.pathname === '/api/demo/frame') {
+          const value = createViewerBootstrap(world, { runtime: { playing, rate, continuousDemo: world.config.continuousDemo } });
+          const frame = demoFrame(value.frame, { sourceInstance, feed: world.publicFeed({ limit: 12 }),
+            maxActive: world.state.demo?.maxActive, director: world.state.demo?.director });
+          return json(res, 200, url.pathname.endsWith('/bootstrap')
+            ? { mapId: value.mapId, map: demoMap(value.map), frame } : frame);
+        }
         if (url.pathname === '/api/viewer/bootstrap' || url.pathname === '/api/viewer/frame') {
           const options = {
             org: url.searchParams.get('org') ?? 'org0',
@@ -302,6 +312,9 @@ export async function createLabServers({
           req.method === 'POST'
             ? await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000)
             : {};
+        if (url.pathname === '/api/demo/organizations') return json(res, 201, world.demoCreateOrganization(b));
+        if (url.pathname === '/api/demo/organizations/release') return json(res, 200, world.demoReleaseOrganization(b));
+        if (url.pathname === '/api/demo/director') return json(res, 200, world.demoConfigureDirector(b));
         if (url.pathname === '/api/actors/provision') {
           if (
             !world.organization(b.org) ||

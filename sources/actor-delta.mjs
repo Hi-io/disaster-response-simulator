@@ -23,6 +23,7 @@ export function createActorDeltaProjector() {
   const organizations = new Map();
   return {
     reset() { organizations.clear(); },
+    forget(org) { organizations.delete(org); },
     project(org, state) {
       let previous = organizations.get(org);
       const replacing = !previous || previous.runId !== state.runId;

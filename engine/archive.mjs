@@ -9,7 +9,7 @@ import { stableJSON } from './determinism.mjs';
 export class RecordArchive {
   constructor(kind, source = null) {
     this.kind = kind;
-    const root = path.resolve('.local/archives');
+    const root = path.resolve(process.env.AIDSCALER_ARCHIVE_DIR || '.local/archives');
     mkdirSync(root, { recursive: true });
     this.directory = mkdtempSync(path.join(root, kind + '-'));
     this.file = path.join(this.directory, 'records.sqlite');

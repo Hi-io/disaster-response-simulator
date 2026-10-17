@@ -33,6 +33,7 @@ import { installCargo } from './cargo.mjs';
 import { installUnloading } from './unloading.mjs';
 import { installCoverage } from './coverage.mjs';
 import { installHumanCapacity } from './human-capacity.mjs';
+import { installDemo } from './demo.mjs';
 
 export class World {
   constructor(input = {}, snapshot = null) {
@@ -129,6 +130,7 @@ export class World {
     installUnloading(this);
     installCoverage(this);
     installHumanCapacity(this);
+    installDemo(this);
     configureScenario(this, { handlersOnly: true });
   }
   initialize() {

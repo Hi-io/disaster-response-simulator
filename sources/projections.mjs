@@ -152,7 +152,7 @@ export function createViewerFrame(world, { org = 'org0', perspective = 'truth', 
       edges: s.map.edges.filter(e => !e.open || e.occupants.length || e.waiting.length)
         .map(e => [e.id, e.open, e.occupants.length, e.waiting.length]),
       sectors: s.map.sectors.filter(sector => sector.coverage !== 1).map(sector => [sector.id, sector.coverage]),
-      organizations: s.map.organizations.map(o => pick(o, ['id', 'name', 'node', 'sharing', 'usesPlatform', 'funds', 'version'])),
+      organizations: s.map.organizations.map(o => pick(o, ['id', 'name', 'node', 'sharing', 'usesPlatform', 'funds', 'version', 'color', 'demoVisitor', 'demoRetired', 'joinedAt'])),
     },
     cohortFields,
     cohorts: changedCohorts,

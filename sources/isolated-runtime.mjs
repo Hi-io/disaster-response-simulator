@@ -185,6 +185,10 @@ export async function createIsolatedRuntime({
       activityCache = timelineCache = feedCache = undefined;
     }
     meta = value;
+    for (const org of meta.integrations?.revokedOrgs ?? []) {
+      actors.delete(org); producedActors.delete(org);
+      for (const key of results.keys()) if (key.startsWith(`${org}:`)) results.delete(key);
+    }
   };
   function pruneOrgResults(org, state) {
     const retained = new Set(

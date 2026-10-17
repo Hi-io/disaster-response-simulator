@@ -55,7 +55,8 @@ function runtime() {
 function meta() {
   return { runId: world.runId, generation, sourceInstance: sourceInstance(), revision: runtimeRevision, logLength: world.log.length, manifest: world.manifest, config: world.config, now: world.now,
     organizations: world.state.map.organizations.map(o => ({ id: o.id, name: o.name })),
-    integrations: { ...world.state.integrations }, ...runtime(),
+    integrations: { ...world.state.integrations }, demo: world.state.demo ? { maxActive: world.state.demo.maxActive,
+      director: world.state.demo.director } : undefined, ...runtime(),
     performance: { tickCount, workCount, tickIntervalMs: summary(tickIntervals), workMs: summary(workSamples),
       projectionMs: summary(projectionSamples), lagSimMs: playing ? Math.max(0, desiredTime() - world.now) : 0,
       modelBlocked: world.modelBarrier(), eventBacklog: world.log.length - eventCursor } };
@@ -143,6 +144,13 @@ function replaceWorld(next, { resume = false } = {}) {
 }
 const methods = {
   meta,
+  demoCreateOrganization: input => world.demoCreateOrganization(input),
+  demoReleaseOrganization: input => {
+    const result = world.demoReleaseOrganization(input);
+    actorProjector.forget(input.org);
+    return result;
+  },
+  demoConfigureDirector: input => world.demoConfigureDirector(input),
   async boundActorMutation(expected, method, args) {
     if (!['actorAction', 'acknowledge', 'acknowledgeBatch', 'startModelCall', 'finishModelCall'].includes(method))
       throw new SimError('METHOD', 'Unknown actor mutation', 404);

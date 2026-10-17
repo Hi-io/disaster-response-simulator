@@ -16,6 +16,69 @@ Authority is determined by the authenticated session. Posting a role or owner fi
 
 Authenticated actor responses include `X-AidScaler-Source-Instance`. Bind a response workspace to the value returned by its first actor-state read and send the same header on every actor POST. Resetting or generating a world changes this transport identity even with the same seed; an exact coordinated checkpoint resume retains it. A mismatch returns `409 SOURCE_RESPONSE_CHANGED` before changing the world. Connect a new response workspace instead of reusing old reservations or operations. The deterministic `runId` and actor JSON remain unchanged. Legacy clients without this optional header remain compatible; new integrations should always bind it. Inline checkpoint launchers must preserve the `sourceInstance` credential metadata alongside their checkpoint and pass it to `createLabServers` when resuming.
 
+## Hosted demonstration adapter
+
+`scripts/demo-host.mjs` exports `startDemoHost({dataDir, observerPort, sourcePort,
+allowDemoBuildUpgrade, allowOperationalDemoUpgrade, director, rate})`. It starts the existing isolated engine,
+not a second simulation. Both simulator ports remain bound to loopback; a
+separate gateway must expose only the spectator projection and scoped platform
+operations. `dataDir` must be persistent. The returned host supplies private
+`credentials`, `lab`, `pause()`, `resume()`, `persist()` and `close()`.
+
+These routes require observer authentication, including the spectator reads:
+
+| Method / path | Contract |
+|---|---|
+| GET /api/demo/bootstrap | Immutable geographic map and first allowlisted spectator frame |
+| GET /api/demo/frame | Current vehicles, requests, operation receipts, public posts and team names; no secrets, private inventory, future sources or actor observations |
+| POST /api/demo/organizations | `{name, color, idempotencyKey}` creates a unique physical visitor team, with three vehicles, 600 L water, 120 meal portions, staff and fuel |
+| POST /api/demo/organizations/release | `{org, idempotencyKey}` retires only a drained visitor team and revokes its actor access; ownership and operation history remain distinct |
+| POST /api/demo/director | `{enabled, intervalMs, maxOpen, maxActive}` controls bounded recurring incidents and explicit demo resupply |
+
+Mutations are rejected outside an interactive `continuousDemo` world. The
+default admission quota is four active visitor teams. Names and kit resources
+are idempotent across retries and exact checkpoint restores. A retired identity
+is never reassigned. The lifetime registration quota is also finite. Actor keys
+are provisioned separately using the existing seven-day scoped actor contract;
+the gateway owns renewal and never sends source or observer keys to a browser.
+
+The hosted director publishes requests and delayed local-team reports through
+ordinary source channels. It does not copy spectator knowledge into the agent.
+Supply replenishments use recorded `demo_supply_replenished` ledger additions,
+not fabricated delivery receipts. Transport, loading, authorization, arrival
+and useful receipt retain their normal physical semantics. This is a controlled
+operational demonstration with synthetic incidents and resupply, not a benchmark
+or a calibrated model of lives saved over months. Only this host disables
+unbounded population-generated requests and fatality probabilities; ordinary
+world defaults and evaluation scenarios are unchanged.
+
+The hosted director also enables clearly labelled scripted base teams. Their
+owner-scoped native dispatches contribute at most 100 L or 40 meal portions per
+new incident, leaving most of the request available for visitors. They are not
+model inferences. The continuous base driver roster and supply additions are
+explicit recorded demo configuration. An existing visitor dispatch takes
+precedence over that incident's scripted base response.
+
+The host saves credentials, checkpoints, transport cursors and authoritative
+archives on the persistent volume. Close operational writers before `host.close()`
+for a coordinated final checkpoint. A source storage failure pauses the clock
+and becomes a health failure. An ungraceful process loss may leave the platform
+newer than the last checkpoint; preserve the source-response fence and perform
+explicit recovery rather than silently pairing mismatched state. Compatible
+demo-only build upgrades require `allowDemoBuildUpgrade: true`; engine contracts
+and physical state are checked and a private migration receipt is saved. No
+benchmark checkpoint is migrated.
+`allowOperationalDemoUpgrade: true` separately authorizes the initial hosted
+workflow migration of only recurring population requests, health reports and
+the four fatality probabilities to their demo settings. It preserves all past
+physical state and writes a private before/after receipt. It is never implicit,
+never changes transport or action physics, and cannot migrate a benchmark.
+
+`viewer/spectator-map.mjs` exports a fetch-free `createSpectatorMap()` renderer.
+Its only inputs are the sanitized bootstrap and frames. It reuses Three.js,
+the existing `MotionBuffer` and shared road geometry. It has selection, camera
+and vehicle-follow methods, and no world-control or actor-command methods.
+
 ## Sources and received information
 
 | Method / path | Purpose |

@@ -12,6 +12,7 @@ import { CONFIG_SCHEMA } from '../contracts/config.mjs';
 import { SCENARIOS } from '../scenarios/catalog.mjs';
 import { PRESETS } from '../content/presets.mjs';
 import { SOURCE_INSTANCE_HEADER } from './source-instance.mjs';
+import { demoMap, demoFrame } from './demo-projection.mjs';
 const root = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
 const json = (res, status, value) => {
   res.writeHead(status, {
@@ -173,10 +174,20 @@ export async function createIsolatedLabServers({
         '/api/viewer/bootstrap',
         '/api/viewer/frame',
         '/api/runtime',
+        '/api/demo/bootstrap',
+        '/api/demo/frame',
       ];
       if (req.method !== (reads.includes(url.pathname) ? 'GET' : 'POST'))
         throw new SimError('METHOD', 'Method not allowed', 405);
       if (req.method === 'POST') sameOrigin(req);
+      if (url.pathname === '/api/demo/bootstrap' || url.pathname === '/api/demo/frame') {
+        const value = await runtime.bootstrap('org0', 'truth');
+        const frame = demoFrame(value.frame, { sourceInstance: runtime.meta.sourceInstance,
+          feed: runtime.feed, maxActive: runtime.meta.demo?.maxActive,
+          director: runtime.meta.demo?.director });
+        return json(res, 200, url.pathname.endsWith('/bootstrap')
+          ? { mapId: value.mapId, map: demoMap(value.map), frame } : frame);
+      }
       const scope = {
         org: url.searchParams.get('org') ?? 'org0',
         perspective: url.searchParams.get('perspective') ?? 'truth',
@@ -233,6 +244,12 @@ export async function createIsolatedLabServers({
       if (url.pathname === '/api/credentials')
         return json(res, 200, { actors: actorKeys, sourceUrl: sourceURL(), sourceInstance: runtime.meta.sourceInstance });
       const input = await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000);
+      if (url.pathname === '/api/demo/organizations')
+        return json(res, 201, await mutation('demoCreateOrganization', input));
+      if (url.pathname === '/api/demo/organizations/release')
+        return json(res, 200, await mutation('demoReleaseOrganization', input));
+      if (url.pathname === '/api/demo/director')
+        return json(res, 200, await mutation('demoConfigureDirector', input));
       if (url.pathname === '/api/control') return json(res, 200, await mutation('control', input));
       if (url.pathname === '/api/inject') return json(res, 200, await mutation('inject', input));
       if (url.pathname === '/api/action')

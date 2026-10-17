@@ -1,4 +1,15 @@
 // Pure geometry shared by the causal transport engine and both observer views.
+export function roadCorridors(edges) {
+  const groups = new Map();
+  for (const edge of edges) {
+    const endpoints = [String(edge.from), String(edge.to)].sort();
+    const key = JSON.stringify([edge.corridor ?? null, ...endpoints]);
+    let group = groups.get(key);
+    if (!group) { group = { key, edge, edges: [] }; groups.set(key, group); }
+    group.edges.push(edge);
+  }
+  return [...groups.values()];
+}
 export function pointAlong(points, fraction) {
   const f = Math.max(0, Math.min(1, fraction));
   if (points.length < 2) return { ...points[0] };
