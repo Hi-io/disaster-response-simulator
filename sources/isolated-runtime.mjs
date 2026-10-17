@@ -149,6 +149,8 @@ export async function createIsolatedRuntime({
         projectionMs,
         eventCursor: producer.eventCursor,
         producerRunId: producer.runId,
+        producerEpoch: producer.epoch,
+        sourceGenerationBase: generationBase,
       },
     });
   } catch (error) {
@@ -543,8 +545,10 @@ export async function createIsolatedRuntime({
       return mergeViewerFrame(data.map, data.frame);
     },
     async actor(org) {
-      if (!actors.has(org)) {
+      while (!actors.has(org)) {
+        const instance = meta.sourceInstance;
         const value = await request('actorCompact', org);
+        if (meta.sourceInstance !== instance) continue;
         actors.set(org, value.state);
         for (const r of value.results) results.set(`${org}:${r.version}`, r.result);
         pruneOrgResults(org, value.state);
@@ -609,11 +613,23 @@ export async function createIsolatedRuntime({
         if (fatal) throw fatal;
         if (
           !target.logLength ||
-          (producer.runId === target.runId && producer.eventCursor >= target.logLength)
+          (producer.runId === target.runId &&
+            producer.generation === generationBase + (target.generation ?? 0) &&
+            producer.eventCursor >= target.logLength)
         )
           break;
         await new Promise((resolve) => setImmediate(resolve));
       }
+      // Even a reset with no emitted events must survive a checkpoint resume.
+      transportTail = transportTail.then(async () => {
+        const targetGeneration = generationBase + (target.generation ?? 0);
+        if ((producer.generation ?? 0) > targetGeneration) return;
+        const nextProducer = { ...producer, runId: target.runId, generation: targetGeneration,
+          ...(!target.logLength ? { eventCursor: 0, lastEventHash: null } : {}) };
+        await writeAtomicJson(cursorFile, nextProducer);
+        Object.assign(producer, nextProducer);
+      });
+      await transportTail;
     },
     close() {
       if (closePromise) return closePromise;

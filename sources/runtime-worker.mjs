@@ -9,6 +9,7 @@ import { createEvaluationInput } from './evaluation-snapshot.mjs';
 import { createActorDeltaProjector } from './actor-delta.mjs';
 import { publicPostingRate } from './posting-rate.mjs';
 import { createCompactActorProjector } from './compact-actor.mjs';
+import { sourceInstanceId, requireSourceInstance } from './source-instance.mjs';
 
 // This thread is the sole owner of physical state. Projection and event
 // consumers acknowledge their own delivery; neither ACK controls World.step.
@@ -22,6 +23,7 @@ if (!Number.isSafeInteger(eventCursor) || eventCursor < 0 || eventCursor > world
     workerData.producerRunId !== undefined && workerData.producerRunId !== world.runId) eventCursor = 0;
 let generation = Number.isSafeInteger(workerData.producerGeneration) && workerData.producerGeneration >= 0
   ? workerData.producerGeneration : 0;
+const sourceInstance = () => sourceInstanceId(workerData.producerEpoch, (workerData.sourceGenerationBase ?? 0) + generation);
 let closed = false, running = false, scheduled = false, autoRequested = false;
 let runtimeRevision = 0;
 let lastTickWall = performance.now(), effectiveWall = lastTickWall, effectiveSim = world.now, effectiveRate = 0;
@@ -51,7 +53,7 @@ function runtime() {
     comparison: comparison ? { policyA: world.config.policy, policyB: comparison.config.policy, now: comparison.now } : null };
 }
 function meta() {
-  return { runId: world.runId, generation, revision: runtimeRevision, logLength: world.log.length, manifest: world.manifest, config: world.config, now: world.now,
+  return { runId: world.runId, generation, sourceInstance: sourceInstance(), revision: runtimeRevision, logLength: world.log.length, manifest: world.manifest, config: world.config, now: world.now,
     organizations: world.state.map.organizations.map(o => ({ id: o.id, name: o.name })),
     integrations: { ...world.state.integrations }, ...runtime(),
     performance: { tickCount, workCount, tickIntervalMs: summary(tickIntervals), workMs: summary(workSamples),
@@ -141,6 +143,14 @@ function replaceWorld(next, { resume = false } = {}) {
 }
 const methods = {
   meta,
+  async boundActorMutation(expected, method, args) {
+    if (!['actorAction', 'acknowledge', 'acknowledgeBatch', 'startModelCall', 'finishModelCall'].includes(method))
+      throw new SimError('METHOD', 'Unknown actor mutation', 404);
+    // Executed by the sole engine owner after all earlier queued resets.
+    const instance = sourceInstance();
+    requireSourceInstance(expected, instance);
+    return { sourceInstance: instance, value: await methods[method](...args) };
+  },
   resetPerformance() {
     tickIntervals.length = 0; workSamples.length = 0; projectionSamples.length = 0;
     tickCount = 0; workCount = 0; lastTickWall = performance.now();

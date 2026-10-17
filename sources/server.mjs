@@ -1,8 +1,8 @@
 import { observerCredential, observerSessionCookie } from './observer-session.mjs';
 import http from 'node:http';
 import path from 'node:path';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { readFile, mkdir } from 'node:fs/promises';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { World } from '../engine/world.mjs';
 import { SCENARIOS } from '../scenarios/catalog.mjs';
@@ -15,6 +15,8 @@ import { sourceHTML } from './social-view.mjs';
 import { createViewerBootstrap, createViewerFrame } from './projections.mjs';
 import { publicPostingRate } from './posting-rate.mjs';
 import { createCompactActorProjector } from './compact-actor.mjs';
+import { SOURCE_INSTANCE_HEADER, requireSourceInstance } from './source-instance.mjs';
+import { writeAtomicJson } from './atomic-json.mjs';
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const json = (res, status, data) => {
   res.writeHead(status, {
@@ -56,6 +58,7 @@ export async function createLabServers({
   persistCredentials = true,
   isolated = false,
   checkpoint,
+  sourceInstance: resumedSourceInstance,
   storageDir,
   bus,
   documents,
@@ -81,7 +84,8 @@ export async function createLabServers({
       projectionMs,
     });
   }
-  let world = new World(config),
+  let sourceInstance = checkpoint && resumedSourceInstance ? resumedSourceInstance : randomUUID();
+  let world = new World(config, checkpoint ?? null),
     comparison = null,
     playing = false,
     rate = world.config.mode === 'live' ? 1 : 10,
@@ -104,6 +108,15 @@ export async function createLabServers({
         };
   };
   const sourceRequests = new Map();
+  async function persistSession() {
+    if (!persistCredentials) return;
+    await mkdir(path.join(root, '.local'), { recursive: true });
+    await writeAtomicJson(path.join(root, '.local', 'session.json'), {
+      observerKey, actors: actorKeys, sourceInstance,
+      observerUrl: `http://127.0.0.1:${observer.address().port}`,
+      sourceUrl: `http://127.0.0.1:${sources.address().port}`,
+    });
+  }
   const tick = setInterval(() => {
     const now = performance.now(),
       wall = now - previous;
@@ -325,9 +338,11 @@ export async function createLabServers({
           comparison?.close();
           comparison = null;
           world = replacement;
+          sourceInstance = randomUUID();
           ensureActorKeys();
           rate = world.config.mode === 'live' ? 1 : 10;
           playing = false;
+          await persistSession();
           return json(res, 200, { runId: world.runId });
         }
         if (url.pathname === '/api/control') {
@@ -404,9 +419,11 @@ export async function createLabServers({
           world.close();
           comparison?.close();
           world = a;
+          sourceInstance = randomUUID();
           comparison = other;
           playing = false;
           ensureActorKeys();
+          await persistSession();
           return json(res, 200, { paired: true, initialMapHash: a.state.map.hash });
         }
         if (url.pathname === '/api/compare') {
@@ -425,9 +442,11 @@ export async function createLabServers({
           comparison?.close();
           comparison = null;
           world = replacement;
+          sourceInstance = randomUUID();
           ensureActorKeys();
           rate = world.config.mode === 'live' ? 1 : 10;
           playing = false;
+          await persistSession();
           return json(res, 200, { restored: true, runId: world.runId });
         }
         if (url.pathname === '/api/metrics') return json(res, 200, world.observer().metrics);
@@ -448,6 +467,7 @@ export async function createLabServers({
         if (url.pathname === '/api/credentials')
           return json(res, 200, {
             actors: actorKeys,
+            sourceInstance,
             sourceUrl: `http://127.0.0.1:${sources.address().port}`,
           });
         throw new SimError('NOT_FOUND', 'Endpoint not found', 404);
@@ -543,18 +563,25 @@ export async function createLabServers({
           world.state.integrations.revokedOrgs.includes(actor.org)
         )
           throw new SimError('ACCESS_REVOKED', 'Actor access has been revoked', 403);
+        res.setHeader(SOURCE_INSTANCE_HEADER, sourceInstance);
         if (url.pathname === '/api/actor/inbox')
           return json(res, 200, world.publicFeed({ ...params, org: actor.org, audience: 'team' }));
         if (url.pathname === '/api/actor/state') return json(res, 200,
           url.searchParams.get('compact') === '1' ? compactActors.project(actor.org).state : world.actorView(actor.org));
         if (url.pathname === '/api/actor/query-result') return json(res, 200,
           compactActors.queryResult(actor.org, url.searchParams.get('id'), url.searchParams.get('version')));
+        const input = actorMutation.includes(url.pathname) ? await body(req) : null;
+        if (input !== null) {
+          // The body may yield to a reset; validate immediately before mutation.
+          res.setHeader(SOURCE_INSTANCE_HEADER, sourceInstance);
+          requireSourceInstance(req.headers[SOURCE_INSTANCE_HEADER.toLowerCase()], sourceInstance);
+        }
         if (url.pathname === '/api/actor/action')
-          return json(res, 200, world.act(actor, await body(req)));
+          return json(res, 200, world.act(actor, input));
         if (url.pathname === '/api/actor/model/start')
-          return json(res, 200, world.startModelCall(actor, await body(req)));
+          return json(res, 200, world.startModelCall(actor, input));
         if (url.pathname === '/api/actor/model/finish') {
-          const result = world.finishModelCall(actor, await body(req));
+          const result = world.finishModelCall(actor, input);
           if (world.config.clockLatency === 'modeled' && !world.modelBarrier())
             world.advance(result.availableAt, { maxEvents: 100000 });
           return json(res, 200, { ...result, now: world.now });
@@ -564,9 +591,8 @@ export async function createLabServers({
             queries: (world.state.queries ?? []).filter((q) => q.org === actor.org).slice(-200),
           });
         if (url.pathname === '/api/actor/ingestion')
-          return json(res, 200, world.acknowledge(actor, await body(req)));
+          return json(res, 200, world.acknowledge(actor, input));
         if (url.pathname === '/api/actor/ingestion/batch') {
-          const input = await body(req);
           if (!Array.isArray(input.items) || input.items.length > 100)
             throw new SimError('BATCH', 'One to one hundred ingestion receipts required', 400);
           return json(
@@ -689,27 +715,13 @@ export async function createLabServers({
   ]);
   const actualObserver = observer.address().port,
     actualSource = sources.address().port;
-  if (persistCredentials) {
-    await mkdir(path.join(root, '.local'), { recursive: true });
-    await writeFile(
-      path.join(root, '.local', 'session.json'),
-      JSON.stringify(
-        {
-          observerKey,
-          actors: actorKeys,
-          observerUrl: `http://127.0.0.1:${actualObserver}`,
-          sourceUrl: `http://127.0.0.1:${actualSource}`,
-        },
-        null,
-        2,
-      ),
-    );
-  }
+  await persistSession();
   return {
     observer,
     sources,
     observerKey,
     actorKeys,
+    get sourceInstance() { return sourceInstance; },
     get world() {
       return world;
     },

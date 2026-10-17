@@ -11,6 +11,7 @@ import { INPUT_TYPES, OBSERVATION_SCHEMA } from '../contracts/inputs.mjs';
 import { CONFIG_SCHEMA } from '../contracts/config.mjs';
 import { SCENARIOS } from '../scenarios/catalog.mjs';
 import { PRESETS } from '../content/presets.mjs';
+import { SOURCE_INSTANCE_HEADER } from './source-instance.mjs';
 const root = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
 const json = (res, status, value) => {
   res.writeHead(status, {
@@ -230,7 +231,7 @@ export async function createIsolatedLabServers({
           await runtime.request('compare', { pair: url.searchParams.get('pair') === '1' }),
         );
       if (url.pathname === '/api/credentials')
-        return json(res, 200, { actors: actorKeys, sourceUrl: sourceURL() });
+        return json(res, 200, { actors: actorKeys, sourceUrl: sourceURL(), sourceInstance: runtime.meta.sourceInstance });
       const input = await body(req, url.pathname === '/api/restore' ? 128000000 : 2000000);
       if (url.pathname === '/api/control') return json(res, 200, await mutation('control', input));
       if (url.pathname === '/api/inject') return json(res, 200, await mutation('inject', input));
@@ -337,46 +338,63 @@ export async function createIsolatedLabServers({
         }
       if (url.pathname.startsWith('/api/actor')) {
         const actor = actorAuth(req);
+        res.setHeader(SOURCE_INSTANCE_HEADER, runtime.meta.sourceInstance);
+        const actorRead = async (read) => {
+          for (;;) {
+            const instance = runtime.meta.sourceInstance;
+            const value = await read();
+            if (instance !== runtime.meta.sourceInstance) continue;
+            res.setHeader(SOURCE_INSTANCE_HEADER, instance);
+            return value;
+          }
+        };
+        const actorMutation = async (method, ...args) => {
+          const result = await runtime.request('boundActorMutation',
+            req.headers[SOURCE_INSTANCE_HEADER.toLowerCase()], method, args);
+          res.setHeader(SOURCE_INSTANCE_HEADER, result.sourceInstance);
+          await runtime.refresh();
+          return result.value;
+        };
         if (url.pathname === '/api/actor/state')
           return json(
             res,
             200,
-            url.searchParams.get('compact') === '1'
+            await actorRead(async () => url.searchParams.get('compact') === '1'
               ? await runtime.actor(actor.org)
-              : await runtime.legacyActor(actor.org),
+              : await runtime.legacyActor(actor.org)),
           );
         if (url.pathname === '/api/actor/query-result')
           return json(
             res,
             200,
-            await runtime.queryResult(
+            await actorRead(() => runtime.queryResult(
               actor.org,
               url.searchParams.get('id'),
               url.searchParams.get('version'),
-            ),
+            )),
           );
         if (url.pathname === '/api/actor/inbox')
           return json(
             res,
             200,
-            await runtime.request('feed', { ...params, org: actor.org, audience: 'team' }),
+            await actorRead(() => runtime.request('feed', { ...params, org: actor.org, audience: 'team' })),
           );
         if (url.pathname === '/api/actor/queries')
-          return json(res, 200, { queries: await runtime.request('actorQueries', actor.org) });
+          return json(res, 200, { queries: await actorRead(() => runtime.request('actorQueries', actor.org)) });
         const input = mutations.includes(url.pathname) ? await body(req) : null;
         if (url.pathname === '/api/actor/action')
-          return json(res, 200, await mutation('actorAction', actor, input));
+          return json(res, 200, await actorMutation('actorAction', actor, input));
         if (url.pathname === '/api/actor/ingestion')
-          return json(res, 200, await mutation('acknowledge', actor, input));
+          return json(res, 200, await actorMutation('acknowledge', actor, input));
         if (url.pathname === '/api/actor/ingestion/batch') {
           if (!Array.isArray(input.items) || input.items.length > 100)
             throw new SimError('BATCH', 'One to one hundred ingestion receipts required', 400);
-          return json(res, 200, await mutation('acknowledgeBatch', actor, input.items));
+          return json(res, 200, await actorMutation('acknowledgeBatch', actor, input.items));
         }
         if (url.pathname === '/api/actor/model/start')
-          return json(res, 200, await mutation('startModelCall', actor, input));
+          return json(res, 200, await actorMutation('startModelCall', actor, input));
         if (url.pathname === '/api/actor/model/finish')
-          return json(res, 200, await mutation('finishModelCall', actor, input));
+          return json(res, 200, await actorMutation('finishModelCall', actor, input));
         throw new SimError('NOT_FOUND', 'Actor endpoint not found', 404);
       }
       if (url.pathname.startsWith('/api/observer') || url.pathname.startsWith('/api/state'))
@@ -522,6 +540,7 @@ export async function createIsolatedLabServers({
         {
           observerKey,
           actors: actorKeys,
+          sourceInstance: runtime.meta.sourceInstance,
           observerUrl: `http://127.0.0.1:${actualObserver}`,
           sourceUrl: sourceURL(),
         },

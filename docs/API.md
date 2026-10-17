@@ -14,6 +14,8 @@ The server writes credentials to ignored .local/session.json. Send organization 
 
 Authority is determined by the authenticated session. Posting a role or owner field does not grant permission. Responses use JSON errors containing error and message.
 
+Authenticated actor responses include `X-AidScaler-Source-Instance`. Bind a response workspace to the value returned by its first actor-state read and send the same header on every actor POST. Resetting or generating a world changes this transport identity even with the same seed; an exact coordinated checkpoint resume retains it. A mismatch returns `409 SOURCE_RESPONSE_CHANGED` before changing the world. Connect a new response workspace instead of reusing old reservations or operations. The deterministic `runId` and actor JSON remain unchanged. Legacy clients without this optional header remain compatible; new integrations should always bind it. Inline checkpoint launchers must preserve the `sourceInstance` credential metadata alongside their checkpoint and pass it to `createLabServers` when resuming.
+
 ## Sources and received information
 
 | Method / path | Purpose |
