@@ -19,7 +19,7 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
   allowOperationalDemoUpgrade = false,
   storageMaintenance = true, projectionMs = 1500,
   director = { enabled: true, intervalMs: 300000, maxOpen: 8, maxActive: 4 },
-  autostart = true, rate = 10 } = {}) {
+  autostart = true, rate = 10, checkpointWhilePaused = true } = {}) {
   if (!dataDir || !Number.isSafeInteger(checkpointEveryMs) || checkpointEveryMs < 1000)
     throw Error('A persistent data directory and a bounded checkpoint interval are required.');
   const directory = path.resolve(dataDir); await mkdir(directory, { recursive: true });
@@ -75,7 +75,7 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
   const lab = await createLabServers({ isolated: true, config: checkpoint?.manifest.config ?? { ...defaults, ...config },
     checkpoint: checkpoint ?? undefined, observerPort, sourcePort, observerKey: previous?.observerKey ?? randomBytes(24).toString('hex'),
     actorKeys: previous?.actors ?? null, persistCredentials: false, storageDir: path.join(directory, 'transport'), projectionMs });
-  let saving = null, closing = false, timer, savedSnapshot = original, collectedPreviousArchives = false;
+  let saving = null, closing = false, paused = !autostart, timer, savedSnapshot = original, collectedPreviousArchives = false;
   const credentials = () => ({ format: 'aidscaler-demo-source-v1', observerKey: lab.observerKey,
     actors: lab.actorKeys, observerUrl: `http://127.0.0.1:${lab.observerPort}`,
     sourceUrl: `http://127.0.0.1:${lab.sourcePort}`, observerPort: lab.observerPort,
@@ -130,14 +130,14 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
     await lab.runtime.refresh();
     await persist();
     await lab.runtime.request('control', { play: autostart, rate });
-    timer = setInterval(() => { if (!closing) persist().catch(e => {
+    timer = setInterval(() => { if (!closing && (!paused || checkpointWhilePaused)) persist().catch(e => {
       // A storage failure is visible to health checks, never a silent reset.
       host.persistenceError = e; lab.runtime.request('control', { play: false }).catch(() => {});
     }); }, checkpointEveryMs); timer.unref();
   } catch (e) { await lab.close(); throw e; }
   const host = { lab, credentials: credentials(), dataDir: directory, persist, persistenceError: null,
-    async pause() { await lab.runtime.request('control', { play: false }); },
-    async resume() { await lab.runtime.request('control', { play: true, rate }); },
+    async pause() { await lab.runtime.request('control', { play: false }); paused = true; },
+    async resume() { await lab.runtime.request('control', { play: true, rate }); paused = false; },
     async close() {
       if (closing) return; closing = true; clearInterval(timer);
       await lab.quiesce();
