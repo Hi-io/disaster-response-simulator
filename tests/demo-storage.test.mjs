@@ -89,6 +89,46 @@ test('historical producer epochs compact only exact same-world checkpoint rows a
   assert.ok(next.messages.some(m => m.envelope.payload.offset >= checkpoint.log.length));
 });
 
+test('unverifiable audit maintenance does not block durable checkpoints, startup or physical world progress', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'aidscaler-demo-audit-warning-'));
+  const previousArchives = process.env.AIDSCALER_ARCHIVE_DIR;
+  let host;
+  t.after(async () => { await host?.close(); if (previousArchives === undefined) delete process.env.AIDSCALER_ARCHIVE_DIR;
+    else process.env.AIDSCALER_ARCHIVE_DIR = previousArchives; await rm(dir, { recursive: true, force: true }); });
+  host = await startDemoHost({ dataDir: dir, observerPort: 0, sourcePort: 0, config, autostart: false });
+  const before = await host.lab.checkpoint(), physical = new World(before.manifest.config, before);
+  const expected = physical.stateHash(); physical.close();
+  const invalid = { eventId: `old-legacy-epoch:${before.runId}:generation:3:event:0`, runId: before.runId,
+    orderingKey: before.runId, audience: 'audit', type: 'simulation.event', simTimeMs: 0,
+    payload: { offset: 0, event: { ...before.log[0], type: 'private-unverified-legacy-record' } } };
+  await host.lab.runtime.bus.publish(invalid);
+  await host.persist();
+  assert.equal(host.persistenceError, null);
+  let maintenance = JSON.parse(await readFile(path.join(dir, 'storage-maintenance.json'), 'utf8'));
+  assert.equal(maintenance.audit.warning, 'AUDIT_COMPACTION_DEFERRED');
+  assert.equal(maintenance.audit.deferred, true);
+  assert.equal(JSON.stringify(maintenance).includes('private-unverified-legacy-record'), false);
+  assert.equal((await host.lab.runtime.bus.publish(invalid)).duplicate, true);
+  await host.close(); host = null;
+  // The same unverified retained row is encountered again during startup.
+  host = await startDemoHost({ dataDir: dir, observerPort: 0, sourcePort: 0, autostart: false });
+  assert.equal(host.persistenceError, null);
+  maintenance = JSON.parse(await readFile(path.join(dir, 'storage-maintenance.json'), 'utf8'));
+  assert.equal(maintenance.audit.warning, 'AUDIT_COMPACTION_DEFERRED');
+  const restored = await host.lab.checkpoint(), checked = new World(restored.manifest.config, restored);
+  try { assert.equal(checked.stateHash(), expected); } finally { checked.close(); }
+  assert.deepEqual(restored.log, before.log);
+  const retained = await host.lab.runtime.bus.pull({ subscriptionId: 'demo-durable-checkpoint-v1' });
+  assert.equal(retained.messages[0].envelope.eventId, invalid.eventId);
+  await host.lab.runtime.bus.nack({ subscriptionId: 'demo-durable-checkpoint-v1',
+    deliveryIds: retained.messages.map(m => m.deliveryId) });
+  await host.lab.advance(60000); await host.persist();
+  assert.equal(host.persistenceError, null);
+  assert.equal((await host.lab.runtime.request('viewerFrame', { org: 'org0', perspective: 'truth' })).now, 60000);
+  assert.equal(JSON.parse(await readFile(path.join(dir, 'checkpoint.json'), 'utf8')).now, 60000);
+  assert.equal((await host.lab.runtime.bus.publish(invalid)).duplicate, true);
+});
+
 test('compact archive host resumes identical physical state and source identity while removing previous working copies', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'aidscaler-demo-storage-host-'));
   const previousArchives = process.env.AIDSCALER_ARCHIVE_DIR;

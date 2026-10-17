@@ -89,8 +89,18 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
       await writeAtomicJson(checkpointFile, snapshot);
       await writeAtomicJson(sourceFile, credentials());
       if (storageMaintenance) {
-        const audit = await compactDemoAudit({ bus: lab.runtime.bus, checkpoint: snapshot,
-          producer: await read(path.join(directory, 'transport', 'producer.json')) });
+        let audit;
+        try {
+          audit = await compactDemoAudit({ bus: lab.runtime.bus, checkpoint: snapshot,
+            producer: await read(path.join(directory, 'transport', 'producer.json')) });
+        } catch {
+          // The physical checkpoint and credentials are already durable. An
+          // unverifiable legacy transport row must remain untouched, but must
+          // never stop this world or prevent recovery of its physical state.
+          // Use a fixed diagnostic: raw queue payloads may contain private data.
+          audit = { deferred: true, warning: 'AUDIT_COMPACTION_DEFERRED',
+            physicalHistoryPreserved: true, deduplicationTombstonesPreserved: true };
+        }
         const oldArchives = collectedPreviousArchives ? { deleted: 0, bytes: 0 } :
           await cleanPreviousDemoArchives(process.env.AIDSCALER_ARCHIVE_DIR, previousArchives, archiveFiles(snapshot));
         collectedPreviousArchives = true;

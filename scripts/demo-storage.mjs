@@ -82,7 +82,12 @@ export async function compactDemoAudit({ bus, checkpoint, producer, maxMessages 
           offset < 0 || offset >= length) break;
         const saved = database ? row.get(offset)?.value : checkpoint.log[offset];
         const event = database && saved ? JSON.parse(saved) : saved;
-        if (!event || digest(event) !== digest(e.payload.event)) throw Error('Queued audit event differs from the durable physical checkpoint.');
+        if (!event || digest(event) !== digest(e.payload.event)) {
+          // Release only the lease; acknowledge or remove none of this
+          // unverified batch. A later maintenance attempt can recheck it.
+          await bus.nack({ subscriptionId, deliveryIds: batch.messages.map(m => m.deliveryId) });
+          throw Error('Queued audit event differs from the durable physical checkpoint.');
+        }
         accepted.push(message.deliveryId); throughOffset = offset; cursor = message.sequence;
       }
       if (accepted.length) {
