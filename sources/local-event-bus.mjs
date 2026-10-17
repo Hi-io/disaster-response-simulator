@@ -120,6 +120,7 @@ export async function createLocalEventBus({
       audience TEXT NOT NULL,
       cursor INTEGER NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS subscriptions_audience_cursor ON subscriptions(audience, cursor);
     CREATE TABLE IF NOT EXISTS deliveries (
       subscription_id TEXT NOT NULL REFERENCES subscriptions(subscription_id),
       sequence INTEGER NOT NULL REFERENCES messages(sequence) ON DELETE CASCADE,
@@ -130,6 +131,7 @@ export async function createLocalEventBus({
       PRIMARY KEY(subscription_id, sequence)
     );
     CREATE INDEX IF NOT EXISTS deliveries_pending ON deliveries(subscription_id, acknowledged, sequence);
+    CREATE INDEX IF NOT EXISTS deliveries_sequence ON deliveries(sequence);
     CREATE TABLE IF NOT EXISTS retention (
       audience TEXT PRIMARY KEY,
       after_sequence INTEGER NOT NULL
@@ -163,16 +165,18 @@ export async function createLocalEventBus({
       subscriptions:
         'SELECT subscription_id AS subscriptionId, audience, cursor FROM subscriptions ORDER BY subscription_id',
       clearDeliveries: 'DELETE FROM deliveries WHERE subscription_id = ?',
-      pruneCandidates: `SELECT m.sequence,m.audience FROM messages m WHERE m.sequence <= ?
-      AND (? IS NULL OR m.audience IN (SELECT value FROM json_each(?)))
-      AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.audience=m.audience)
-      AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.audience=m.audience AND s.cursor<m.sequence)
-      ORDER BY m.sequence LIMIT ?`,
+      pruneAudiences: 'SELECT DISTINCT audience FROM subscriptions',
+      pruneCursor: 'SELECT MIN(cursor) AS cursor FROM subscriptions WHERE audience = ?',
+      pruneCandidates: `SELECT sequence,audience FROM messages
+      WHERE audience = ? AND sequence <= ? ORDER BY sequence LIMIT ?`,
       pruneMessage: 'DELETE FROM messages WHERE sequence = ?',
       retainFloor:
         'INSERT INTO retention(audience,after_sequence) VALUES (?,?) ON CONFLICT(audience) DO UPDATE SET after_sequence=MAX(after_sequence,excluded.after_sequence)',
       documentRefs: `SELECT DISTINCT json_extract(envelope,'$.payload.documentRef.sha256') AS sha256
       FROM messages WHERE (? IS NULL OR audience IN (SELECT value FROM json_each(?)))
+      AND json_extract(envelope,'$.payload.documentRef.sha256') IS NOT NULL`,
+      audienceDocumentRefs: `SELECT DISTINCT json_extract(envelope,'$.payload.documentRef.sha256') AS sha256
+      FROM messages WHERE audience = ?
       AND json_extract(envelope,'$.payload.documentRef.sha256') IS NOT NULL`,
     }).map(([key, value]) => [key, db.prepare(value)]),
   );
@@ -434,8 +438,9 @@ export async function createLocalEventBus({
           (!Array.isArray(audiences) || audiences.some((value) => typeof value !== 'string'))
         )
           fail('INVALID_ARGUMENT', 'audiences must be an array of strings');
-        const filter = audiences === undefined ? null : JSON.stringify(audiences);
-        return sql.documentRefs.all(filter, filter).map((row) => row.sha256);
+        if (audiences === undefined) return sql.documentRefs.all(null, null).map(row => row.sha256);
+        return [...new Set([...new Set(audiences)].flatMap(audience =>
+          sql.audienceDocumentRefs.all(audience).map(row => row.sha256)))];
       });
     },
     prune({ throughSequence, limit = 1000, audiences }) {
@@ -449,8 +454,16 @@ export async function createLocalEventBus({
           (!Array.isArray(audiences) || audiences.some((value) => typeof value !== 'string'))
         )
           fail('INVALID_ARGUMENT', 'audiences must be an array of strings');
-        const filter = audiences === undefined ? null : JSON.stringify(audiences);
-        const rows = sql.pruneCandidates.all(throughSequence, filter, filter, limit);
+        // Seek the existing audience/sequence index instead of scanning a
+        // potentially huge unrelated audit backlog. MIN(cursor) is exactly
+        // the prefix acknowledged by EVERY subscriber for this audience.
+        // Taking up to limit candidates per audience, then merging by sequence,
+        // preserves the original global ordering and limit across audiences.
+        const selected = audiences === undefined ? sql.pruneAudiences.all().map(row => row.audience) : [...new Set(audiences)];
+        const rows = selected.flatMap(audience => {
+          const cursor = sql.pruneCursor.get(audience).cursor;
+          return cursor === null ? [] : sql.pruneCandidates.all(audience, Math.min(throughSequence, cursor), limit);
+        }).sort((a, b) => a.sequence - b.sequence).slice(0, limit);
         transaction(() => {
           for (const row of rows) {
             sql.pruneMessage.run(row.sequence);

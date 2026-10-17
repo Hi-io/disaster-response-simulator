@@ -19,6 +19,22 @@ const config = { seed: 'demo-contract-test', topology: 'grid', grid: 5, extentKm
 const create = (w, name = 'Sakura Response', key = 'visitor-register-001') =>
   w.demoCreateOrganization({ name, color: '#4477aa', idempotencyKey: key });
 
+test('a recovered host can reserve earlier identities without reissuing any old kit', () => {
+  const w = new World(config);
+  try {
+    const input = { name: 'Recovery test', color: '#4477aa', idempotencyKey: 'identity-floor-check', minimumOrganization: 13 };
+    const first = w.demoCreateOrganization(input);
+    assert.equal(first.organization.id, 'demo-org-13');
+    assert.deepEqual(w.demoCreateOrganization({ ...input, minimumOrganization: 14 }), first);
+    assert.equal(w.state.map.organizations.filter(o => o.demoVisitor).length, 1);
+    assert.throws(() => w.demoCreateOrganization({ ...input, idempotencyKey: 'bad-floor-test', minimumOrganization: 1000000 }), { code: 'DEMO_IDENTITY_FLOOR' });
+    const snapshot = w.checkpoint(), copy = new World(snapshot.manifest.config, snapshot);
+    try { assert.equal(create(copy, 'Next team', 'after-recovery-floor').organization.id, 'demo-org-14'); }
+    finally { copy.close(); }
+    assert.deepEqual(w.invariants(), []);
+  } finally { w.close(); }
+});
+
 test('demo extensions are inert and inaccessible in benchmark worlds', () => {
   const a = new World({ ...config, continuousDemo: false }), b = new World({ ...config, continuousDemo: false });
   try {

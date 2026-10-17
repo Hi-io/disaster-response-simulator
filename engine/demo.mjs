@@ -141,7 +141,14 @@ export function installDemo(w) {
       return clone(previous.result);
     }
     const active = w.state.map.organizations.filter(o => o.demoVisitor && !o.demoRetired);
+    // A host's durable directory can be ahead of a recovered physical
+    // checkpoint. Never reuse one of those earlier visitor identities.
+    if (input.minimumOrganization !== undefined &&
+        (!Number.isSafeInteger(input.minimumOrganization) || input.minimumOrganization < 1 || input.minimumOrganization > demo.maxLifetime))
+      throw new SimError('DEMO_IDENTITY_FLOOR', 'Use a bounded organization identity floor.');
     if (active.length >= demo.maxActive) throw new SimError('DEMO_CAPACITY', 'All demonstration team spaces are in use. You can continue observing.', 429);
+    if (demo.nextOrganization > demo.maxLifetime) throw new SimError('DEMO_LIFETIME_QUOTA', 'This demonstration has reached its registration quota.', 429);
+    demo.nextOrganization = Math.max(demo.nextOrganization, input.minimumOrganization ?? 1);
     if (demo.nextOrganization > demo.maxLifetime) throw new SimError('DEMO_LIFETIME_QUOTA', 'This demonstration has reached its registration quota.', 429);
     const id = `demo-org-${demo.nextOrganization++}`;
     // A new identity never inherits a previous visitor's records or authority.

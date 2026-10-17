@@ -14,6 +14,17 @@ const config = { seed: 'demo-retention-physical', topology: 'grid', grid: 5, ext
   postsPerHour: 0, packetLoss: 0, logMode: 'full', healthReports: false, recurringNeeds: false,
   mode: 'interactive', continuousDemo: true, clockLatency: 'wall' };
 
+test('a large already-verified cleanup backlog yields and cannot exceed its work slice indefinitely', async () => {
+  let calls = 0, yielded = false;
+  setImmediate(() => { yielded = true; });
+  const bus = { subscribe: async () => ({cursor: 99}), pull: async () => ({messages: []}),
+    prune: async () => { calls++; await delay(12); return {pruned: calls <= 6 ? 1000 : 0}; } };
+  const result = await compactDemoAudit({bus, checkpoint:{manifest:{config},runId:'test',log:[]},
+    producer:{runId:'test',epoch:'test',generation:0,eventCursor:0},workMs:5});
+  assert.equal(calls, 1); assert.equal(result.pruned, 1000); assert.equal(yielded, true);
+  assert.equal(result.physicalHistoryPreserved, true);
+});
+
 test('archive cleanup removes only pre-start exact obsolete directories and preserves new active files and retained checkpoints', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aidscaler-demo-gc-'));
   t.after(() => rm(root, { recursive: true, force: true }));

@@ -29,11 +29,13 @@ export async function runBridge(env = process.env) {
   await mkdir(directory, { recursive: true });
   if (!env.GOOGLE_CLOUD_PROJECT || !env.BRIDGE_COMMAND_SUBSCRIPTION || !env.BRIDGE_REPLY_TOPIC)
     throw Error('Set the project, command subscription and reply topic before starting the bridge.');
+  console.log('[AidScaler bridge] Recovering retained world.');
   const world = await startDemoHost({ dataDir: env.DEMO_WORLD_DIR ?? path.join(directory, 'world'), autostart: false, checkpointWhilePaused: false,
     observerPort: Number(env.DEMO_OBSERVER_PORT ?? 4318), sourcePort: Number(env.DEMO_SOURCE_PORT ?? 4319),
     rate: Number(env.DEMO_RATE ?? 10), director: { enabled: true, intervalMs: 300000, maxOpen: 8, maxActive: 5 },
     allowDemoBuildUpgrade: env.DEMO_ALLOW_BUILD_UPGRADE === 'true',
     allowOperationalDemoUpgrade: env.DEMO_MIGRATE_OPERATIONAL_CONFIG === 'true' });
+  console.log('[AidScaler bridge] Retained world recovered; waiting for visible visitors.');
   const presence = new DemoPresence({ pause: () => world.pause(), resume: () => world.resume(),
     persist: () => world.persist(), idleMs: 600000 });
   const db = new DatabaseSync(path.join(directory, 'bridge.sqlite'));

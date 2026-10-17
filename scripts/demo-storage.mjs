@@ -102,8 +102,13 @@ export async function compactDemoAudit({ bus, checkpoint, producer, maxMessages 
     }
     if (cursor) {
       let removed;
-      do { removed = (await bus.prune({ throughSequence: cursor, audiences: ['audit'], limit: 1000 })).pruned; pruned += removed; }
-      while (removed === 1000);
+      do {
+        removed = (await bus.prune({ throughSequence: cursor, audiences: ['audit'], limit: 1000 })).pruned;
+        pruned += removed;
+        // Historical cleanup must yield to HTTP/Pub/Sub and share the same
+        // time budget as verification. Deferred rows remain durable.
+        await yieldTurn();
+      } while (removed === 1000 && performance.now() - started < workMs);
     }
     return { acknowledged, pruned, cursor, throughOffset, physicalHistoryPreserved: true, deduplicationTombstonesPreserved: true };
   } finally { database?.close(); }

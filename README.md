@@ -99,3 +99,19 @@ node cli.mjs export --checkpoint runs/demo-01/checkpoint.json.gz --output runs/e
 Keep the complete run directory, including its checkpoint and compact-history files. Exact replay requires the same engine build, configuration and recorded inputs. A new external model response is a new input.
 
 See [API integration](docs/API.md), [scenarios](docs/SCENARIOS.md) and [model assumptions](docs/CALIBRATION.md). Simulation outcomes describe the configured world; population and human-work parameters require calibration before making claims about real emergencies.
+
+## Hybrid cloud demo
+
+The shared demo keeps this simulator in local Kubernetes and connects it to the
+Google Cloud application through an authenticated Pub/Sub bridge. Visitors see
+the public projection and their own workspace; simulator controls stay private.
+Federated service-account identity avoids long-lived Google private keys.
+
+The bridge pauses the already loaded world after ten minutes without visible
+visitors. Returning visitors resume the same clock without catch-up. Demo
+registration can reserve an identity floor supplied by the host, so a recovered
+checkpoint cannot reuse an organization ID retained in the application database.
+This affects continuous demonstration provisioning only, not finite benchmarks.
+
+Deployment and recovery instructions are maintained in the
+[platform cloud runbook](https://github.com/Hi-io/aidscaler-platform/tree/main/deploy/gcp).

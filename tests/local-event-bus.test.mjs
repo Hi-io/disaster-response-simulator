@@ -275,3 +275,28 @@ test('local event bus presentation-only pruning leaves audit records and unackno
   );
   assert.equal((await bus.stats()).retained, 2);
 });
+
+test('indexed retention preserves the global sequence limit, slowest subscriber, unregistered audiences and shared references', async t => {
+  const {bus}=await fixture(t);
+  for(const [subscriptionId,audience] of [['fast','a'],['slow','a'],['other','b']])
+    await bus.subscribe({subscriptionId,audience});
+  const ref=n=>({documentRef:{sha256:String(n).repeat(64),bytes:1,contentType:'application/json'}});
+  await bus.publish([event(1,'a',ref(1)),event(2,'b',ref(2)),event(3,'audit',ref(3)),
+    event(4,'b',ref(4)),event(5,'a',ref(5)),event(6,'a',ref(6)),event(7,'unregistered',ref(7))]);
+  const fast=await bus.pull({subscriptionId:'fast'}),slow=await bus.pull({subscriptionId:'slow'}),other=await bus.pull({subscriptionId:'other'});
+  await bus.ack({subscriptionId:'fast',deliveryIds:tokens(fast)});
+  await bus.ack({subscriptionId:'slow',deliveryIds:[slow.messages[0].deliveryId]});
+  await bus.ack({subscriptionId:'other',deliveryIds:tokens(other)});
+  assert.equal((await bus.prune({throughSequence:100,limit:2,audiences:['b','a','a']})).pruned,2);
+  assert.deepEqual(new Set(await bus.retainedDocumentRefs({audiences:['a','b','a']})),new Set([ref(4),ref(5),ref(6)].map(x=>x.documentRef.sha256)));
+  assert.equal((await bus.prune({throughSequence:100,audiences:[]})).pruned,0);
+  assert.deepEqual(await bus.retainedDocumentRefs({audiences:[]}),[]);
+  assert.equal((await bus.prune({throughSequence:100})).pruned,1);
+  assert.equal((await bus.stats()).retained,4);
+  await bus.ack({subscriptionId:'slow',deliveryIds:tokens(slow).slice(1)});
+  assert.equal((await bus.prune({throughSequence:5})).pruned,1);
+  assert.equal((await bus.prune({throughSequence:100})).pruned,1);
+  assert.deepEqual(new Set(await bus.retainedDocumentRefs()),new Set([ref(3),ref(7)].map(x=>x.documentRef.sha256)));
+  assert.equal((await bus.publish(event(1,'a',ref(1)))).duplicate,true);
+  await assert.rejects(bus.replay({subscriptionId:'slow',afterSequence:0}),{code:'RETENTION_GAP'});
+});
