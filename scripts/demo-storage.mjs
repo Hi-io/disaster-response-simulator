@@ -53,7 +53,6 @@ export async function compactDemoAudit({ bus, checkpoint, producer, maxMessages 
   if (!Number.isSafeInteger(length) || length < 0 || !Number.isSafeInteger(maxMessages) || maxMessages < 1 ||
     maxMessages > 100000 || !Number.isSafeInteger(workMs) || workMs < 1 || workMs > 5000)
     throw Error('Checkpoint compaction limits must be bounded.');
-  const prefix = `${producer.epoch}:${checkpoint.runId}:generation:${producer.generation}:event:`;
   let database;
   if (!Array.isArray(checkpoint.log)) {
     if (!checkpoint.log?.archive || typeof checkpoint.log.file !== 'string') throw Error('The physical event archive is unavailable.');
@@ -71,8 +70,16 @@ export async function compactDemoAudit({ bus, checkpoint, producer, maxMessages 
       const accepted = [];
       for (const message of batch.messages) {
         const e = message.envelope, offset = e.payload?.offset;
-        if (!e.eventId.startsWith(prefix) || e.type !== 'simulation.event' || !Number.isSafeInteger(offset) ||
-          e.eventId !== prefix + offset || offset < 0 || offset >= length || offset >= producer.eventCursor) break;
+        const parts = e.eventId.split(':');
+        // Earlier transport producers may have published the same physical
+        // checkpoint history before a process recovery rotated their epoch.
+        // Epoch equality is not a proof of durability; exact run/offset/payload
+        // equality below is. Accept historical producer IDs only in the known
+        // schema, never unrelated worlds or events beyond this checkpoint.
+        if (e.runId !== checkpoint.runId || parts.length !== 6 || !/^[\w-]{1,120}$/.test(parts[0]) ||
+          parts[1] !== checkpoint.runId || parts[2] !== 'generation' || !/^\d+$/.test(parts[3]) || parts[4] !== 'event' ||
+          parts[5] !== String(offset) || e.type !== 'simulation.event' || !Number.isSafeInteger(offset) ||
+          offset < 0 || offset >= length) break;
         const saved = database ? row.get(offset)?.value : checkpoint.log[offset];
         const event = database && saved ? JSON.parse(saved) : saved;
         if (!event || digest(event) !== digest(e.payload.event)) throw Error('Queued audit event differs from the durable physical checkpoint.');

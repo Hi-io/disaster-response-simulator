@@ -70,6 +70,25 @@ test('mismatched checkpoint audit payload is never acknowledged or pruned', asyn
   await assert.rejects(compactDemoAudit({ bus, checkpoint: { ...checkpoint, manifest: { config: { continuousDemo: false } } }, producer: {} }), /restricted/);
 });
 
+test('historical producer epochs compact only exact same-world checkpoint rows and protect other worlds and future events', async t => {
+  const w = new World(config), bus = await createLocalEventBus({ databasePath: ':memory:' });
+  t.after(async () => { w.close(); await bus.close(); });
+  const checkpoint = w.checkpoint(); w.advance(60000); const later = w.checkpoint();
+  const event = (epoch, runId, offset, record) => ({ eventId: `${epoch}:${runId}:generation:7:event:${offset}`,
+    runId, orderingKey: runId, audience: 'audit', type: 'simulation.event', simTimeMs: record.at,
+    payload: { offset, event: record } });
+  const old = event('previous-producer-epoch', w.runId, 0, checkpoint.log[0]);
+  const other = event('previous-producer-epoch', 'another-world', 0, checkpoint.log[0]);
+  await bus.publish([old, other, event('current-producer-epoch', w.runId, checkpoint.log.length, later.log[checkpoint.log.length])]);
+  const result = await compactDemoAudit({ bus, checkpoint,
+    producer: { epoch: 'current-producer-epoch', generation: 99, runId: w.runId, eventCursor: checkpoint.log.length } });
+  assert.equal(result.acknowledged, 1); assert.equal(result.pruned, 1);
+  assert.equal((await bus.stats()).retained, 2); assert.equal((await bus.publish(old)).duplicate, true);
+  const next = await bus.pull({ subscriptionId: 'demo-durable-checkpoint-v1' });
+  assert.equal(next.messages[0].envelope.runId, 'another-world');
+  assert.ok(next.messages.some(m => m.envelope.payload.offset >= checkpoint.log.length));
+});
+
 test('compact archive host resumes identical physical state and source identity while removing previous working copies', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'aidscaler-demo-storage-host-'));
   const previousArchives = process.env.AIDSCALER_ARCHIVE_DIR;
