@@ -12,7 +12,8 @@ export async function executeBridgeCommand(command, { world, presence, fetcher =
   if (command.scope === 'presence') return { status: 200, headers: {}, body: JSON.stringify(await presence.touch(command.body.client)) };
   const observer = command.scope === 'observer';
   const url = (observer ? world.credentials.observerUrl : world.credentials.sourceUrl) + command.path;
-  const headers = observer ? { authorization: 'Bearer ' + world.credentials.observerKey } :
+  const headers = observer ? { authorization: 'Bearer ' + world.credentials.observerKey,
+    ...(command.body ? { 'content-type': 'application/json' } : {}) } :
     Object.fromEntries(Object.entries(command.headers ?? {}).filter(([k]) =>
       ['authorization', 'content-type', 'x-aidscaler-source-instance'].includes(k.toLowerCase())));
   const response = await fetcher(url, { method: command.method, headers, body: command.body,
