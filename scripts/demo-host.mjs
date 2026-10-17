@@ -6,6 +6,7 @@ import { writeAtomicJson } from '../sources/atomic-json.mjs';
 import { manifest } from '../contracts/config.mjs';
 import { digest } from '../engine/determinism.mjs';
 import { capturePreviousDemoArchives, cleanPreviousDemoArchives, compactDemoAudit } from './demo-storage.mjs';
+import { checkpointReceipt } from '../sources/checkpoint-receipt.mjs';
 
 const read = async filename => { try { return JSON.parse(await readFile(filename, 'utf8')); }
   catch (e) { if (e.code === 'ENOENT') return null; throw e; } };
@@ -24,7 +25,8 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
     throw Error('A persistent data directory and a bounded checkpoint interval are required.');
   const directory = path.resolve(dataDir); await mkdir(directory, { recursive: true });
   const sourceFile = path.join(directory, 'source.json'), checkpointFile = path.join(directory, 'checkpoint.json');
-  const previous = await read(sourceFile), original = await read(checkpointFile);
+  const previous = await read(sourceFile);
+  let original = await read(checkpointFile);
   if (!!previous !== !!original) throw Error('Incomplete simulator recovery bundle. Preserve both source.json and checkpoint.json.');
   if (previous && (previous.format !== 'aidscaler-demo-source-v1' || typeof previous.observerKey !== 'string' ||
     previous.observerKey.length < 32 || !previous.actors || typeof previous.actors !== 'object' ||
@@ -73,9 +75,11 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
     ...operationalDemoConfig,
     maxEvents: 100000000, maxPosts: 2000000, modelCallLimit: 100000 };
   const lab = await createLabServers({ isolated: true, config: checkpoint?.manifest.config ?? { ...defaults, ...config },
-    checkpoint: checkpoint ?? undefined, observerPort, sourcePort, observerKey: previous?.observerKey ?? randomBytes(24).toString('hex'),
+    checkpoint: checkpoint ?? undefined, checkpointFile, observerPort, sourcePort, observerKey: previous?.observerKey ?? randomBytes(24).toString('hex'),
     actorKeys: previous?.actors ?? null, persistCredentials: false, storageDir: path.join(directory, 'transport'), projectionMs });
-  let saving = null, closing = false, paused = !autostart, timer, savedSnapshot = original, collectedPreviousArchives = false;
+  let saving = null, closing = false, paused = !autostart, timer,
+    savedSnapshot = original ? checkpointReceipt(original) : null, collectedPreviousArchives = false;
+  checkpoint = null; original = null;
   const credentials = () => ({ format: 'aidscaler-demo-source-v1', observerKey: lab.observerKey,
     actors: lab.actorKeys, observerUrl: `http://127.0.0.1:${lab.observerPort}`,
     sourceUrl: `http://127.0.0.1:${lab.sourcePort}`, observerPort: lab.observerPort,
@@ -85,8 +89,7 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
     if (saving) return saving;
     saving = (async () => {
       await lab.runtime.flush();
-      const snapshot = await lab.checkpoint();
-      await writeAtomicJson(checkpointFile, snapshot);
+      const snapshot = await lab.runtime.persistCheckpoint();
       await writeAtomicJson(sourceFile, credentials());
       if (storageMaintenance) {
         let audit;

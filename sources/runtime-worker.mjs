@@ -10,6 +10,8 @@ import { createActorDeltaProjector } from './actor-delta.mjs';
 import { publicPostingRate } from './posting-rate.mjs';
 import { createCompactActorProjector } from './compact-actor.mjs';
 import { sourceInstanceId, requireSourceInstance } from './source-instance.mjs';
+import { writeAtomicJson } from './atomic-json.mjs';
+import { checkpointReceipt } from './checkpoint-receipt.mjs';
 
 // This thread is the sole owner of physical state. Projection and event
 // consumers acknowledge their own delivery; neither ACK controls World.step.
@@ -17,6 +19,7 @@ let world = new World(workerData.config ?? {}, workerData.checkpoint ?? null);
 let comparison = null, playing = false, rate = world.config.mode === 'live' ? 1 : 10;
 let anchorWall = performance.now(), anchorSim = world.now, barrierActive = false;
 let projectionPending = null, projectionVersion = 0, bootstrapId = null;
+let checkpointSaving = null;
 let eventPending = null;
 let eventCursor = workerData.eventCursor ?? (workerData.checkpoint ? world.log.length : 0);
 if (!Number.isSafeInteger(eventCursor) || eventCursor < 0 || eventCursor > world.log.length ||
@@ -177,6 +180,15 @@ const methods = {
   queryResult: (org, id, version) => compactActors.queryResult(org, id, version),
   actorAction: (actor, input) => world.act(actor, input),
   checkpoint: () => world.checkpoint(),
+  persistCheckpoint() {
+    if (!workerData.checkpointFile) throw new SimError('CHECKPOINT_PATH','No private checkpoint file was configured',403);
+    if (!checkpointSaving) {
+      const snapshot=world.checkpoint();
+      checkpointSaving=writeAtomicJson(workerData.checkpointFile,snapshot)
+        .then(()=>checkpointReceipt(snapshot)).finally(()=>{checkpointSaving=null;});
+    }
+    return checkpointSaving;
+  },
   metrics: () => evaluate(world),
   evaluationInput: () => createEvaluationInput(world, { detach: false }),
   observer: options => ({ ...world.observer(options), ...runtime() }),
@@ -251,7 +263,7 @@ const methods = {
     return options.pair ? { a: presentation(world), b: presentation(comparison) }
       : presentation(comparison);
   },
-  close() { playing = false; world.close(); comparison?.close(); return { closed: true }; },
+  async close() { playing = false; await checkpointSaving; world.close(); comparison?.close(); return { closed: true }; },
 };
 
 function schedule() {
@@ -268,7 +280,15 @@ async function drive() {
       try {
         if (!Object.hasOwn(methods, request.method)) throw new SimError('METHOD', 'Unknown runtime method', 404);
         runtimeRevision++;
-        const result = await methods[request.method](...(request.args ?? []));
+        const work = methods[request.method](...(request.args ?? []));
+        if (request.method === 'persistCheckpoint') {
+          // Snapshot capture/serialization is synchronous and isolated. Once
+          // its immutable bytes exist, disk I/O need not hold the clock/RPCs.
+          Promise.resolve(work).then(result=>send({type:'reply',id:request.id,result}),
+            error=>send({type:'reply',id:request.id,error:{code:error.code??'CHECKPOINT',message:error.message,status:error.status??500}}));
+          continue;
+        }
+        const result = await work;
         send({ type: 'reply', id: request.id, result });
         if (request.method === 'close') {
           closed = true; clearInterval(ticker); clearInterval(projector); parentPort.close();

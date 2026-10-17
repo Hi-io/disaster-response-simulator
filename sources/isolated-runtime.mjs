@@ -47,6 +47,7 @@ const eventDigest = (event) => createHash('sha256').update(JSON.stringify(event)
 export async function createIsolatedRuntime({
   config = {},
   checkpoint,
+  checkpointFile,
   storageDir,
   bus: providedBus,
   documents: providedDocuments,
@@ -144,6 +145,7 @@ export async function createIsolatedRuntime({
       workerData: {
         config,
         checkpoint,
+        checkpointFile: checkpointFile ? path.resolve(checkpointFile) : null,
         tickMs,
         workBudgetMs,
         projectionMs,
@@ -157,6 +159,9 @@ export async function createIsolatedRuntime({
     if (!providedBus) await bus.close();
     throw error;
   }
+  // The Worker constructor has already cloned its input. Do not retain a large
+  // recovery object in the HTTP host's closures for the process lifetime.
+  checkpoint = undefined;
   const scope = (org = 'org0', perspective = 'truth') => `${org}:${perspective}`;
   const revoked = org => meta?.integrations?.revokedOrgs?.includes(org) ?? false;
   const fail = (error) => {
@@ -216,7 +221,7 @@ export async function createIsolatedRuntime({
   function command(method, ...args) {
     if (
       fatal &&
-      (engineFailure || !['meta', 'control', 'checkpoint', 'close', 'events'].includes(method))
+      (engineFailure || !['meta', 'control', 'checkpoint', 'persistCheckpoint', 'close', 'events'].includes(method))
     )
       return Promise.reject(fatal);
     if (closed) return Promise.reject(Error('Simulation runtime is closed.'));
@@ -513,6 +518,10 @@ export async function createIsolatedRuntime({
     async refresh() {
       updateMeta(await request('meta'));
       return meta;
+    },
+    persistCheckpoint() {
+      if (!checkpointFile) return Promise.reject(Error('No private checkpoint file was configured.'));
+      return request('persistCheckpoint');
     },
     evaluate() {
       if (closing || closed)

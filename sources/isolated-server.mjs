@@ -45,6 +45,7 @@ async function body(req, limit = 2000000) {
 export async function createIsolatedLabServers({
   config = {},
   checkpoint,
+  checkpointFile,
   observerPort = 4318,
   sourcePort = 4319,
   observerKey = randomBytes(24).toString('hex'),
@@ -60,6 +61,7 @@ export async function createIsolatedLabServers({
   const runtime = await createIsolatedRuntime({
     config,
     checkpoint,
+    checkpointFile,
     storageDir,
     bus,
     documents,

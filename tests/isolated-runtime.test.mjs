@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -332,6 +332,7 @@ test('isolated runtime preserves checkpoint/control maintenance after a transpor
   const runtime = await createIsolatedRuntime({
     config,
     storageDir,
+    checkpointFile: path.join(storageDir,'checkpoint.json'),
     bus,
     documents,
     tickMs: 15,
@@ -347,6 +348,8 @@ test('isolated runtime preserves checkpoint/control maintenance after a transpor
   await until(() => runtime.error, 'reported transport failure');
   assert.match(runtime.error.message, /Injected disk failure/);
   assert.equal((await runtime.request('checkpoint')).now, 30000);
+  assert.equal((await runtime.persistCheckpoint()).now,30000);
+  assert.equal(JSON.parse(await readFile(path.join(storageDir,'checkpoint.json'),'utf8')).now,30000);
   await runtime.request('control', { play: false });
   const first = runtime.close(),
     second = runtime.close();
