@@ -5,6 +5,7 @@ import { createLabServers } from '../sources/server.mjs';
 import { writeAtomicJson } from '../sources/atomic-json.mjs';
 import { manifest } from '../contracts/config.mjs';
 import { digest } from '../engine/determinism.mjs';
+import { capturePreviousDemoArchives, cleanPreviousDemoArchives, compactDemoAudit } from './demo-storage.mjs';
 
 const read = async filename => { try { return JSON.parse(await readFile(filename, 'utf8')); }
   catch (e) { if (e.code === 'ENOENT') return null; throw e; } };
@@ -16,6 +17,7 @@ const operationalDemoConfig = { recurringNeeds: false, healthReports: false, wat
 export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort = 4319,
   config = {}, checkpointEveryMs = 60000, allowDemoBuildUpgrade = false,
   allowOperationalDemoUpgrade = false,
+  storageMaintenance = true, projectionMs = 1500,
   director = { enabled: true, intervalMs: 300000, maxOpen: 8, maxActive: 4 },
   autostart = true, rate = 10 } = {}) {
   if (!dataDir || !Number.isSafeInteger(checkpointEveryMs) || checkpointEveryMs < 1000)
@@ -63,6 +65,7 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
   // Archives are authoritative SQLite files and live on the same persistent
   // volume as the checkpoints, never in the immutable container filesystem.
   process.env.AIDSCALER_ARCHIVE_DIR = path.join(directory, 'archives');
+  const previousArchives = storageMaintenance ? await capturePreviousDemoArchives(process.env.AIDSCALER_ARCHIVE_DIR) : [];
   const defaults = { topology: 'takamatsu', grid: 66, extentKm: 10, seed: 'aidscaler-shared-demo-v1',
     scenario: 'S01', hazard: 'none', organizations: 4, policy: 'none', mode: 'interactive',
     clockLatency: 'wall', continuousDemo: true, durationMs: 21600000, postsPerHour: 240,
@@ -71,8 +74,8 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
     maxEvents: 100000000, maxPosts: 2000000, modelCallLimit: 100000 };
   const lab = await createLabServers({ isolated: true, config: checkpoint?.manifest.config ?? { ...defaults, ...config },
     checkpoint: checkpoint ?? undefined, observerPort, sourcePort, observerKey: previous?.observerKey ?? randomBytes(24).toString('hex'),
-    actorKeys: previous?.actors ?? null, persistCredentials: false, storageDir: path.join(directory, 'transport') });
-  let saving = null, closing = false, timer, savedSnapshot = original;
+    actorKeys: previous?.actors ?? null, persistCredentials: false, storageDir: path.join(directory, 'transport'), projectionMs });
+  let saving = null, closing = false, timer, savedSnapshot = original, collectedPreviousArchives = false;
   const credentials = () => ({ format: 'aidscaler-demo-source-v1', observerKey: lab.observerKey,
     actors: lab.actorKeys, observerUrl: `http://127.0.0.1:${lab.observerPort}`,
     sourceUrl: `http://127.0.0.1:${lab.sourcePort}`, observerPort: lab.observerPort,
@@ -85,6 +88,15 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
       const snapshot = await lab.checkpoint();
       await writeAtomicJson(checkpointFile, snapshot);
       await writeAtomicJson(sourceFile, credentials());
+      if (storageMaintenance) {
+        const audit = await compactDemoAudit({ bus: lab.runtime.bus, checkpoint: snapshot,
+          producer: await read(path.join(directory, 'transport', 'producer.json')) });
+        const oldArchives = collectedPreviousArchives ? { deleted: 0, bytes: 0 } :
+          await cleanPreviousDemoArchives(process.env.AIDSCALER_ARCHIVE_DIR, previousArchives, archiveFiles(snapshot));
+        collectedPreviousArchives = true;
+        await writeAtomicJson(path.join(directory, 'storage-maintenance.json'), { at: Date.now(), runId: snapshot.runId,
+          checkpointNow: snapshot.now, presentationIntervalMs: projectionMs, audit, oldArchives });
+      }
       const retiredFiles = archiveFiles(savedSnapshot), activeFiles = new Set(archiveFiles(snapshot));
       savedSnapshot = snapshot;
       const archiveRoot = path.join(directory, 'archives') + path.sep;

@@ -72,6 +72,25 @@ explicit recovery rather than silently pairing mismatched state. Compatible
 demo-only build upgrades require `allowDemoBuildUpgrade: true`; engine contracts
 and physical state are checked and a private migration receipt is saved. No
 benchmark checkpoint is migrated.
+Hosted storage maintenance removes only previous-process archive working copies
+captured before the new engine starts, after the replacement checkpoint commits.
+The active files and the retained checkpoint remain protected. A demo-only audit
+consumer verifies each queued audit payload against the durable checkpoint's
+event offset and hash before acknowledging and pruning that redundant queue copy.
+The authoritative physical log, other consumers' unacknowledged deliveries and
+all event-ID deduplication tombstones remain intact. Generic bus/benchmark
+retention semantics are unchanged. `storage-maintenance.json` records the work.
+The demo presentation cadence defaults to 1500 ms; engine ticks and physical
+simulation timing are unaffected.
+
+Authoritative history and deduplication keys still grow. A declared 12 GiB
+hostPath volume is neither a measured fourteen-day capacity guarantee nor a
+filesystem quota. Budget for the current archives plus their retained checkpoint
+and temporary replacement copy; monitor actual disk space and growth. A full
+checkpoint requested outside the managed host also makes archive snapshots, so
+monitoring should read the saved checkpoint or compact health/frame endpoints
+instead of repeatedly exporting full checkpoints. No fourteen-day soak result
+is implied by the recovery and retention tests.
 `allowOperationalDemoUpgrade: true` separately authorizes the initial hosted
 workflow migration of only recurring population requests, health reports and
 the four fatality probabilities to their demo settings. It preserves all past
