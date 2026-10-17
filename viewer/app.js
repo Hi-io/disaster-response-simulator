@@ -7,6 +7,7 @@ import {
   eventCard,
   postCard,
   humanize,
+  simulationTitle,
   entityKind,
   placeName,
 } from './presentation.js';
@@ -1385,7 +1386,7 @@ async function refresh() {
     $('effective').textContent =
       `${number(snapshot.playing ? snapshot.effectiveRate : 0)}× effective`;
     renderMeasurements();
-    $('scenarioTitle').textContent = `${humanize(snapshot.manifest.config.hazard)} simulation`;
+    $('scenarioTitle').textContent = simulationTitle(snapshot.manifest.config.hazard);
     const sceneHash = mapVisualKey(snapshot, $('perspective').value, { includeRoutes: false });
     if (changed || sceneHash !== previousSceneHash) {
       buildScene();

@@ -4,6 +4,10 @@ export const humanize = (text) =>
   String(text ?? '')
     .replaceAll('_', ' ')
     .replace(/^./, (s) => s.toUpperCase());
+export const simulationTitle = (hazard) => {
+  const name = String(hazard ?? '').trim();
+  return !name || name.toLowerCase() === 'none' ? 'Live simulation' : `${humanize(name)} simulation`;
+};
 const number = (n) => new Intl.NumberFormat('en', { maximumFractionDigits: 1 }).format(n ?? 0);
 export const formatTime = (ms) =>
   [Math.floor(ms / 3600000), Math.floor(ms / 60000) % 60, Math.floor(ms / 1000) % 60]
