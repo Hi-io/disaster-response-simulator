@@ -128,24 +128,30 @@ export function installDemo(w) {
     const d = w.state.demo?.director;
     if (!d?.enabled || !d.baseOperations || generation !== d.generation || !w.config.continuousDemo) return;
     const bases = w.state.map.organizations.filter(o => !o.demoVisitor && o.connected);
+    const visitorPresent = w.state.map.organizations.some(o => o.demoVisitor && !o.demoRetired);
     for (let offset = 0; offset < bases.length; offset++) {
       const o = bases[(tick + offset) % bases.length], known = w.state.observations[o.id];
       const need = Object.values(known.needs).filter(n => n.id.startsWith('demo-need-') &&
         ['water', 'food'].includes(n.type) && n.quantity > n.served).find(n =>
-        !w.state.operations.some(op => op.need === n.id && !['failed', 'cancelled'].includes(op.state)));
+        !w.state.operations.some(op => op.need === n.id && !['failed', 'cancelled'].includes(op.state)) ||
+        (!visitorPresent && w.now - (w.need(n.id)?.createdAt ?? w.now) >= 10800000 &&
+          (w.need(n.id)?.quantity ?? 0) > (w.need(n.id)?.served ?? 0) &&
+          !w.state.operations.some(op => op.need === n.id && !terminal.has(op.state))));
       if (!need) continue;
       const r = w.state.resources.find(r => r.owner === o.id && r.type === need.type && r.node === o.node && r.quantity - r.reserved - r.floor > 0);
       const v = w.state.vehicles.find(v => v.owner === o.id && !v.background && ['idle', 'arrived'].includes(v.state) && !v.load && !v.operation);
       if (!r || !v) continue;
-      const quantity = Math.floor(Math.min(need.type === 'water' ? 100 : 40, (need.quantity - need.served) / 2, r.quantity - r.reserved - r.floor));
+      const cleanup = !visitorPresent && w.now - (w.need(need.id)?.createdAt ?? w.now) >= 10800000;
+      const pending = cleanup ? Math.max(0, w.need(need.id).quantity - w.need(need.id).served) : need.quantity - need.served;
+      const quantity = Math.floor(Math.min(need.type === 'water' ? 100 : 40, cleanup ? pending : pending / 2, r.quantity - r.reserved - r.floor));
       if (quantity < 1) continue;
       try {
         const result = w.act({ id: 'demo-scripted-base-commander', org: o.id, role: 'commander' }, {
           type: 'dispatch', params: { need: need.id, resource: r.id, vehicle: v.id, quantity },
-          idempotencyKey: `demo-base-${need.id}` });
+          idempotencyKey: cleanup ? `demo-cleanup-${need.id}-${tick}` : `demo-base-${need.id}` });
         const op = w.state.operations.find(op => op.id === result.id); op.demoBaseContribution = true;
         w.record('demo_base_response_authorized', { org: o.id, operation: op.id, need: need.id, quantity,
-          controller: 'scripted-owned-commander', modelInference: false, demoOnly: true }, op.id);
+          controller: 'scripted-owned-commander', modelInference: false, unattendedCleanup: cleanup, demoOnly: true }, op.id);
         break; // Leave the majority of each request for visitor contributions.
       } catch (e) {
         w.record('demo_base_response_deferred', { org: o.id, need: need.id, reason: e.code ?? 'ACTION', demoOnly: true });

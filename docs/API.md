@@ -58,6 +58,10 @@ new incident, leaving most of the request available for visitors. They are not
 model inferences. The continuous base driver roster and supply additions are
 explicit recorded demo configuration. An existing visitor dispatch takes
 precedence over that incident's scripted base response.
+With no active visitor organization, base teams may resume an unattended request
+after three simulated hours, only when its earlier operations have drained.
+Cleanup is recorded, bounded and still requires physical receipt. Any active
+visitor organization suppresses that cleanup, preserving review opportunities.
 
 The host saves credentials, checkpoints, transport cursors and authoritative
 archives on the persistent volume. Close operational writers before `host.close()`

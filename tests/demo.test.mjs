@@ -123,6 +123,28 @@ test('scripted base teams use owned native dispatch and leave meaningful demand 
   } finally { w.close(); }
 });
 
+test('unattended base cleanup waits three simulated hours and never consumes an active visitor opportunity', () => {
+  for (const visitorPresent of [false, true]) {
+    const w = new World(config);
+    try {
+      if (visitorPresent) create(w);
+      w.demoConfigureDirector({ baseOperations: true, intervalMs: 300000, maxOpen: 2 });
+      w.advance(10000000);
+      assert.equal(w.need('demo-need-1').served, 100, 'initial contribution leaves 200 L before the cleanup window');
+      w.advance(14400000);
+      if (visitorPresent) {
+        assert.equal(w.need('demo-need-1').served, 100);
+        assert.equal(w.log.some(e => e.type === 'demo_base_response_authorized' && e.data.unattendedCleanup), false);
+      } else {
+        assert.equal(w.need('demo-need-1').served, 300);
+        assert.ok(w.log.some(e => e.type === 'demo_base_response_authorized' && e.data.unattendedCleanup));
+        assert.ok(w.state.operations.some(op => op.need === 'demo-need-1' && op.received > 0 && op.state === 'completed'));
+      }
+      assert.equal(w.state.resources.every(checkResource), true); assert.deepEqual(w.invariants(), []);
+    } finally { w.close(); }
+  }
+});
+
 test('spectator projection is an allowlist without private state, finance, actor observations or future sources', () => {
   const w = new World(config);
   try {
