@@ -75,7 +75,14 @@ export async function createIsolatedLabServers({
   );
   let actualObserver = observerPort,
     actualSource = sourcePort,
-    closing = false;
+    closing = false, quiescing = false, quiescePromise;
+  const handlers = new Set();
+  const tracked = handle => (req, res) => {
+    if (quiescing) return json(res, 503, { error: 'SOURCE_CLOSING', message: 'The source is closing.' });
+    const pending = Promise.resolve().then(() => handle(req, res));
+    handlers.add(pending);
+    pending.finally(() => handlers.delete(pending)).catch(() => res.destroy());
+  };
   const sourceURL = () => `http://127.0.0.1:${actualSource}`;
   const observerAuth = (req) => {
     if (
@@ -139,7 +146,7 @@ export async function createIsolatedLabServers({
     });
     res.end(bytes);
   }
-  const observer = http.createServer(async (req, res) => {
+  const observer = http.createServer(tracked(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname === '/api/login' && req.method === 'POST') {
@@ -310,9 +317,9 @@ export async function createIsolatedLabServers({
         });
       else res.destroy();
     }
-  });
+  }));
   const sourceRequests = new Map();
-  const sources = http.createServer(async (req, res) => {
+  const sources = http.createServer(tracked(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
       if (url.pathname.startsWith('/assets/')) {
@@ -529,7 +536,7 @@ export async function createIsolatedLabServers({
         });
       else res.destroy();
     }
-  });
+  }));
   try {
     await Promise.all([
       new Promise((resolve, reject) => {
@@ -567,6 +574,21 @@ export async function createIsolatedLabServers({
       { mode: 0o600 },
     );
   }
+  const quiesce = () => {
+    if (quiescePromise) return quiescePromise;
+    quiescing = true;
+    quiescePromise = (async () => {
+      // Stop admitting HTTP work before a final physical checkpoint. A request
+      // that already posted an engine command must finish before the caller
+      // pauses/flushes; an incomplete request body is aborted instead.
+      const listeners = Promise.all([observer, sources].map(server =>
+        new Promise(resolve => server.close(resolve))));
+      observer.closeAllConnections(); sources.closeAllConnections();
+      await Promise.allSettled([...handlers]);
+      await listeners;
+    })();
+    return quiescePromise;
+  };
   return {
     observer,
     sources,
@@ -575,18 +597,14 @@ export async function createIsolatedLabServers({
     observerPort: actualObserver,
     sourcePort: actualSource,
     runtime,
+    quiesce,
     advance: (target) => runtime.request('advance', target),
     checkpoint: () => runtime.request('checkpoint'),
     async close() {
       if (closing) return;
       closing = true;
+      await quiesce();
       await runtime.close();
-      observer.closeAllConnections();
-      sources.closeAllConnections();
-      await Promise.all([
-        new Promise((resolve) => observer.close(resolve)),
-        new Promise((resolve) => sources.close(resolve)),
-      ]);
     },
   };
 }

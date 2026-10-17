@@ -10,6 +10,7 @@ import { createViewerBootstrap } from '../sources/projections.mjs';
 import { demoFrame, demoMap } from '../sources/demo-projection.mjs';
 import { createLabServers } from '../sources/server.mjs';
 import { startDemoHost } from '../scripts/demo-host.mjs';
+import { sourceInstanceId } from '../sources/source-instance.mjs';
 
 const config = { seed: 'demo-contract-test', topology: 'grid', grid: 5, extentKm: 3,
   scenario: 'S01', hazard: 'none', policy: 'none', organizations: 4, backgroundTraffic: 0,
@@ -208,6 +209,61 @@ test('persistent demo host resumes world, clock, credentials, identity and live 
   const same = await host.lab.runtime.request('demoCreateOrganization', { name: 'Island Support', idempotencyKey: 'persistent-registration' });
   assert.deepEqual(same, made);
   assert.equal(host.lab.runtime.meta.demo.director.enabled, true);
+});
+
+test('live demo shutdown drains an admitted dispatch before its final checkpoint and preserves lifetime, operations and consumer cursor', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'aidscaler-demo-drain-'));
+  const previousArchives = process.env.AIDSCALER_ARCHIVE_DIR;
+  let host, release;
+  t.after(async () => { release?.(); await host?.close(); if (previousArchives === undefined) delete process.env.AIDSCALER_ARCHIVE_DIR;
+    else process.env.AIDSCALER_ARCHIVE_DIR = previousArchives; await rm(dir, { recursive: true, force: true }); });
+  host = await startDemoHost({ dataDir: dir, observerPort: 0, sourcePort: 0, config,
+    director: { enabled: true, intervalMs: 300000, maxOpen: 2, baseOperations: false }, autostart: false });
+  const identity = host.credentials.sourceInstance;
+  const made = await host.lab.runtime.request('demoCreateOrganization', { name: 'Harbor Rescue', idempotencyKey: 'drain-test-registration' });
+  const org = made.organization.id;
+  await host.lab.advance(30000);
+  await host.lab.runtime.refresh();
+  const need = (await host.lab.checkpoint()).state.needs.find(n => n.id.startsWith('demo-need-'));
+  const provision = await fetch(`${host.credentials.observerUrl}/api/actors/provision`, { method: 'POST',
+    headers: { Authorization: `Bearer ${host.credentials.observerKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ org, role: 'commander' }) });
+  assert.equal(provision.status, 201); const actor = await provision.json();
+  await host.lab.runtime.flush();
+  const sub = 'restart-continuity-probe';
+  await host.lab.runtime.bus.subscribe({ subscriptionId: sub, audience: 'audit' });
+  const batch = await host.lab.runtime.bus.pull({ subscriptionId: sub });
+  assert.ok(batch.messages.length > 0);
+  const cursor = (await host.lab.runtime.bus.ack({ subscriptionId: sub, deliveryIds: batch.messages.map(m => m.deliveryId) })).cursor;
+  let admitted;
+  const started = new Promise(resolve => { admitted = resolve; });
+  const barrier = new Promise(resolve => { release = resolve; });
+  const originalRequest = host.lab.runtime.request;
+  host.lab.runtime.request = async (method, ...args) => {
+    if (method === 'boundActorMutation') { admitted(); await barrier; }
+    return originalRequest(method, ...args);
+  };
+  await host.resume(); await delay(100);
+  const sent = fetch(`${host.credentials.sourceUrl}/api/actor/action`, { method: 'POST',
+    headers: { Authorization: `Bearer ${actor.key}`, 'Content-Type': 'application/json', 'X-AidScaler-Source-Instance': identity },
+    body: JSON.stringify({ type: 'dispatch', params: { need: need.id, resource: `r-${org}-water`,
+      vehicle: `v-${org}-0`, quantity: 300 }, idempotencyKey: 'drain-real-dispatch' }) }).catch(() => null);
+  await started;
+  let done = false;
+  const closing = host.close().then(() => { done = true; });
+  await delay(40); assert.equal(done, false, 'final persistence must wait for an already admitted command');
+  release(); await sent; await closing; host = null;
+  const saved = JSON.parse(await readFile(path.join(dir, 'checkpoint.json'), 'utf8'));
+  const producer = JSON.parse(await readFile(path.join(dir, 'transport', 'producer.json'), 'utf8'));
+  const operation = saved.state.operations.find(o => o.org === org && o.quantity === 300);
+  assert.ok(operation, 'the drained real physical dispatch is in the saved checkpoint');
+  assert.equal(producer.eventCursor, saved.log.length); assert.equal(sourceInstanceId(producer.epoch, producer.generation), identity);
+  host = await startDemoHost({ dataDir: dir, observerPort: 0, sourcePort: 0, autostart: false });
+  assert.equal(host.credentials.sourceInstance, identity);
+  const resumed = await host.lab.checkpoint();
+  assert.equal(resumed.runId, saved.runId); assert.equal(resumed.now, saved.now);
+  assert.deepEqual(resumed.state.operations.find(o => o.id === operation.id), operation);
+  assert.equal((await host.lab.runtime.bus.stats()).subscriptions.find(s => s.subscriptionId === sub).cursor, cursor);
 });
 
 test('demo host refuses implicit code migration and explicit compatible upgrade preserves physical checkpoint identity', async t => {

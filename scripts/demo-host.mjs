@@ -140,6 +140,7 @@ export async function startDemoHost({ dataDir, observerPort = 4318, sourcePort =
     async resume() { await lab.runtime.request('control', { play: true, rate }); },
     async close() {
       if (closing) return; closing = true; clearInterval(timer);
+      await lab.quiesce();
       await lab.runtime.request('control', { play: false });
       await saving; await persist(); await lab.close();
     } };
