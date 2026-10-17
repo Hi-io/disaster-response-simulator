@@ -158,6 +158,7 @@ export async function createIsolatedRuntime({
     throw error;
   }
   const scope = (org = 'org0', perspective = 'truth') => `${org}:${perspective}`;
+  const revoked = org => meta?.integrations?.revokedOrgs?.includes(org) ?? false;
   const fail = (error) => {
     fatal ??= error;
     rejectReady(fatal);
@@ -271,11 +272,16 @@ export async function createIsolatedRuntime({
               pruneMaps();
               break;
             case 'actor.patch':
-              actors.set(data.org, applyActor(actors.get(data.org), data.patch));
-              pruneOrgResults(data.org, actors.get(data.org));
+              // Revocation can arrive via a command while an older projection
+              // is in flight. Its former baseline was intentionally evicted;
+              // never recreate the retired tenant from a stale sparse patch.
+              if (!revoked(data.org)) {
+                actors.set(data.org, applyActor(actors.get(data.org), data.patch));
+                pruneOrgResults(data.org, actors.get(data.org));
+              }
               break;
             case 'query.result':
-              results.set(`${data.org}:${data.version}`, data.result);
+              if (!revoked(data.org)) results.set(`${data.org}:${data.version}`, data.result);
               break;
             case 'runtime.activity':
               activityCache = data;
@@ -351,6 +357,7 @@ export async function createIsolatedRuntime({
         packetMeta,
       );
     for (const actor of message.actors) {
+      if (revoked(actor.org)) continue;
       const audience = `org:${actor.org}`;
       audiences.add(audience);
       for (const result of actor.results ?? [])
@@ -369,10 +376,10 @@ export async function createIsolatedRuntime({
         `actor:${publicationId}:${actor.org}:${version}:${message.version}`,
         packetMeta,
       );
-      producedActors.set(
-        actor.org,
-        actor.state ?? applyActor(producedActors.get(actor.org), patch),
-      );
+      // A concurrent actor/observer request may have refreshed revocation
+      // metadata during the asynchronous durable publication above.
+      if (!revoked(actor.org)) producedActors.set(
+        actor.org, actor.state ?? applyActor(producedActors.get(actor.org), patch));
     }
     await publish(
       'viewer.frame',
@@ -549,10 +556,15 @@ export async function createIsolatedRuntime({
       return mergeViewerFrame(data.map, data.frame);
     },
     async actor(org) {
+      const assertActive = () => {
+        if (revoked(org)) throw Object.assign(Error('Actor access has been revoked.'), { code: 'ACCESS_REVOKED', status: 403 });
+      };
+      assertActive();
       while (!actors.has(org)) {
         const instance = meta.sourceInstance;
         const value = await request('actorCompact', org);
         if (meta.sourceInstance !== instance) continue;
+        assertActive();
         actors.set(org, value.state);
         for (const r of value.results) results.set(`${org}:${r.version}`, r.result);
         pruneOrgResults(org, value.state);

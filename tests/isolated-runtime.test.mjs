@@ -131,6 +131,52 @@ test('isolated runtime materializes real queue documents and preserves actor/que
   assert.deepEqual(await evaluation, await runtime.request('metrics'));
 });
 
+for (const stage of ['publish', 'resolve']) test(`revocation during in-flight actor ${stage} discards the retired projection without losing other teams`, async t => {
+  const storageDir = await mkdtemp(path.join(os.tmpdir(), 'aidscaler-revoke-flight-'));
+  const bus = await createLocalEventBus({ storageDir: path.join(storageDir, 'queue') });
+  const base = await createQueuedDocuments({ bus, storageDir: path.join(storageDir, 'documents') });
+  let target, held = false, entered, release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  const hold = async (type, payload) => {
+    if (!held && type === 'actor.patch' && payload.org === target && !payload.patch.replace) {
+      held = true; entered(); await gate;
+    }
+  };
+  const documents = { ...base,
+    async publish(envelope) {
+      if (stage === 'publish') await hold(envelope.type, envelope.payload);
+      return base.publish(envelope);
+    },
+    async resolve(envelope) {
+      const payload = await base.resolve(envelope);
+      if (stage === 'resolve') await hold(envelope.type, payload);
+      return payload;
+    },
+  };
+  const runtime = await createIsolatedRuntime({ config: { ...config, scenario: 'S01', hazard: 'none',
+    mode: 'interactive', clockLatency: 'wall', continuousDemo: true, backgroundTraffic: 0, postsPerHour: 0 },
+    storageDir, bus, documents, projectionMs: 25 });
+  t.after(async () => { release(); await runtime.close(); await bus.close(); await rm(storageDir, { recursive: true, force: true }); });
+  const made = await runtime.request('demoCreateOrganization', { name: 'Harbor Volunteers', idempotencyKey: 'retire-race-organization' });
+  target = made.organization.id;
+  await runtime.refresh();
+  assert.equal((await runtime.actor(target)).organization.id, target);
+  await Promise.race([started, delay(5000).then(() => { throw Error('The in-flight actor delta was not observed.'); })]);
+  await runtime.request('demoReleaseOrganization', { org: target, idempotencyKey: 'retire-race-release' });
+  await runtime.refresh();
+  assert.ok(runtime.meta.integrations.revokedOrgs.includes(target));
+  release();
+  await runtime.request('advance', 60000);
+  await until(async () => runtime.error || (await runtime.frame()).now >= 60000, 'live projection after retirement');
+  assert.equal(runtime.error, undefined);
+  assert.equal((await runtime.actor('org0')).organization.id, 'org0');
+  await assert.rejects(runtime.actor(target), { code: 'ACCESS_REVOKED', status: 403 });
+  await runtime.flush();
+  const saved = await runtime.request('checkpoint');
+  assert.equal(saved.state.map.organizations.find(o => o.id === target).demoRetired, true);
+});
+
 test('isolated runtime rematerializes bootstrap/results and resumes audit cursors after restart', async (t) => {
   const f = await fixture(t);
   await f.runtime.request('actorAction', actor, {
