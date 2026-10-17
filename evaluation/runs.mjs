@@ -32,6 +32,7 @@ export function runWorld(config = {}, inputs = [], checkpoint = null, { fork = f
       else if (input.kind === 'model_start') w.startModelCall(input.actor, input.request);
       else if (input.kind === 'model_finish') w.finishModelCall(input.actor, input.request);
       else if (input.kind === 'ingestion') w.acknowledge(input.actor, input.request);
+      else if (input.kind === 'inventory_receipt') w.receiveInventory(input.actor, input.request);
       else w.act(input.actor, input.request);
     } catch (error) {
       if (!input.allowFailure) throw error;
@@ -65,6 +66,7 @@ export function replay(checkpoint) {
       else if (input.kind === 'model_start') w.startModelCall(input.actor, input.request);
       else if (input.kind === 'model_finish') w.finishModelCall(input.actor, input.request);
       else if (input.kind === 'ingestion') w.acknowledge(input.actor, input.request);
+      else if (input.kind === 'inventory_receipt') w.receiveInventory(input.actor, input.request);
       else w.act(input.actor, input.request);
     } catch {}
   }

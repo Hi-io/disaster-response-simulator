@@ -31,9 +31,10 @@ These routes require observer authentication, including the spectator reads:
 |---|---|
 | GET /api/demo/bootstrap | Immutable geographic map and first allowlisted spectator frame |
 | GET /api/demo/frame | Current vehicles, requests, operation receipts, public posts and team names; no secrets, private inventory, future sources or actor observations |
-| POST /api/demo/organizations | `{name, color, idempotencyKey}` creates a unique physical visitor team, with three vehicles, 600 L water, 120 meal portions, staff and fuel |
+| POST /api/demo/organizations | `{name, color, idempotencyKey, resupply?}` creates a unique physical visitor team, with three vehicles, 600 L water, 120 meal portions, staff and fuel |
 | POST /api/demo/organizations/release | `{org, idempotencyKey}` retires only a drained visitor team and revokes its actor access; ownership and operation history remain distinct |
-| POST /api/demo/director | `{enabled, intervalMs, maxOpen, maxActive}` controls bounded recurring incidents and explicit demo resupply |
+| POST /api/demo/organizations/resupply | `{org, idempotencyKey, resupply}` changes one team's bounded incoming-supply schedule |
+| POST /api/demo/director | `{enabled, intervalMs, maxOpen, maxActive, baseOperations, resolvedThreshold, waveSize, quietWatchdogMs, visitorWindowMs}` controls bounded demo waves and base responses |
 
 Mutations are rejected outside an interactive `continuousDemo` world. The
 default admission quota is four active visitor teams. Names and kit resources
@@ -58,10 +59,22 @@ new incident, leaving most of the request available for visitors. They are not
 model inferences. The continuous base driver roster and supply additions are
 explicit recorded demo configuration. An existing visitor dispatch takes
 precedence over that incident's scripted base response.
-With no active visitor organization, base teams may resume an unattended request
-after three simulated hours, only when its earlier operations have drained.
-Cleanup is recorded, bounded and still requires physical receipt. Any active
-visitor organization suppresses that cleanup, preserving review opportunities.
+After the visitor intervention window (30 simulated minutes by default), bases
+can serve the outstanding amount after subtracting active incoming deliveries.
+A connected but inactive visitor does not block continuation. Cleanup is
+recorded and still requires physical receipt; visitor assets are never
+automatically authorized. Three resolved requests trigger a further wave;
+a ten-simulated-minute quiet watchdog can open more requests up to the cap.
+At capacity it reconfirms an existing shortfall, preserving the original target
+and all physical receipts instead of deleting unmet requests.
+
+`resupply` is `{enabled, intervalMs, water, food}`, defaulting to
+`{enabled:true, intervalMs:1800000, water:300, food:60}`. Intervals range from
+300,000 to 21,600,000 ms of simulated time; water and food ranges are 0–600 L
+and 0–120 portions. Depot stock is capped at 1,200 L and 300 portions.
+Changes start the next interval from the current time, with no historical
+catch-up. Scheduled receipts, references and generations survive checkpoints.
+Disabling the schedule retains stock and prevents future scheduled additions.
 
 The host saves credentials, checkpoints, transport cursors and authoritative
 archives on the persistent volume. Close operational writers before `host.close()`
@@ -121,6 +134,16 @@ Feed filters include q, cursor, limit, since, author and location. A post become
 Road and facility queries return received observations with their original observation times. Public map queries provide geography and a place directory. A query does not reveal an unreported need or replace a current physical safety assessment.
 
 ## Submit an action
+
+Human warehouse intake uses `POST /api/actor/inventory/receipt` with
+`{resource, quantity, receiptReference, note?, idempotencyKey}`. Only the
+authenticated owning commander or dispatcher may use it in an interactive
+world; an agent key cannot. The existing usable inventory receives a ledger
+addition and returns a canonical receipt. A unique reference is idempotent
+within its organization; different quantities under the same reference conflict.
+It is not a new depot, a field observation, or proof of delivery to a community.
+Public-demo intake additionally applies depot caps, at most 600 L or 120 portions
+per receipt, and one manual receipt per team per 30 simulated minutes.
 
 POST /api/actor/action accepts a typed envelope:
 

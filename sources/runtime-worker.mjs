@@ -151,8 +151,10 @@ const methods = {
     return result;
   },
   demoConfigureDirector: input => world.demoConfigureDirector(input),
+  demoConfigureResupply: input => world.demoConfigureResupply(input),
+  receiveInventory: (actor, input) => world.receiveInventory(actor, input),
   async boundActorMutation(expected, method, args) {
-    if (!['actorAction', 'acknowledge', 'acknowledgeBatch', 'startModelCall', 'finishModelCall'].includes(method))
+    if (!['actorAction', 'acknowledge', 'acknowledgeBatch', 'startModelCall', 'finishModelCall', 'receiveInventory'].includes(method))
       throw new SimError('METHOD', 'Unknown actor mutation', 404);
     // Executed by the sole engine owner after all earlier queued resets.
     const instance = sourceInstance();

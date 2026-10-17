@@ -255,6 +255,8 @@ export async function createIsolatedLabServers({
         return json(res, 201, await mutation('demoCreateOrganization', input));
       if (url.pathname === '/api/demo/organizations/release')
         return json(res, 200, await mutation('demoReleaseOrganization', input));
+      if (url.pathname === '/api/demo/organizations/resupply')
+        return json(res, 200, await mutation('demoConfigureResupply', input));
       if (url.pathname === '/api/demo/director')
         return json(res, 200, await mutation('demoConfigureDirector', input));
       if (url.pathname === '/api/control') return json(res, 200, await mutation('control', input));
@@ -335,6 +337,7 @@ export async function createIsolatedLabServers({
         '/api/actor/ingestion/batch',
         '/api/actor/model/start',
         '/api/actor/model/finish',
+        '/api/actor/inventory/receipt',
       ];
       if (req.method !== (mutations.includes(url.pathname) ? 'POST' : 'GET'))
         throw new SimError('METHOD', 'Method not allowed', 405);
@@ -408,6 +411,8 @@ export async function createIsolatedLabServers({
         const input = mutations.includes(url.pathname) ? await body(req) : null;
         if (url.pathname === '/api/actor/action')
           return json(res, 200, await actorMutation('actorAction', actor, input));
+        if (url.pathname === '/api/actor/inventory/receipt')
+          return json(res, 200, await actorMutation('receiveInventory', actor, input));
         if (url.pathname === '/api/actor/ingestion')
           return json(res, 200, await actorMutation('acknowledge', actor, input));
         if (url.pathname === '/api/actor/ingestion/batch') {

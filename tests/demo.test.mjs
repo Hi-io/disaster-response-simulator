@@ -77,6 +77,7 @@ test('director publishes real needs over delayed source channels and visitor dis
   try {
     w.demoConfigureDirector({ enabled: true, intervalMs: 300000, maxOpen: 2 }); w.advance(0);
     const { organization: { id } } = create(w);
+    w.demoConfigureResupply({ org: id, idempotencyKey: 'test-fixed-stock-only', resupply: { enabled: false } });
     assert.equal(Object.keys(w.state.observations[id].needs).length, 0);
     w.advance(30000);
     const need = w.state.needs.find(n => n.id.startsWith('demo-need-'));
@@ -98,6 +99,7 @@ test('continuous supply is an explicit balanced intervention; incident schedule 
   const w = new World(config);
   try {
     const id = create(w).organization.id, r = w.resource(`r-${id}-water`);
+    w.demoConfigureResupply({ org: id, idempotencyKey: 'test-six-hour-incoming', resupply: { intervalMs: 21600000, water: 300, food: 0 } });
     r.quantity -= 300; r.consumed += 300;
     w.demoConfigureDirector({ enabled: true, intervalMs: 3600000, maxOpen: 2 });
     w.advance(21600000);
@@ -113,7 +115,7 @@ test('scripted base teams use owned native dispatch and leave meaningful demand 
   const w = new World(config);
   try {
     w.demoConfigureDirector({ baseOperations: true, intervalMs: 300000, maxOpen: 2 });
-    w.advance(1200000);
+    w.advance(540000);
     const base = w.state.operations.filter(op => op.demoBaseContribution);
     assert.ok(base.length > 0); assert.equal(base.every(op => op.quantity <= 100), true);
     const first = w.need('demo-need-1'); assert.equal(first.served, 100); assert.equal(first.quantity - first.served, 200);
@@ -124,23 +126,18 @@ test('scripted base teams use owned native dispatch and leave meaningful demand 
   } finally { w.close(); }
 });
 
-test('unattended base cleanup waits three simulated hours and never consumes an active visitor opportunity', () => {
+test('base follow-up waits for a visitor window and idle visitors cannot stall the shared response indefinitely', () => {
   for (const visitorPresent of [false, true]) {
     const w = new World(config);
     try {
       if (visitorPresent) create(w);
       w.demoConfigureDirector({ baseOperations: true, intervalMs: 300000, maxOpen: 2 });
-      w.advance(10000000);
+      w.advance(540000);
       assert.equal(w.need('demo-need-1').served, 100, 'initial contribution leaves 200 L before the cleanup window');
       w.advance(14400000);
-      if (visitorPresent) {
-        assert.equal(w.need('demo-need-1').served, 100);
-        assert.equal(w.log.some(e => e.type === 'demo_base_response_authorized' && e.data.unattendedCleanup), false);
-      } else {
-        assert.equal(w.need('demo-need-1').served, 300);
-        assert.ok(w.log.some(e => e.type === 'demo_base_response_authorized' && e.data.unattendedCleanup));
-        assert.ok(w.state.operations.some(op => op.need === 'demo-need-1' && op.received > 0 && op.state === 'completed'));
-      }
+      assert.equal(w.need('demo-need-1').served, 300);
+      assert.ok(w.log.some(e => e.type === 'demo_base_response_authorized' && e.data.unattendedCleanup));
+      assert.ok(w.state.operations.some(op => op.need === 'demo-need-1' && op.received > 0 && op.state === 'completed'));
       assert.equal(w.state.resources.every(checkResource), true); assert.deepEqual(w.invariants(), []);
     } finally { w.close(); }
   }

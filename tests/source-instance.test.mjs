@@ -37,7 +37,7 @@ for (const isolated of [false, true]) {
     assert.notEqual(first.instance, second.instance, 'a fresh episode cannot reuse old physical commitments');
     const snapshot = async () => isolated ? lab.checkpoint() : lab.world.checkpoint();
     const before = digest(await snapshot());
-    for (const endpoint of ['action', 'ingestion', 'ingestion/batch', 'model/start', 'model/finish']) {
+    for (const endpoint of ['action', 'ingestion', 'ingestion/batch', 'model/start', 'model/finish', 'inventory/receipt']) {
       const response = await fetch(`${source}/api/actor/${endpoint}`, { method: 'POST',
         headers: { ...headers, [SOURCE_INSTANCE_HEADER]: first.instance },
         body: JSON.stringify(endpoint === 'action' ? query('stale-query') : { items: [] }) });

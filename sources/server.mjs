@@ -314,6 +314,7 @@ export async function createLabServers({
             : {};
         if (url.pathname === '/api/demo/organizations') return json(res, 201, world.demoCreateOrganization(b));
         if (url.pathname === '/api/demo/organizations/release') return json(res, 200, world.demoReleaseOrganization(b));
+        if (url.pathname === '/api/demo/organizations/resupply') return json(res, 200, world.demoConfigureResupply(b));
         if (url.pathname === '/api/demo/director') return json(res, 200, world.demoConfigureDirector(b));
         if (url.pathname === '/api/actors/provision') {
           if (
@@ -540,6 +541,7 @@ export async function createLabServers({
         '/api/actor/ingestion/batch',
         '/api/actor/model/start',
         '/api/actor/model/finish',
+        '/api/actor/inventory/receipt',
       ];
       if (req.method !== (actorMutation.includes(url.pathname) ? 'POST' : 'GET'))
         throw new SimError('METHOD', 'Method not allowed', 405);
@@ -591,6 +593,8 @@ export async function createLabServers({
         }
         if (url.pathname === '/api/actor/action')
           return json(res, 200, world.act(actor, input));
+        if (url.pathname === '/api/actor/inventory/receipt')
+          return json(res, 200, world.receiveInventory(actor, input));
         if (url.pathname === '/api/actor/model/start')
           return json(res, 200, world.startModelCall(actor, input));
         if (url.pathname === '/api/actor/model/finish') {

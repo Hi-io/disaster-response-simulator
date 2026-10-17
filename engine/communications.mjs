@@ -217,6 +217,8 @@ export function installCommunications(w) {
           served: n.served,
           unit: n.unit,
           deadline: n.deadline,
+          ...(n.reconfirmedAt === undefined ? {} : { originalDeadline: n.originalDeadline,
+            reconfirmedAt: n.reconfirmedAt, reconfirmationCount: n.reconfirmationCount }),
           population: n.population,
           version: n.version,
           at: p.observedAt,

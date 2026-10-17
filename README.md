@@ -47,6 +47,10 @@ The public feed uses a dark social timeline and refreshes from the same source-i
 
 For a continuously running integration demo, use `continuousDemo: true`, `mode: 'interactive'`, and `clockLatency: 'wall'` in the world configuration. The world continues through model inference and past the finite scenario horizon, with recurring content and physical processes intact. It never silently resets the seed, resources or operations. The viewer labels this mode; benchmark runners reject it. Use a finite modeled/live configuration for measurements. Explicit event, post and provider budgets still apply, and real-time acceleration is demonstration pacing rather than a latency benchmark.
 
+The optional demo director opens further response waves as needs are resolved, with a quiet-period watchdog and a bounded number of open incidents. Automated base teams use the ordinary dispatch, travel and receipt rules; visitors retain authority over their own resources. A visitor's inactivity does not stop the bases from serving an uncommitted remainder after the intervention window.
+
+Demo teams default to **300 L of water and 60 food portions every 30 simulated minutes**, with configurable intervals and quantities. Receipts add actual ledger stock up to the demo depot caps (1,200 L and 300 portions), preserving reservations and loaded cargo. These schedules are persisted and restored with the world. Human operators may record a source-confirmed incoming shipment using a unique delivery reference; duplicate submissions do not add stock twice. Demo replenishment and waves are explicit interventions, separate from finite evaluation scenarios.
+
 ## Explore the world
 
 Choose a scenario, seed, map size and response policy in World configuration. Pan and zoom the map, inspect buildings and vehicles, follow a moving vehicle, and switch between observer truth and a team's received knowledge.

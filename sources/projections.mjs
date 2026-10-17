@@ -152,7 +152,7 @@ export function createViewerFrame(world, { org = 'org0', perspective = 'truth', 
       edges: s.map.edges.filter(e => !e.open || e.occupants.length || e.waiting.length)
         .map(e => [e.id, e.open, e.occupants.length, e.waiting.length]),
       sectors: s.map.sectors.filter(sector => sector.coverage !== 1).map(sector => [sector.id, sector.coverage]),
-      organizations: s.map.organizations.map(o => pick(o, ['id', 'name', 'node', 'sharing', 'usesPlatform', 'funds', 'version', 'color', 'demoVisitor', 'demoRetired', 'joinedAt'])),
+      organizations: s.map.organizations.map(o => pick(o, ['id', 'name', 'node', 'sharing', 'usesPlatform', 'funds', 'version', 'color', 'demoVisitor', 'demoRetired', 'joinedAt', 'resupply'])),
     },
     cohortFields,
     cohorts: changedCohorts,
@@ -162,7 +162,7 @@ export function createViewerFrame(world, { org = 'org0', perspective = 'truth', 
         'fuelUnit', 'passengers', 'eta', 'version', 'operation', 'destination']))
         : Object.values(s.observations[org].vehicles ?? {}),
       needs: truth ? s.needs.map(n => pick(n, ['id', 'building', 'type', 'quantity', 'served', 'unit',
-        'population', 'version', 'deadline', 'priority', 'createdAt'])) : [],
+        'population', 'version', 'deadline', 'priority', 'createdAt', 'originalDeadline', 'reconfirmedAt', 'reconfirmationCount', 'demoWave'])) : [],
       operations: (truth ? s.operations : Object.values(s.observations[org].operations ?? {}))
         .filter((operation, index, rows) => index >= rows.length - sampleLimit || !['completed', 'failed', 'cancelled'].includes(operation.state)),
       hazards: truth ? s.hazards ?? [] : [],
