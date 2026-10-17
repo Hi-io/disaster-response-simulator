@@ -35,6 +35,8 @@ In isolated mode, `GET /api/state` is a presentation snapshot: current map state
 
 Run `node scripts/runtime-benchmark.mjs` for a repeatable Takamatsu load check with five organization consumers, concurrent viewer/social reads, a blocked consumer event loop and an intentionally unacknowledged subscription. Set `LOAD_MAP_QUERIES=1` to include completed map-query results. The script makes no external model calls and saves its report under ignored `.local/`.
 
+For organization capacity, run `node scripts/organization-capacity.mjs --counts 0,1,2,3,4 --duration 20000`. Each point starts a disposable simulator with four base teams plus the requested number of visitor organizations. A separate client process reads scoped sources, warms real map/inventory queries, and records simulator RSS, startup peaks, CPU and request/tick latency. Memory guards stop escalation; the experiment does not connect to the public demo, deploy platforms or invoke a model. Higher admission limits apply only to its temporary benchmark fixtures. Reports are saved under ignored `.local/organization-capacity/` and describe short capacity tests rather than long-running operational guarantees.
+
 For the same APIs without the 3D viewer, use pnpm service. Add --play to start the clock automatically:
 
 ```sh
