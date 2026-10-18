@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+  <title id="title">AidScaler Disaster Response Simulator</title>
+  <desc id="desc">Recreate the complexity. Measure the response. A repeatable world connects physical events, circulating reports and the information received by a response organization.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#12172b"/><stop offset="1" stop-color="#18192e"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2=".3"><stop stop-color="#75acff"/><stop offset=".54" stop-color="#b294fb"/><stop offset="1" stop-color="#e3a0bf"/></linearGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#d89a88"/><stop offset=".5" stop-color="#b99aec"/><stop offset="1" stop-color="#90b2f3"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#9873eb" stop-opacity=".15"/><stop offset="1" stop-color="#9873eb" stop-opacity="0"/></radialGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(-20)"><path d="M40 0H0V40" stroke="#a0a5cf" stroke-opacity=".06" fill="none"/></pattern>
+  </defs>
+  <rect width="1280" height="420" rx="24" fill="url(#bg)"/>
+  <rect x="720" y="16" width="544" height="388" rx="20" fill="url(#grid)"/>
+  <ellipse cx="1010" cy="215" rx="275" ry="240" fill="url(#glow)"/>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <g transform="translate(52 36)">
+      <rect width="42" height="42" rx="12" fill="#292c47"/>
+      <path d="M9 23h7l4-12 5 21 4-13h5" stroke="#a5b8f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <text x="57" y="28" fill="#f3f2fb" font-size="24" font-weight="600" letter-spacing="-.4">AidScaler · Simulation Lab</text>
+    </g>
+    <text x="54" y="127" fill="#b5b7cf" font-size="11" letter-spacing="2.3">DISASTER RESPONSE, MADE REPEATABLE</text>
+    <text x="51" y="189" fill="#f4f3fc" font-size="49" font-weight="550" letter-spacing="-1.6">Recreate the complexity.</text>
+    <text x="51" y="248" fill="url(#accent)" font-size="49" font-weight="550" letter-spacing="-1.6">Measure the response.</text>
+    <text x="54" y="294" fill="#b8bad0" font-size="18">From scattered information to physical outcomes.</text>
+    <path d="M54 333H672" stroke="#36394f"/>
+    <text x="54" y="369" fill="#d3c1fc" font-size="15" font-weight="500">24 scenarios</text>
+    <circle cx="163" cy="364" r="2" fill="#6e7391"/>
+    <text x="179" y="369" fill="#c4c8df" font-size="15">360 content presets</text>
+    <circle cx="345" cy="364" r="2" fill="#6e7391"/>
+    <text x="361" y="369" fill="#c4c8df" font-size="15">3D + headless experiments</text>
+    <path d="M794 108V302" fill="none" stroke="url(#line)" stroke-width="2"/>
+    <g transform="translate(770 59)">
+      <rect x="0" y="0" width="444" height="83" rx="15" fill="#282433" stroke="#65494a"/>
+      <circle cx="24" cy="40" r="7" fill="#dba08e"/>
+      <text x="50" y="29" fill="#dca594" font-size="10" letter-spacing="1.6">01 · WHAT HAPPENS</text>
+      <text x="50" y="55" fill="#f3e4df" font-size="18" font-weight="500">A community needs help.</text>
+      <g transform="translate(365 20)">
+        <path d="m0 20 19-10 19 10-19 10Z" fill="#f0cebe"/>
+        <path d="m0 20 19 10v24L0 44Z" fill="#b08584"/>
+        <path d="m19 30 19-10v24L19 54Z" fill="#826978"/>
+        <path d="m38 9 10-5 10 5-10 5Z" fill="#a8aac6"/>
+        <path d="m38 9 10 5v17l-10-5Z" fill="#797d9e"/>
+        <path d="m48 14 10-5v17l-10 5Z" fill="#5f668c"/>
+      </g>
+    </g>
+    <g transform="translate(770 165)">
+      <rect width="444" height="83" rx="15" fill="#28243d" stroke="#55466d"/>
+      <circle cx="24" cy="41" r="7" fill="#b899ed"/>
+      <text x="50" y="29" fill="#c6aef5" font-size="10" letter-spacing="1.6">02 · WHAT SPREADS</text>
+      <text x="50" y="55" fill="#e8e0fa" font-size="18" font-weight="500">Reports reach the network.</text>
+      <g transform="translate(367 23)" fill="none" stroke="#b7a4db" stroke-width="1.3">
+        <rect x="8" y="-6" width="38" height="31" rx="5" opacity=".4"/>
+        <rect x="3" y="0" width="38" height="31" rx="5" fill="#2d2845"/>
+        <circle cx="12" cy="9" r="3"/><path d="M20 8h13M20 13h9"/>
+        <path d="m14 20 5-3 5 3-5 3Z" fill="#baa7e6" stroke="none"/>
+      </g>
+    </g>
+    <g transform="translate(770 271)">
+      <rect width="444" height="83" rx="15" fill="#20273d" stroke="#435678"/>
+      <circle cx="24" cy="41" r="7" fill="#8faeef"/>
+      <text x="50" y="29" fill="#acc3f3" font-size="10" letter-spacing="1.6">03 · WHAT A TEAM RECEIVES</text>
+      <text x="50" y="55" fill="#e1eafa" font-size="18" font-weight="500">Information becomes usable.</text>
+      <g transform="translate(373 21)" fill="none" stroke="#a6bdf2" stroke-width="1.5">
+        <rect x="0" y="1" width="36" height="25" rx="4"/>
+        <path d="M18 26v9M10 35h16M8 11l5 5 11-10"/>
+      </g>
+    </g>
+    <text x="991" y="389" fill="#b2b6d0" font-size="12" text-anchor="middle">Decisions → operations → receipts → measurements</text>
+  </g>
+</svg>

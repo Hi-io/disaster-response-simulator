@@ -1,119 +1,148 @@
-# AidScaler Disaster Response Simulator
+<p align="center">
+  <img src="docs/assets/simulator-banner.svg" alt="AidScaler Disaster Response Simulator — Recreate the complexity. Measure the response." width="100%">
+</p>
 
-A deterministic environment for developing and testing disaster-response software. It models needs, reports, communications, traffic, finite resources and independent response teams. The isometric 3D viewer uses simple geometry to make those interactions easy to inspect.
+<p align="center">
+  <a href="https://aidscaler.com/demo/"><strong>Explore the live demo</strong></a> ·
+  <a href="https://github.com/Hi-io/aidscaler-platform">AidScaler platform</a> ·
+  <a href="docs/SCENARIOS.md">Scenarios</a> ·
+  <a href="docs/EVALUATION.md">Impact evaluation</a> ·
+  <a href="docs/API.md">API</a>
+</p>
 
-The simulator provides the world and its interfaces. The separate [AidScaler platform](https://github.com/Hi-io/aidscaler-platform) connects through organization-scoped APIs and currently supports Gemma 4 through OpenRouter. Running this simulator requires no model API key.
+# Disaster Response Simulator
 
-## Quick start
+**A repeatable world for testing whether better decisions lead to help arriving sooner.**
 
-Install Node.js 24 or later and pnpm 11, then:
+This simulator recreates the operational complexity behind disaster response: changing needs, scattered public reports, overloaded teams, interrupted communications, limited supplies and vehicles moving through traffic. Actions change the simulated world, and their consequences are measured through physical receipts and service.
+
+It is the independent evaluation environment for [**AidScaler**](https://github.com/Hi-io/aidscaler-platform), the disaster-response platform powered by Gemini on Google Cloud. AidScaler receives scoped information, investigates a response and submits authorized actions; the simulator determines what happens next.
+
+**24 scenarios · 360 content presets · 26 input types · 25 action types · interactive 3D + headless evaluation**
+
+## How it demonstrates AidScaler's impact
+
+An earlier proposal matters when it becomes an earlier delivery. The simulator follows the full path: **a need appears → information travels → someone decides → a team acts → aid is received.**
+
+The same initial conditions can be used for conventional and AI-assisted response. That connects improvements in information handling to measurable outcomes under the same resource and operational constraints.
+
+| Outcome                         | Conventional response | AidScaler + Gemini |                  Improvement |
+| :------------------------------ | --------------------: | -----------------: | ---------------------------: |
+| Average wait for sufficient aid |             45.22 min |      **33.98 min** |      **24.85% less waiting** |
+| Average time to authorization   |             28.60 min |      **18.92 min** |         **33.84% less time** |
+| Human coordination effort       |        263 person-min |  **16 person-min** |         **93.92% less work** |
+| Needs fully served              |               24 / 24 |        **24 / 24** | **Full coverage maintained** |
+
+<sub>Recorded paired simulation · 18 October 2026 · Takamatsu, Japan · four organizations · Gemini 3.8 Flash on Vertex AI. Human effort is modeled; sufficient aid includes travel, unloading and receipt.</sub>
+
+[Read the evaluation method →](docs/EVALUATION.md) · [Inspect AidScaler's recorded results →](https://github.com/Hi-io/aidscaler-platform/blob/main/docs/BENCHMARK.md)
+
+## What the world simulates
+
+| Layer                         | Interactions represented                                                                                                                                  |
+| :---------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Disasters and access**      | Earthquakes, aftershocks, wildfire spread, rising floods and compound hazards; changing building conditions, road access and evacuation windows.          |
+| **Communities and needs**     | Water, food, blankets, shelter and medical needs; recurring demand, vulnerable cohorts, shortages and exposure over time.                                 |
+| **Geography and movement**    | Procedural regions and mapped Japanese road networks; junctions, curved routes, one-way roads, restrictions and background traffic queues.                |
+| **Vehicles and cargo**        | Finite fleets, driver availability, fuel, cargo capacity, pickup, loading, travel, rerouting and unloading.                                               |
+| **Supplies and ownership**    | Stock, protected reserves, expiring lots, reservations, transfers, purchases and partial receipts.                                                        |
+| **People and facilities**     | Qualified staff, shifts, rest, assessments, power compatibility, setup and service dependencies; shelter admission and water production.                  |
+| **Communications**            | Message transmission, bandwidth, latency, packet loss, coverage outages, disconnected drivers and reconnection backlogs.                                  |
+| **Human attention**           | Finite reading, decision and relay queues; staffing, task durations, background workload and approval delays.                                             |
+| **Public information**        | A scrapeable social network with posts, news, team reports, reposts, corrections, ambiguous claims and simulated image, video and voice-note attachments. |
+| **Independent organizations** | Separate knowledge, depots, permissions and resources; owner approvals, shared commitments, withdrawals and coordinated responses.                        |
+| **Public accountability**     | Funding, procurement, dispatch, receipt and publication as distinct, traceable stages.                                                                    |
+| **AI and tool interaction**   | Scoped queries, verification, model timing and usage receipts, tool quotas, versioned actions and idempotent commands.                                    |
+
+The [scenario catalogue](docs/SCENARIOS.md) connects these mechanics to specific capabilities: discovering an empty return trip, preparing a usable shelter, reaching a quiet community, coordinating complementary teams or adapting a response after conditions change.
+
+## See the information gap
+
+The viewer separates three perspectives so an evaluator can follow how information becomes action:
+
+| Perspective              | What it shows                                                                |
+| :----------------------- | :--------------------------------------------------------------------------- |
+| **What happens**         | The underlying world: hazards, needs, traffic and physical operations.       |
+| **What spreads**         | Reports as they are composed, transmitted, published, repeated or corrected. |
+| **What a team receives** | That organization's received observations, messages and ingestion activity.  |
+
+This lets you inspect the gap between an event, its public report and the team's knowledge. The observer sees the whole experiment; AidScaler works through the organization's source and action interfaces.
+
+<details>
+<summary><strong>View the 3D laboratory — Takamatsu, Japan</strong></summary>
+
+![Takamatsu's city-scale road network, four response organizations and the three information lanes](docs/assets/takamatsu-laboratory.png)
+
+A 10 × 10 km mapped region with 4,300 synthetic community and facility sites. Pan, zoom, follow vehicles and switch between observer and team perspectives. The viewer reflects the engine's state; camera movement does not advance the world.
+
+Map data © OpenStreetMap contributors · [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/). [Geography and source attribution](docs/GEOGRAPHY.md).
+
+</details>
+
+## Built for repeatable experiments
+
+- **Seeded worlds:** keep the same engine build, configuration and recorded inputs to replay the same event sequence.
+- **Physical outcomes:** measure first useful aid, sufficient service, unmet demand, travel, fuel and resource utilization.
+- **Controlled comparisons:** hold resources and scenario conditions constant while changing the response workflow.
+- **Independent clock:** run interactive sessions or accelerated headless batches; the engine runs separately from browser rendering.
+- **Inspectable history:** save manifests, checkpoints, inputs, event archives and metric exports.
+- **Scalable observation:** compact map frames, scoped read models and a durable event transport keep visualization separate from authoritative state.
+
+[Evaluation and replay →](docs/EVALUATION.md) · [Engine and runtime design →](docs/RUNTIME.md)
+
+## Run the laboratory
+
+Requires **Node.js 24+** and **pnpm 11**. The simulator runs without a model API key.
 
 ```sh
-git clone --depth 1 https://github.com/Hi-io/disaster-response-simulator.git
+git clone https://github.com/Hi-io/disaster-response-simulator.git
 cd disaster-response-simulator
 pnpm install --frozen-lockfile
 pnpm start
 ```
 
-- Open the [3D laboratory](http://127.0.0.1:4318/).
-- Explore the [fictional public feed](http://127.0.0.1:4319/feed).
-- Find the generated observer and organization keys in the ignored .local/session.json file. Enter the observer key at the laboratory login. Give an integration only its scoped organization key.
+1. Open the [3D laboratory](http://127.0.0.1:4318/).
+2. Use the generated observer key from the ignored `.local/session.json` file to enter the laboratory.
+3. Choose a scenario, seed and map. Press **Play**, **Step** or **Advance world**.
+4. Open the [fictional public feed](http://127.0.0.1:4319/feed) and compare it with a team's received information.
 
-The servers bind to localhost and the world starts paused. Play, Step and Advance world control the backend clock; camera movement and browser rendering do not advance it.
+The world starts paused. Each organization has its own scoped access key. The [API guide](docs/API.md) explains how a response platform connects to those interfaces.
 
-## Independent engine and local event transport
-
-Interactive launchers run the authoritative engine in a dedicated worker. Commands are ordered and advances yield between small time-budgeted batches without skipping physical events. The HTTP server, durable local queue, document storage and presentation consumers run outside that worker. A slow viewer or integration can accumulate delivery lag without waiting inside the simulation clock.
-
-The continuous demo writes its full atomic checkpoint in the engine worker and returns a small archive receipt to the HTTP host. Large recovered states therefore do not have to cross the worker boundary on every save. Ordinary checkpoint export remains complete, and the received archive descriptors preserve audit verification and recovery.
-
-The local transport provides ordered, at-least-once deliveries with stable event IDs, acknowledgments, leases, retries and replay. Large immutable documents are published by SHA-256 reference; static geography is downloaded once, while viewers receive compact frames and organization connectors cache scoped query results. Queue messages and documents are local ignored data, separate from deterministic simulation checkpoints. Presentation frames may be coalesced; authoritative events remain in the full event archive.
-
-`createLocalEventBus` implements the `publish/subscribe/pull/ack/nack/replay` transport port. `createQueuedDocuments` accepts an injected document store implementing `put/get`. These ports can be backed by Pub/Sub and object storage later without changing the engine. Consumers must handle duplicate deliveries and acknowledge only after processing. Retention must preserve references needed for replay; disk exhaustion is reported explicitly rather than silently dropping events.
-
-`GET /api/runtime` is observer-authenticated and reports tick intervals, work durations, simulation lag and transport status. Exact metric exports and checkpoints remain explicit operations; live rendering does not evaluate the full event history. Library tests and deterministic headless runners may still use the inline engine with `createLabServers({isolated:false})`.
-
-In isolated mode, `GET /api/state` is a presentation snapshot: current map state, finite recent activity and inexpensive physical summaries. It does not return the complete historical state or run full evaluation. The viewer fetches `/api/viewer/bootstrap` once and `/api/viewer/frame` for updates. Use authenticated `/api/checkpoint` for the complete reproducible world, and `/api/metrics` for exact experimental evaluation. Organization source/action APIs retain their scoped semantics; compact actor reads replace completed query contents with separately retrievable result references.
-
-Run `node scripts/runtime-benchmark.mjs` for a repeatable Takamatsu load check with five organization consumers, concurrent viewer/social reads, a blocked consumer event loop and an intentionally unacknowledged subscription. Set `LOAD_MAP_QUERIES=1` to include completed map-query results. The script makes no external model calls and saves its report under ignored `.local/`.
-
-For organization capacity, run `node scripts/organization-capacity.mjs --counts 0,1,2,3,4 --duration 20000`. Each point starts a disposable simulator with four base teams plus the requested number of visitor organizations. A separate client process reads scoped sources, warms real map/inventory queries, and records simulator RSS, startup peaks, CPU and request/tick latency. Memory guards stop escalation; the experiment does not connect to the public demo, deploy platforms or invoke a model. Higher admission limits apply only to its temporary benchmark fixtures. Reports are saved under ignored `.local/organization-capacity/` and describe short capacity tests rather than long-running operational guarantees.
-
-For the same APIs without the 3D viewer, use pnpm service. Add --play to start the clock automatically:
+To run the same source and action APIs without the 3D viewer:
 
 ```sh
 pnpm service -- --play
 ```
 
-Use one server mode at a time because both use ports 4318 and 4319.
+Use one server mode at a time; both use ports 4318 and 4319.
 
-The public feed uses a dark social timeline and refreshes from the same source-indexed world clock. It keeps the newest 30 posts on screen and moves existing posts down as updates arrive; older posts remain accessible through pagination. Images, clips and voice notes are explicitly simulated media. The sidebar shows public posts per simulated minute, averaged over the last 30 simulated minutes. It excludes edits and private messages and uses only elapsed history while a run warms up. Pausing preserves the measured average. Vehicle and feed animations retarget the latest received state instead of queuing intermediate snapshots; presentation never advances the physical clock.
-
-For a continuously running integration demo, use `continuousDemo: true`, `mode: 'interactive'`, and `clockLatency: 'wall'` in the world configuration. The world continues through model inference and past the finite scenario horizon, with recurring content and physical processes intact. It never silently resets the seed, resources or operations. The viewer labels this mode; benchmark runners reject it. Use a finite modeled/live configuration for measurements. Explicit event, post and provider budgets still apply, and real-time acceleration is demonstration pacing rather than a latency benchmark.
-
-The optional demo director opens further response waves as needs are resolved, with a quiet-period watchdog and a bounded number of open incidents. Automated base teams use the ordinary dispatch, travel and receipt rules; visitors retain authority over their own resources. A visitor's inactivity does not stop the bases from serving an uncommitted remainder after the intervention window.
-
-Demo teams default to **300 L of water and 60 food portions every 30 simulated minutes**, with configurable intervals and quantities. Receipts add actual ledger stock up to the demo depot caps (1,200 L and 300 portions), preserving reservations and loaded cargo. These schedules are persisted and restored with the world. Human operators may record a source-confirmed incoming shipment using a unique delivery reference; duplicate submissions do not add stock twice. Demo replenishment and waves are explicit interventions, separate from finite evaluation scenarios.
-
-## Explore the world
-
-Choose a scenario, seed, map size and response policy in World configuration. Pan and zoom the map, inspect buildings and vehicles, follow a moving vehicle, and switch between observer truth and a team's received knowledge.
-
-The information lanes show world events, circulating reports and information received by the selected team. The Human attention profile selector controls zero, moderate and burst presets; Advanced JSON exposes timings, finite pools, connectivity and other parameters. Built-in response policies are scripted controllers. A manual workflow or model-assisted response connects through the external API.
-
-### A real street layout, kept local
-
-Select **Honmura, Japan · real street layout** under Topology. This fixed, approximately one-kilometre town-core fixture contains 43 junctions and 56 two-way road segments (112 directed edges), curated from the [Honmura area in OpenStreetMap](https://www.openstreetmap.org/#map=17/34.4605/133.9975). Roads retain mapped junction connectivity and curved polylines, including Prefectural Route 256 and the port approach. Coordinates use a local metre projection without stretching the town. The [official Naoshima tourism map](https://naoshima.net/en/access-en/access_from/) provides geographic context.
-
-No tiles, live map service, or third-party routing is used at runtime. Density and extent are fixed for this fixture; seeds still control synthetic world events. All buildings, facility uses, stocks, responders, population, traffic assumptions, hazards and operational restrictions are **invented demonstration data**, not real shelters, observed damage, or navigation advice. The irregular procedural region remains the default.
-
-Geographic arrays in [generators/honmura.mjs](generators/honmura.mjs) are an adapted database © OpenStreetMap contributors, available under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The fixture retains source way/node IDs, retrieval date, source URL and snapshot fingerprint; attribution is also visible on the map. The fixture records the curated town core rather than every path or restriction in the area.
-
-For city-scale scenarios, select **Takamatsu, Japan · 10 × 10 km · scale scenarios**. This fixed 100 km² region has 100 times Honmura's configured simulation area and 4,300 synthetic community/facility sites, compared with Honmura's 43. Its offline OpenStreetMap extract retains the strategic road network, actual mapped junctions, curved geometry and one-way streets. It does not include every residential alley or constitute a navigation map. Roads and community sites are separate layers; the 4,300 sites are modelled groups, not actual mapped buildings. Attribution and source provenance accompany the bundled geographic database under ODbL 1.0.
-
-The seed controls synthetic events and site details while the real road layout stays fixed. A repeatable headless starting configuration is available in [manifests/takamatsu.json](manifests/takamatsu.json):
+## Run and replay an experiment
 
 ```sh
-node cli.mjs run --config manifests/takamatsu.json --output runs/takamatsu
+node cli.mjs run --config manifests/unit.json --seed example-01 --output runs/example-01
+node cli.mjs replay --checkpoint runs/example-01/checkpoint.json.gz
+node cli.mjs batch --config manifests/unit.json --seeds example-01,example-02 --policies conventional,rules --workers 2 --output runs/comparison
+node cli.mjs export --checkpoint runs/example-01/checkpoint.json.gz --output runs/export
 ```
 
-The engine includes:
+The CLI's built-in policies are scripted reference controllers. The **AidScaler + Gemini** integration runs through the separate platform and the simulator API. [Full evaluation workflow →](docs/EVALUATION.md)
 
-- Procedural maps, earthquake, flood and wildfire events.
-- Traffic queues, route restrictions, fuel, drivers, cargo capacity and staff shifts.
-- Supplies, expiring lots, owner-controlled reservations and transfers.
-- Field checks, qualified teams, facility dependencies, evacuation and physical delivery receipts.
-- Delayed or lost messages, outages, stale information and finite human attention.
-- A fictional social network with reports, reposts, corrections and synthetic media descriptions.
-- Saved checkpoints, replay, headless execution and multiple-seed experiments.
+## Explore the repository
 
-## Reproducible runs
+| Guide                                         | What you will find                                                       |
+| :-------------------------------------------- | :----------------------------------------------------------------------- |
+| [Scenarios](docs/SCENARIOS.md)                | All 24 situations and the response capabilities they exercise.           |
+| [Impact evaluation](docs/EVALUATION.md)       | Paired comparisons, metrics, replay and the AidScaler benchmark.         |
+| [API integration](docs/API.md)                | Public sources, organization-scoped queries, actions and receipts.       |
+| [Runtime architecture](docs/RUNTIME.md)       | Engine isolation, event transport, compact views and hosted integration. |
+| [Geography](docs/GEOGRAPHY.md)                | Procedural and mapped environments, provenance and attribution.          |
+| [Models and measurement](docs/CALIBRATION.md) | Units, population assumptions, human-work parameters and interpretation. |
 
 ```sh
 pnpm check
 pnpm test
-node cli.mjs run --config manifests/unit.json --seed demo-01 --output runs/demo-01
-node cli.mjs replay --checkpoint runs/demo-01/checkpoint.json.gz
-node cli.mjs batch --config manifests/unit.json --seeds demo-01,demo-02 --policies conventional,rules --workers 2 --output runs/batch
-node cli.mjs export --checkpoint runs/demo-01/checkpoint.json.gz --output runs/export
 ```
 
-Keep the complete run directory, including its checkpoint and compact-history files. Exact replay requires the same engine build, configuration and recorded inputs. A new external model response is a new input.
+---
 
-See [API integration](docs/API.md), [scenarios](docs/SCENARIOS.md) and [model assumptions](docs/CALIBRATION.md). Simulation outcomes describe the configured world; population and human-work parameters require calibration before making claims about real emergencies.
-
-## Hybrid cloud demo
-
-The shared demo keeps this simulator in local Kubernetes and connects it to the
-Google Cloud application through an authenticated Pub/Sub bridge. Visitors see
-the public projection and their own workspace; simulator controls stay private.
-Federated service-account identity avoids long-lived Google private keys.
-
-The bridge pauses the already loaded world after ten minutes without visible
-visitors. Returning visitors resume the same clock without catch-up. Demo
-registration can reserve an identity floor supplied by the host, so a recovered
-checkpoint cannot reuse an organization ID retained in the application database.
-This affects continuous demonstration provisioning only, not finite benchmarks.
-
-Deployment and recovery instructions are maintained in the
-[platform cloud runbook](https://github.com/Hi-io/aidscaler-platform/tree/main/deploy/gcp).
+**Follow a decision all the way to its impact.** [Try the connected experience](https://aidscaler.com/demo/) · [Explore AidScaler](https://aidscaler.com/).

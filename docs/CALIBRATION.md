@@ -1,6 +1,8 @@
-# AidScaler simulation assumptions
+# Simulation models and measurement semantics
 
-This simulator models operational interactions under declared parameters. The 3D view helps inspect those interactions; visual detail is not evidence of physical or behavioral accuracy.
+[Overview](../README.md) · [Impact evaluation](EVALUATION.md) · [Scenarios](SCENARIOS.md)
+
+The simulator makes operational interactions explicit and repeatable: physical resources, information timing, staff capacity and service each have declared parameters. Simple 3D geometry helps an evaluator follow those interactions, while metrics come from the engine and its event history.
 
 ## Physical and information models
 
@@ -22,19 +24,19 @@ These durations and error rates are hypotheses rather than measurements of emerg
 
 The population model tracks cohort stores and exposure. Delivered aid replenishes stores; shortages can accumulate and affect modeled health outcomes. Intake, grace periods, vulnerability and risk rates are configurable assumptions, not clinical predictions or a validated estimate of lives saved.
 
-| Quantity | Unit and interpretation |
-|---|---|
-| Time | Simulated milliseconds; divide by 60,000 for minutes |
-| Distance | Metres |
-| Water | Litres; the population model converts to millilitres |
-| Food | Abstract portions; the population model assumes 700 kcal per portion |
-| Blankets | Individual items |
-| Staff | People, with anonymous skill profiles and availability |
-| Vehicle fuel | Millilitres |
-| Finance | Sandbox credits |
-| Unmet demand integral | Resource unit × time, such as litre·minutes or portion·minutes |
-| Attention work / queue waiting | Person-time, reported separately |
-| Shelter service | Occupied place-hours, after physical admission |
+| Quantity                       | Unit and interpretation                                              |
+| ------------------------------ | -------------------------------------------------------------------- |
+| Time                           | Simulated milliseconds; divide by 60,000 for minutes                 |
+| Distance                       | Metres                                                               |
+| Water                          | Litres; the population model converts to millilitres                 |
+| Food                           | Abstract portions; the population model assumes 700 kcal per portion |
+| Blankets                       | Individual items                                                     |
+| Staff                          | People, with anonymous skill profiles and availability               |
+| Vehicle fuel                   | Millilitres                                                          |
+| Finance                        | Sandbox credits                                                      |
+| Unmet demand integral          | Resource unit × time, such as litre·minutes or portion·minutes       |
+| Attention work / queue waiting | Person-time, reported separately                                     |
+| Shelter service                | Occupied place-hours, after physical admission                       |
 
 Sufficient-service time runs from the need's response start to enough physically received aid. First useful service can occur earlier with a partial delivery. Report unmet or censored cases with the timing statistics.
 

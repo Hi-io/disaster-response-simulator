@@ -69,3 +69,10 @@ codex*.md
 !/docs/API.md
 !/docs/SCENARIOS.md
 !/docs/CALIBRATION.md
+
+# Curated public presentation and evaluation guides.
+!/docs/EVALUATION.md
+!/docs/RUNTIME.md
+!/docs/GEOGRAPHY.md
+!/docs/assets/
+!/docs/assets/**
